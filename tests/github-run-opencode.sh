@@ -83,8 +83,8 @@ if [[ "$output" != *"ZHIPU_API_KEY=zhipu-token"* ]]; then
   exit 1
 fi
 
-if [[ "$output" != *"OPENCODE_GO_API_KEY=go-token"* ]]; then
-  printf 'expected OPENCODE_GO_API_KEY env in output, got:\n%s\n' "$output" >&2
+if [[ "$output" != *"OPENCODE_API_KEY=go-token"* ]]; then
+  printf 'expected OPENCODE_API_KEY env in output, got:\n%s\n' "$output" >&2
   exit 1
 fi
 

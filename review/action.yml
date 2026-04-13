@@ -92,7 +92,7 @@ inputs:
     required: false
     default: ""
   opencode-go-api-key:
-    description: Value exported as OPENCODE_GO_API_KEY before running `opencode github run`.
+    description: Value exported as OPENCODE_API_KEY before running `opencode github run`. The opencode-go provider shares this env var with OpenCode Zen.
     required: false
     default: ""
 
