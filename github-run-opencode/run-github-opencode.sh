@@ -32,7 +32,7 @@ if [[ -n "${GITHUB_RUN_OPENCODE_ZHIPU_API_KEY:-}" ]]; then
 fi
 
 if [[ -n "${GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY:-}" ]]; then
-  export OPENCODE_GO_API_KEY="$GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"
+  export OPENCODE_API_KEY="$GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"
 fi
 
 exec "$script_dir/../run-opencode/run-opencode.sh"
