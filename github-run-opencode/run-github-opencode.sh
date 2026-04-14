@@ -50,4 +50,4 @@ if [[ "$timeout_seconds" -eq 0 ]]; then
   exec "$script_dir/../run-opencode/run-opencode.sh"
 fi
 
-exec timeout --foreground "${timeout_seconds}s" "$script_dir/../run-opencode/run-opencode.sh"
+exec timeout "${timeout_seconds}s" "$script_dir/../run-opencode/run-opencode.sh"
