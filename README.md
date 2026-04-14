@@ -51,6 +51,7 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
 | `attempts` | `3` | Total attempts before failing |
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
+| `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
 | `working-directory` | empty | Optional working directory before running OpenCode |
 
 `github-run-opencode` also accepts the setup-related inputs from `setup-opencode`, such as `cache`, `cache-key`, `install-attempts`, `install-url`, and `allow-preinstalled`.
@@ -61,6 +62,7 @@ Use this when you want the simplest PR review setup.
 
 - built-in `prompt` review template (same as `github-run-opencode`)
 - built-in `MODEL` resolution: explicit `model` input, else `MODEL_NAME`, else `zhipuai-coding-plan/glm-5.1`
+- built-in `timeout-seconds` default: `600` (10 minutes)
 - still allows overriding any input when needed
 
 ## setup-opencode

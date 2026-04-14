@@ -36,4 +36,24 @@ if ! grep -Eq '^    default: ""$' "$repo_root/review/action.yml"; then
   exit 1
 fi
 
+if ! grep -Eq '^  timeout-seconds:$' "$repo_root/github-run-opencode/action.yml"; then
+  printf 'github-run-opencode/action.yml is missing timeout-seconds input\n' >&2
+  exit 1
+fi
+
+if ! grep -Eq '^  timeout-seconds:$' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml is missing timeout-seconds input\n' >&2
+  exit 1
+fi
+
+if ! grep -Eq '^    default: "600"$' "$repo_root/github-run-opencode/action.yml"; then
+  printf 'github-run-opencode/action.yml timeout-seconds default is not 600\n' >&2
+  exit 1
+fi
+
+if ! grep -Eq '^    default: "600"$' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml timeout-seconds default is not 600\n' >&2
+  exit 1
+fi
+
 printf 'review action metadata test passed\n'

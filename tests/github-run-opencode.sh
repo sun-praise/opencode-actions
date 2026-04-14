@@ -40,7 +40,23 @@ export PATH="/usr/bin:/bin"
 export FAKE_OPENCODE_VERSION="9.9.9-wrapper"
 
 "$repo_root/setup-opencode/install-opencode.sh"
-export PATH="$OPENCODE_INSTALL_DIR:/usr/bin:/bin"
+fake_bin_dir="$work_dir/fake-bin"
+mkdir -p "$fake_bin_dir"
+
+cat >"$fake_bin_dir/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'fake timeout %s\n' "$*"
+
+duration="$1"
+shift
+
+printf 'TIMEOUT_DURATION=%s\n' "$duration"
+"$@"
+EOF
+
+chmod +x "$fake_bin_dir/timeout"
+export PATH="$fake_bin_dir:$OPENCODE_INSTALL_DIR:/usr/bin:/bin"
 
 export GITHUB_RUN_OPENCODE_MODEL="wrapper-model"
 export GITHUB_RUN_OPENCODE_PROMPT="review prompt"
@@ -88,10 +104,23 @@ if [[ "$output" != *"OPENCODE_API_KEY=go-token"* ]]; then
   exit 1
 fi
 
+if [[ "$output" != *"TIMEOUT_DURATION=600s"* ]]; then
+  printf 'expected default timeout duration of 600s, got:\n%s\n' "$output" >&2
+  exit 1
+fi
+
+export GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS="7"
+override_output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
+
+if [[ "$override_output" != *"TIMEOUT_DURATION=7s"* ]]; then
+  printf 'expected override timeout duration of 7s, got:\n%s\n' "$override_output" >&2
+  exit 1
+fi
+
 unset GITHUB_RUN_OPENCODE_MODEL
 export MODEL_NAME="env-model-name"
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
+output="$($repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
 
 if [[ "$output" != *"MODEL=env-model-name"* ]]; then
   printf 'expected MODEL_NAME fallback in output, got:\n%s\n' "$output" >&2
@@ -100,7 +129,7 @@ fi
 
 unset MODEL_NAME
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
+output="$($repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
 
 if [[ "$output" != *"MODEL=zhipuai-coding-plan/glm-5.1"* ]]; then
   printf 'expected built-in model fallback in output, got:\n%s\n' "$output" >&2
