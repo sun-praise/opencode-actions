@@ -15,6 +15,11 @@ if ! grep -Fq 'uses: Svtter/opencode-actions/review@v1' "$workflow_file"; then
   exit 1
 fi
 
+if ! grep -Fq 'model: opencode-go/minimax-m2.7' "$workflow_file"; then
+  printf 'expected workflow to pin model to opencode-go/minimax-m2.7\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'github.event.pull_request.head.repo.full_name == github.repository' "$workflow_file"; then
   printf 'expected workflow to skip fork pull requests\n' >&2
   exit 1
