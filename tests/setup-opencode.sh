@@ -34,17 +34,19 @@ run_install_case() {
   local case_dir="$1"
   shift
 
-  export HOME="$case_dir/home"
-  export OPENCODE_INSTALL_URL="http://127.0.0.1:${port}/fake-installer.sh"
-  export OPENCODE_INSTALL_DIR="$case_dir/bin"
-  export XDG_CACHE_HOME="$case_dir/cache"
-  export OPENCODE_INSTALL_ATTEMPTS="${OPENCODE_INSTALL_ATTEMPTS:-1}"
-  export OPENCODE_ALLOW_PREINSTALLED="${OPENCODE_ALLOW_PREINSTALLED:-false}"
-  export OPENCODE_MIN_VERSION="${OPENCODE_MIN_VERSION:-}"
-  export PATH="$case_dir/path:/usr/bin:/bin"
+  local oc_env=(
+    HOME="$case_dir/home"
+    OPENCODE_INSTALL_URL="http://127.0.0.1:${port}/fake-installer.sh"
+    OPENCODE_INSTALL_DIR="$case_dir/bin"
+    XDG_CACHE_HOME="$case_dir/cache"
+    OPENCODE_INSTALL_ATTEMPTS="${OPENCODE_INSTALL_ATTEMPTS:-1}"
+    OPENCODE_ALLOW_PREINSTALLED="${OPENCODE_ALLOW_PREINSTALLED:-false}"
+    OPENCODE_MIN_VERSION="${OPENCODE_MIN_VERSION:-}"
+    PATH="$case_dir/path:/usr/bin:/bin"
+  )
 
-  mkdir -p "$HOME" "$case_dir/path"
-  "$repo_root/setup-opencode/install-opencode.sh" "$@"
+  mkdir -p "$case_dir/home" "$case_dir/path"
+  env "${oc_env[@]}" "$repo_root/setup-opencode/install-opencode.sh" "$@"
 }
 
 case_one="$server_root/case-one"
