@@ -1,0 +1,27 @@
+{
+  "iterations": [
+    {
+      "iteration": 1,
+      "startedAt": "2026-04-15T08:06:31.920Z",
+      "endedAt": "2026-04-15T08:06:54.450Z",
+      "durationMs": 22497,
+      "agent": "opencode",
+      "model": "zhipuai-coding-plan/glm-5-turbo",
+      "toolsUsed": {},
+      "filesModified": [],
+      "exitCode": 0,
+      "completionDetected": false,
+      "errors": [
+        "\u001b[91m\u001b[1mError: \u001b[0mThe user rejected permission to use this specific tool call."
+      ]
+    }
+  ],
+  "totalDurationMs": 22497,
+  "struggleIndicators": {
+    "repeatedErrors": {
+      "\u001b[91m\u001b[1mError: \u001b[0mThe user rejected permission to use this specific tool call.": 1
+    },
+    "noProgressIterations": 1,
+    "shortIterations": 1
+  }
+}
