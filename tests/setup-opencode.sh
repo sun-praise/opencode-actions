@@ -179,6 +179,7 @@ chmod +x "$case_six/bin/opencode"
 export FAKE_OPENCODE_VERSION="2.0.0-upgraded"
 export FAKE_INSTALL_TARGET="install-dir"
 export OPENCODE_ALLOW_PREINSTALLED="false"
+export OPENCODE_INSTALL_ATTEMPTS="3"
 export OPENCODE_MIN_VERSION="1.4.5"
 run_install_case "$case_six"
 

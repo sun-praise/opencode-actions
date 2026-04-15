@@ -24,11 +24,24 @@ require_positive_integer "$OPENCODE_INSTALL_ATTEMPTS" "OPENCODE_INSTALL_ATTEMPTS
 
 parse_semver() {
   local raw="$1"
-  sed 's/^[vV]//' <<<"$raw" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true
+  sed 's/^[vV]//' <<<"$raw" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' || true
 }
 
 semver_gte() {
   local a="$1" b="$2"
+  local a_pre b_pre
+  if [[ "$a" == *-* ]]; then
+    a_pre="${a#*-}"
+    a="${a%%-*}"
+  else
+    a_pre=""
+  fi
+  if [[ "$b" == *-* ]]; then
+    b_pre="${b#*-}"
+    b="${b%%-*}"
+  else
+    b_pre=""
+  fi
   local i
   for i in 0 1 2; do
     local ai bi
@@ -39,6 +52,12 @@ semver_gte() {
     if [[ "$ai" -gt "$bi" ]]; then return 0; fi
     if [[ "$ai" -lt "$bi" ]]; then return 1; fi
   done
+  if [[ -n "$a_pre" ]] && [[ -z "$b_pre" ]]; then return 1; fi
+  if [[ -z "$a_pre" ]] && [[ -n "$b_pre" ]]; then return 0; fi
+  if [[ -n "$a_pre" ]] && [[ -n "$b_pre" ]]; then
+    if [[ "$a_pre" > "$b_pre" ]]; then return 0; fi
+    if [[ "$a_pre" < "$b_pre" ]]; then return 1; fi
+  fi
   return 0
 }
 
