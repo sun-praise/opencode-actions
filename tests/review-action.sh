@@ -31,8 +31,8 @@ if ! diff -u "$github_run_prompt_file" "$review_prompt_file" >/dev/null; then
   exit 1
 fi
 
-if ! grep -Eq '^    default: zhipuai-coding-plan/glm-5$' "$repo_root/review/action.yml"; then
-  printf 'review/action.yml model default is not zhipuai-coding-plan/glm-5\n' >&2
+if ! grep -Eq '^    default: ""$' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml model default is not empty\n' >&2
   exit 1
 fi
 

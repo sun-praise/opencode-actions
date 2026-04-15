@@ -43,7 +43,7 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `model` | empty | Exported as `MODEL` before `opencode github run` |
+| `model` | `MODEL_NAME`, else `zhipuai-coding-plan/glm-5.1` | Exported as `MODEL` before `opencode github run`; explicit input still overrides |
 | `prompt` | built-in PR review template | Exported as `PROMPT` before `opencode github run` |
 | `github-token` | empty | Exported as `GITHUB_TOKEN` before `opencode github run` |
 | `zhipu-api-key` | empty | Exported as `ZHIPU_API_KEY` before `opencode github run` |
@@ -60,7 +60,7 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 Use this when you want the simplest PR review setup.
 
 - built-in `prompt` review template (same as `github-run-opencode`)
-- built-in `model` default: `zhipuai-coding-plan/glm-5`
+- built-in `MODEL` resolution: explicit `model` input, else `MODEL_NAME`, else `zhipuai-coding-plan/glm-5.1`
 - still allows overriding any input when needed
 
 ## setup-opencode
