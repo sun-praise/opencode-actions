@@ -57,7 +57,7 @@ inputs:
   model:
     description: Value exported as MODEL before running `opencode github run`.
     required: false
-    default: zhipuai-coding-plan/glm-5
+    default: ""
   prompt:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false

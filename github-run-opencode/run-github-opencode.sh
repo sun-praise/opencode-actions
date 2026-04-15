@@ -13,6 +13,10 @@ export OPENCODE_RETRY_DELAY_SECONDS="${GITHUB_RUN_OPENCODE_RETRY_DELAY_SECONDS:-
 
 if [[ -n "${GITHUB_RUN_OPENCODE_MODEL:-}" ]]; then
   export MODEL="$GITHUB_RUN_OPENCODE_MODEL"
+elif [[ -n "${MODEL_NAME:-}" ]]; then
+  export MODEL="$MODEL_NAME"
+else
+  export MODEL="zhipuai-coding-plan/glm-5.1"
 fi
 
 if [[ -n "${GITHUB_RUN_OPENCODE_PROMPT:-}" ]]; then
