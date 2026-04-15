@@ -120,7 +120,7 @@ fi
 unset GITHUB_RUN_OPENCODE_MODEL
 export MODEL_NAME="env-model-name"
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
+output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
 
 if [[ "$output" != *"MODEL=env-model-name"* ]]; then
   printf 'expected MODEL_NAME fallback in output, got:\n%s\n' "$output" >&2
@@ -129,7 +129,7 @@ fi
 
 unset MODEL_NAME
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
+output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
 
 if [[ "$output" != *"MODEL=zhipuai-coding-plan/glm-5.1"* ]]; then
   printf 'expected built-in model fallback in output, got:\n%s\n' "$output" >&2
