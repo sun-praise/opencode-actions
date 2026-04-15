@@ -30,6 +30,10 @@ inputs:
     description: Reuse an existing opencode found on PATH instead of forcing installer bootstrap.
     required: false
     default: "false"
+  version:
+    description: Minimum required OpenCode version (semver). If the cached binary is older, it will be reinstalled. Empty string disables version checking.
+    required: false
+    default: "1.4.5"
   working-directory:
     description: Optional working directory before running opencode.
     required: false
@@ -78,6 +82,10 @@ inputs:
       - Use "可合并" only when there are no blocking issues.
       - Use "有条件合并" when merge is acceptable only after specific issues are fixed.
       - Use "不可合并" when there are blocking risks, correctness issues, or major concerns that should stop the merge.
+
+      Review the latest PR HEAD only.
+      Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+      Verify any blocking claim against the current code and current CI status before listing it.
 
       Output format:
       - First line: the decision only
@@ -148,7 +156,7 @@ runs:
         path: |
           ${{ steps.paths.outputs.install_dir }}
           ${{ steps.paths.outputs.xdg_cache_home }}
-        key: github-run-opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.install_url_hash }}-${{ inputs.cache-key }}
+        key: github-run-opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.install_url_hash }}-${{ inputs.version }}-${{ inputs.cache-key }}
 
     - shell: bash
       env:
@@ -157,6 +165,7 @@ runs:
         OPENCODE_INSTALL_URL: ${{ inputs.install-url }}
         OPENCODE_INSTALL_ATTEMPTS: ${{ inputs.install-attempts }}
         OPENCODE_ALLOW_PREINSTALLED: ${{ inputs.allow-preinstalled }}
+        OPENCODE_MIN_VERSION: ${{ inputs.version }}
       run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
 
     - shell: bash
