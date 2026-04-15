@@ -54,6 +54,10 @@ inputs:
     description: Base delay between retries in seconds.
     required: false
     default: "15"
+  timeout-seconds:
+    description: Maximum execution time in seconds for `opencode github run`. Set 0 to disable.
+    required: false
+    default: "600"
   model:
     description: Value exported as MODEL before running `opencode github run`.
     required: false
@@ -175,6 +179,7 @@ runs:
         GITHUB_RUN_OPENCODE_RETRY_PROFILE: ${{ inputs.retry-profile }}
         GITHUB_RUN_OPENCODE_RETRY_ON_REGEX: ${{ inputs.retry-on-regex }}
         GITHUB_RUN_OPENCODE_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
+        GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         GITHUB_RUN_OPENCODE_MODEL: ${{ inputs.model }}
         GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
         GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
