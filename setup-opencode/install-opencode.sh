@@ -7,6 +7,7 @@ XDG_CACHE_HOME="${XDG_CACHE_HOME:-${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/ca
 OPENCODE_INSTALL_URL="${OPENCODE_INSTALL_URL:-https://opencode.ai/install}"
 OPENCODE_INSTALL_ATTEMPTS="${OPENCODE_INSTALL_ATTEMPTS:-3}"
 OPENCODE_ALLOW_PREINSTALLED="${OPENCODE_ALLOW_PREINSTALLED:-false}"
+OPENCODE_MIN_VERSION="${OPENCODE_MIN_VERSION:-}"
 DEFAULT_OPENCODE_BIN_DIR="$HOME/.opencode/bin"
 FALLBACK_OPENCODE_BIN_DIR="${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/bin"
 
@@ -20,6 +21,40 @@ require_positive_integer() {
 }
 
 require_positive_integer "$OPENCODE_INSTALL_ATTEMPTS" "OPENCODE_INSTALL_ATTEMPTS"
+
+parse_semver() {
+  local raw="$1"
+  sed 's/^[vV]//' <<<"$raw" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true
+}
+
+semver_gte() {
+  local a="$1" b="$2"
+  local i
+  for i in 0 1 2; do
+    local ai bi
+    ai="$(echo "$a" | cut -d. -f$((i + 1)))"
+    bi="$(echo "$b" | cut -d. -f$((i + 1)))"
+    ai="${ai:-0}"
+    bi="${bi:-0}"
+    if [[ "$ai" -gt "$bi" ]]; then return 0; fi
+    if [[ "$ai" -lt "$bi" ]]; then return 1; fi
+  done
+  return 0
+}
+
+version_meets_minimum() {
+  if [[ -z "$OPENCODE_MIN_VERSION" ]]; then return 0; fi
+  local current="$1"
+  local current_semver min_semver
+  current_semver="$(parse_semver "$current")"
+  min_semver="$(parse_semver "$OPENCODE_MIN_VERSION")"
+  if [[ -z "$current_semver" ]] || [[ -z "$min_semver" ]]; then
+    printf 'warning: could not parse version for comparison (current=%s, min=%s)\n' "$current" "$OPENCODE_MIN_VERSION" >&2
+    return 0
+  fi
+  if semver_gte "$current_semver" "$min_semver"; then return 0; fi
+  return 1
+}
 
 append_github_path() {
   local path_entry="$1"
@@ -57,14 +92,24 @@ export PATH="$OPENCODE_INSTALL_DIR:$PATH"
 
 if [[ -x "$OPENCODE_INSTALL_DIR/opencode" ]]; then
   if activate_install_dir; then
-    exit 0
+    if version_meets_minimum "$(opencode --version)"; then
+      exit 0
+    fi
+    printf 'installed version below minimum %s, reinstalling\n' "$OPENCODE_MIN_VERSION" >&2
+    rm -f "$OPENCODE_INSTALL_DIR/opencode"
+    hash -r
   fi
 fi
 
 if [[ "$OPENCODE_ALLOW_PREINSTALLED" == "true" ]] && command -v opencode >/dev/null 2>&1; then
   materialize_binary "$(command -v opencode)"
   if activate_install_dir; then
-    exit 0
+    if version_meets_minimum "$(opencode --version)"; then
+      exit 0
+    fi
+    printf 'preinstalled version below minimum %s, reinstalling\n' "$OPENCODE_MIN_VERSION" >&2
+    rm -f "$OPENCODE_INSTALL_DIR/opencode"
+    hash -r
   fi
 fi
 
