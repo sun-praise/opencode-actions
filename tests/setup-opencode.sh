@@ -40,6 +40,7 @@ run_install_case() {
   export XDG_CACHE_HOME="$case_dir/cache"
   export OPENCODE_INSTALL_ATTEMPTS="${OPENCODE_INSTALL_ATTEMPTS:-1}"
   export OPENCODE_ALLOW_PREINSTALLED="${OPENCODE_ALLOW_PREINSTALLED:-false}"
+  export OPENCODE_MIN_VERSION="${OPENCODE_MIN_VERSION:-}"
   export PATH="$case_dir/path:/usr/bin:/bin"
 
   mkdir -p "$HOME" "$case_dir/path"
@@ -157,11 +158,11 @@ chmod +x "$case_five/path/opencode"
 export FAKE_OPENCODE_VERSION="should-fail"
 export FAKE_INSTALL_TARGET="install-dir"
 export OPENCODE_ALLOW_PREINSTALLED="false"
-export OPENCODE_INSTALL_ATTEMPTS="0"
-if run_install_case "$case_five" >/dev/null 2>&1; then
+OPENCODE_INSTALL_ATTEMPTS="0" run_install_case "$case_five" >/dev/null 2>&1 && {
   printf 'expected install-attempts=0 to fail validation\n' >&2
   exit 1
-fi
+}
+unset OPENCODE_INSTALL_ATTEMPTS
 
 case_six="$server_root/case-six"
 mkdir -p "$case_six/bin"
