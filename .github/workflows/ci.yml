@@ -22,41 +22,40 @@ jobs:
           python3 -m http.server 8765 --bind 127.0.0.1 --directory tests/fixtures >/tmp/opencode-actions-http.log 2>&1 &
           echo $! > /tmp/opencode-actions-http.pid
 
-      - name: Setup OpenCode via local action
-        uses: ./setup-opencode
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-
-      - name: Run OpenCode via local action
-        uses: ./run-opencode
-        with:
-          args: github run
-          attempts: 1
-        env:
-          FAKE_OPENCODE_VERSION: ci-smoke
+      - name: Pre-install fake opencode to cache dir
+        run: |
+          mkdir -p ~/.opencode/bin
+          cat > ~/.opencode/bin/opencode <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "${1:-}" == "--version" ]]; then
+            printf '%s\n' "${FAKE_OPENCODE_VERSION:-0.0.0-test}"
+            exit 0
+          fi
+          printf 'fake opencode %s\n' "$*"
+          printf 'MODEL=%s\n' "${MODEL:-}"
+          printf 'PROMPT=%s\n' "${PROMPT:-}"
+          printf 'USE_GITHUB_TOKEN=%s\n' "${USE_GITHUB_TOKEN:-}"
+          printf 'GITHUB_TOKEN=%s\n' "${GITHUB_TOKEN:-}"
+          printf 'ZHIPU_API_KEY=%s\n' "${ZHIPU_API_KEY:-}"
+          printf 'OPENCODE_API_KEY=%s\n' "${OPENCODE_API_KEY:-}"
+          EOF
+          chmod +x ~/.opencode/bin/opencode
 
       - name: Run GitHub convenience action
         uses: ./github-run-opencode
         with:
           install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
           attempts: 1
           model: ci-wrapper
           prompt: smoke prompt
           github-token: smoke-gh-token
           zhipu-api-key: smoke-zhipu-token
-        env:
-          FAKE_OPENCODE_VERSION: 1.14.20
 
       - name: Run review convenience action
         uses: ./review
         with:
           install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
           attempts: 1
           github-token: smoke-gh-token
           zhipu-api-key: smoke-zhipu-token

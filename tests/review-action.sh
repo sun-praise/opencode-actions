@@ -4,30 +4,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-extract_prompt_default() {
-  local action_file="$1"
-  awk '
-    /^  prompt:$/ {in_prompt=1; next}
-    in_prompt && /^    default: \|$/ {in_default=1; next}
-    in_default {
-      if ($0 ~ /^  [a-zA-Z0-9_-]+:$/) {
-        exit
-      }
-      sub(/^      /, "")
-      print
-    }
-  ' "$action_file"
-}
-
-github_run_prompt_file="$(mktemp)"
-review_prompt_file="$(mktemp)"
-trap 'rm -f "$github_run_prompt_file" "$review_prompt_file"' EXIT
-
-extract_prompt_default "$repo_root/github-run-opencode/action.yml" >"$github_run_prompt_file"
-extract_prompt_default "$repo_root/review/action.yml" >"$review_prompt_file"
-
-if ! diff -u "$github_run_prompt_file" "$review_prompt_file" >/dev/null; then
-  printf 'review/action.yml prompt default must match github-run-opencode/action.yml\n' >&2
+if ! grep -Eq '^    default: ""$' "$repo_root/github-run-opencode/action.yml"; then
+  printf 'github-run-opencode/action.yml model default is not empty\n' >&2
   exit 1
 fi
 
@@ -53,6 +31,31 @@ fi
 
 if ! grep -Eq '^    default: "600"$' "$repo_root/review/action.yml"; then
   printf 'review/action.yml timeout-seconds default is not 600\n' >&2
+  exit 1
+fi
+
+if ! grep -q '可合并' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml is missing built-in Chinese review prompt\n' >&2
+  exit 1
+fi
+
+if grep -q 'setup-opencode' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml still references removed setup-opencode\n' >&2
+  exit 1
+fi
+
+if grep -q 'setup-opencode' "$repo_root/github-run-opencode/action.yml"; then
+  printf 'github-run-opencode/action.yml still references removed setup-opencode\n' >&2
+  exit 1
+fi
+
+if ! grep -q 'actions/cache@v4' "$repo_root/review/action.yml"; then
+  printf 'review/action.yml should use actions/cache@v4\n' >&2
+  exit 1
+fi
+
+if ! grep -q 'actions/cache@v4' "$repo_root/github-run-opencode/action.yml"; then
+  printf 'github-run-opencode/action.yml should use actions/cache@v4\n' >&2
   exit 1
 fi
 
