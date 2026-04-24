@@ -41,6 +41,10 @@ if [[ -n "${GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY:-}" ]]; then
   export OPENCODE_API_KEY="$GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"
 fi
 
+if [[ -n "${GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY:-}" ]]; then
+  export DEEPSEEK_API_KEY="$GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"
+fi
+
 if [[ ! "$timeout_seconds" =~ ^[0-9]+$ ]]; then
   printf 'GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS must be a non-negative integer, got %s\n' "$timeout_seconds" >&2
   exit 1
