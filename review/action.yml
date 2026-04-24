@@ -69,7 +69,7 @@ inputs:
   model-timeout-seconds:
     description: Per-model timeout used before rotating to the next fallback model when fallback-models are configured. Set 0 to disable.
     required: false
-    default: "120"
+    default: "300"
   fallback-on-regex:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
