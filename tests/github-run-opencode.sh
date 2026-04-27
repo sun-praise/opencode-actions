@@ -43,16 +43,19 @@ export FAKE_OPENCODE_VERSION="9.9.9-wrapper"
 fake_bin_dir="$work_dir/fake-bin"
 mkdir -p "$fake_bin_dir"
 
-cat >"$fake_bin_dir/timeout" <<'EOF'
+real_timeout="$(command -v timeout)"
+
+cat >"$fake_bin_dir/timeout" <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
-printf 'fake timeout %s\n' "$*"
-
-duration="$1"
+foreground=""
+if [[ "\${1:-}" == "--foreground" ]]; then
+  shift
+  foreground="--foreground"
+fi
+duration="\$1"
 shift
-
-printf 'TIMEOUT_DURATION=%s\n' "$duration"
-"$@"
+printf 'TIMEOUT_DURATION=%s\n' "\$duration"
+exec "$real_timeout" \$foreground "\$duration" "\$@"
 EOF
 
 chmod +x "$fake_bin_dir/timeout"
@@ -62,9 +65,11 @@ reset_wrapper_env() {
   unset GITHUB_RUN_OPENCODE_FALLBACK_MODELS
   unset GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS
   unset GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX
+  unset GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS
   unset FAKE_OPENCODE_TIMEOUT_MODELS
   unset FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS
   unset FAKE_OPENCODE_ERROR_MODELS
+  unset MODEL_NAME
 
   export GITHUB_RUN_OPENCODE_MODEL="wrapper-model"
   export GITHUB_RUN_OPENCODE_PROMPT="review prompt"
@@ -97,6 +102,13 @@ assert_contains "$output" "USE_GITHUB_TOKEN=true" "expected USE_GITHUB_TOKEN env
 assert_contains "$output" "GITHUB_TOKEN=gh-token" "expected GITHUB_TOKEN env in output, got:"
 assert_contains "$output" "ZHIPU_API_KEY=zhipu-token" "expected ZHIPU_API_KEY env in output, got:"
 assert_contains "$output" "OPENCODE_API_KEY=go-token" "expected OPENCODE_API_KEY env in output, got:"
+assert_contains "$output" "TIMEOUT_DURATION=600s" "expected default global timeout of 600s, got:"
+
+reset_wrapper_env
+export GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS="7"
+override_output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
+
+assert_contains "$override_output" "TIMEOUT_DURATION=7s" "expected override global timeout of 7s, got:"
 
 reset_wrapper_env
 export GITHUB_RUN_OPENCODE_MODEL="zhipuai-coding-plan/glm-5"
@@ -110,36 +122,19 @@ fallback_output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)
 assert_contains "$fallback_output" "MODEL=opencode-go/gemini-2.5-pro" "expected fallback model to be used after timeout, got:"
 assert_contains "$fallback_output" "OpenCode model zhipuai-coding-plan/glm-5 timed out" "expected timeout log before fallback, got:"
 
-if [[ "$output" != *"TIMEOUT_DURATION=600s"* ]]; then
-  printf 'expected default timeout duration of 600s, got:\n%s\n' "$output" >&2
-  exit 1
-fi
-
-export GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS="7"
-override_output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
-
-if [[ "$override_output" != *"TIMEOUT_DURATION=7s"* ]]; then
-  printf 'expected override timeout duration of 7s, got:\n%s\n' "$override_output" >&2
-  exit 1
-fi
-
+reset_wrapper_env
 unset GITHUB_RUN_OPENCODE_MODEL
 export MODEL_NAME="env-model-name"
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
+output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
 
-if [[ "$output" != *"MODEL=env-model-name"* ]]; then
-  printf 'expected MODEL_NAME fallback in output, got:\n%s\n' "$output" >&2
-  exit 1
-fi
+assert_contains "$output" "MODEL=env-model-name" "expected MODEL_NAME fallback in output, got:"
 
-unset MODEL_NAME
+reset_wrapper_env
+unset GITHUB_RUN_OPENCODE_MODEL
 
-output="$($repo_root/github-run-opencode/run-github-opencode.sh 2>&1)"
+output="$("$repo_root/github-run-opencode/run-github-opencode.sh" 2>&1)"
 
-if [[ "$output" != *"MODEL=zhipuai-coding-plan/glm-5.1"* ]]; then
-  printf 'expected built-in model fallback in output, got:\n%s\n' "$output" >&2
-  exit 1
-fi
+assert_contains "$output" "MODEL=zhipuai-coding-plan/glm-5.1" "expected built-in model fallback in output, got:"
 
 printf 'github-run-opencode test passed\n'

@@ -108,7 +108,6 @@ inputs:
       - Then a short summary
       - Then "阻塞项" listing required fixes for merge; if none, write "阻塞项：无"
       - Then "建议项" listing non-blocking improvements; if none, write "建议项：无"
-
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
