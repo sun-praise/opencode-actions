@@ -2,6 +2,7 @@
 import atexit
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,9 +29,9 @@ def require_non_negative_integer(value: str, name: str) -> int:
 
 
 def supports_model_with_available_key(model: str) -> bool:
-    if model.startswith("zhipuai") and "/" in model:
+    if model.startswith("zhipuai"):
         return bool(os.environ.get("ZHIPU_API_KEY"))
-    if model.startswith("opencode-go/"):
+    if model.startswith("opencode-go"):
         return bool(os.environ.get("OPENCODE_API_KEY"))
     if model.startswith("deepseek"):
         return bool(os.environ.get("DEEPSEEK_API_KEY"))
@@ -160,14 +161,17 @@ def main() -> int:
 
     temp_files: list[str] = []
 
-    def cleanup() -> None:
+    def cleanup(signum=None, frame=None) -> None:
         for f in temp_files:
             try:
                 os.unlink(f)
             except FileNotFoundError:
                 pass
+        if signum is not None:
+            sys.exit(128 + signum)
 
     atexit.register(cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
 
     if not candidate_models:
         return run_single(run_script, timeout_seconds)
