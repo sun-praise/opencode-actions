@@ -54,8 +54,12 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
 | `working-directory` | empty | Optional working directory before running OpenCode |
+| `reasoning-effort` | empty | Reasoning effort level (`low`, `medium`, `high`, `max`); empty means no override |
+| `enable-thinking` | `false` | Enable thinking mode for the model agent; generates `opencode.json` with `thinking.type=enabled` |
 
 `github-run-opencode` also accepts the setup-related inputs from `setup-opencode`, such as `cache`, `cache-key`, `install-attempts`, `install-url`, and `allow-preinstalled`.
+
+When `reasoning-effort` or `enable-thinking` is set, the action generates or merges an `opencode.json` in the working directory with `agent.build.options` containing `reasoningEffort` and/or `thinking`. If an existing `opencode.json` is found, the new options are merged (not overwritten).
 
 ## review
 

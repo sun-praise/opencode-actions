@@ -45,6 +45,43 @@ if [[ -n "${GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY:-}" ]]; then
   export DEEPSEEK_API_KEY="$GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"
 fi
 
+reasoning_effort="${GITHUB_RUN_OPENCODE_REASONING_EFFORT:-}"
+enable_thinking="${GITHUB_RUN_OPENCODE_ENABLE_THINKING:-false}"
+
+if [[ -n "$reasoning_effort" ]] || [[ "$enable_thinking" == "true" ]]; then
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'jq is required for reasoning-effort/enable-thinking but not found on PATH\n' >&2
+    exit 1
+  fi
+
+  options_parts=()
+  if [[ -n "$reasoning_effort" ]]; then
+    options_parts+=("\"reasoningEffort\":\"$reasoning_effort\"")
+  fi
+  if [[ "$enable_thinking" == "true" ]]; then
+    options_parts+=("\"thinking\":{\"type\":\"enabled\"}")
+  fi
+
+  IFS=,
+  options_json="{${options_parts[*]}}"
+  unset IFS
+
+  patch_json="{\"agent\":{\"build\":{\"options\":$options_json}}}"
+
+  target_dir="."
+  if [[ -n "${OPENCODE_WORKING_DIRECTORY:-}" ]]; then
+    target_dir="$OPENCODE_WORKING_DIRECTORY"
+  fi
+  config_file="$target_dir/opencode.json"
+
+  if [[ -f "$config_file" ]]; then
+    merged="$(jq -s '.[0] * .[1]' "$config_file" <<<"$patch_json")"
+    printf '%s\n' "$merged" > "$config_file"
+  else
+    printf '%s\n' "$patch_json" > "$config_file"
+  fi
+fi
+
 if [[ ! "$timeout_seconds" =~ ^[0-9]+$ ]]; then
   printf 'GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS must be a non-negative integer, got %s\n' "$timeout_seconds" >&2
   exit 1
