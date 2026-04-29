@@ -10,7 +10,7 @@ permissions:
 jobs:
   update-major:
     if: startsWith(github.event.release.tag_name, 'v')
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
