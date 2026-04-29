@@ -30,6 +30,14 @@ inputs:
     description: Optional explicit path to the opencode binary.
     required: false
     default: opencode
+  reasoning-effort:
+    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
+    required: false
+    default: "max"
+  enable-thinking:
+    description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -50,4 +58,6 @@ runs:
         OPENCODE_RETRY_PROFILE: ${{ inputs.retry-profile }}
         OPENCODE_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
         OPENCODE_BIN_PATH: ${{ inputs.opencode-path }}
+        OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
       run: ${{ github.action_path }}/run-opencode.sh
