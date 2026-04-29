@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import atexit
+import json
 import os
 import re
 import signal
@@ -55,6 +56,40 @@ def parse_candidate_models(raw_list: str) -> list[str]:
         if normalized and normalized not in result:
             result.append(normalized)
     return result
+
+
+def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working_directory: str = "") -> None:
+    """Generate or modify opencode.json with reasoning effort and thinking configuration."""
+    config_path = Path(working_directory) / "opencode.json" if working_directory else Path("opencode.json")
+
+    config: dict = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            config = {}
+
+    if "agent" not in config:
+        config["agent"] = {}
+
+    # Use "build" as the default agent name for CI scenarios
+    agent_name = "build"
+    if agent_name not in config["agent"]:
+        config["agent"][agent_name] = {}
+
+    if "options" not in config["agent"][agent_name]:
+        config["agent"][agent_name]["options"] = {}
+
+    if reasoning_effort:
+        config["agent"][agent_name]["options"]["reasoningEffort"] = reasoning_effort
+
+    if enable_thinking.lower() == "true":
+        config["agent"][agent_name]["options"]["thinking"] = {"type": "enabled"}
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+        f.write("\n")
 
 
 def run_model(model: str, log_file: str, effective_timeout: int, run_script: Path) -> int:
@@ -147,6 +182,12 @@ def main() -> int:
     set_env("ZHIPU_API_KEY", get_env("GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"))
     set_env("OPENCODE_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"))
     set_env("DEEPSEEK_API_KEY", get_env("GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"))
+
+    reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
+    enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
+    working_directory = get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY", "")
+    if reasoning_effort or enable_thinking.lower() == "true":
+        configure_opencode_json(reasoning_effort, enable_thinking, working_directory)
 
     validate_regex(fallback_on_regex, "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX")
 

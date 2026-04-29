@@ -53,6 +53,8 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `zhipu-api-key` | empty | Exported as `ZHIPU_API_KEY` before `opencode github run` |
 | `deepseek-api-key` | empty | Exported as `DEEPSEEK_API_KEY` before `opencode github run` |
 | `opencode-go-api-key` | empty | Exported as `OPENCODE_GO_API_KEY` before `opencode github run` |
+| `reasoning-effort` | `max` | Reasoning effort level for the model agent (`low`, `medium`, `high`, `max`) |
+| `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
 | `attempts` | `3` | Total attempts before failing |
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
@@ -130,6 +132,8 @@ The internal cache key also includes a hash of `install-url`, so changing instal
 | `retry-profile` | empty | Built-in retry preset such as `github-network` |
 | `retry-delay-seconds` | `15` | Base delay used between retries |
 | `opencode-path` | `opencode` | Explicit binary path from `setup-opencode` |
+| `reasoning-effort` | `max` | Reasoning effort level for the model agent (`low`, `medium`, `high`, `max`) |
+| `enable-thinking` | `true` | Enable thinking mode for the model agent |
 
 `run-opencode` intentionally keeps provider secrets and model selection in workflow `env:` so the action stays generic.
 In the common same-job case, `setup-opencode` already exports `opencode` to `PATH`, so you do not need to pass `opencode-path` into `run-opencode`.

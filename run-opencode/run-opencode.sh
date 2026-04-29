@@ -9,6 +9,61 @@ OPENCODE_ATTEMPTS="${OPENCODE_ATTEMPTS:-1}"
 OPENCODE_RETRY_ON_REGEX="${OPENCODE_RETRY_ON_REGEX:-}"
 OPENCODE_RETRY_PROFILE="${OPENCODE_RETRY_PROFILE:-}"
 OPENCODE_RETRY_DELAY_SECONDS="${OPENCODE_RETRY_DELAY_SECONDS:-15}"
+OPENCODE_REASONING_EFFORT="${OPENCODE_REASONING_EFFORT:-}"
+OPENCODE_ENABLE_THINKING="${OPENCODE_ENABLE_THINKING:-false}"
+
+configure_opencode_json() {
+  local reasoning_effort="$1"
+  local enable_thinking="$2"
+  local working_directory="$3"
+  local config_path
+
+  if [[ -n "$working_directory" ]]; then
+    config_path="$working_directory/opencode.json"
+  else
+    config_path="opencode.json"
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'warning: python3 not available, skipping opencode.json configuration\n' >&2
+    return
+  fi
+
+  python3 <<EOF
+import json
+import sys
+
+config_path = "$config_path"
+reasoning_effort = "$reasoning_effort"
+enable_thinking = "$enable_thinking".lower()
+
+try:
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
+
+if "agent" not in config:
+    config["agent"] = {}
+
+agent_name = "build"
+if agent_name not in config["agent"]:
+    config["agent"][agent_name] = {}
+
+if "options" not in config["agent"][agent_name]:
+    config["agent"][agent_name]["options"] = {}
+
+if reasoning_effort:
+    config["agent"][agent_name]["options"]["reasoningEffort"] = reasoning_effort
+
+if enable_thinking == "true":
+    config["agent"][agent_name]["options"]["thinking"] = {"type": "enabled"}
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+EOF
+}
 
 resolve_retry_profile() {
   local profile="$1"
@@ -50,6 +105,10 @@ OPENCODE_RETRY_ON_REGEX="$(resolve_retry_profile "$OPENCODE_RETRY_PROFILE")"
 
 if [[ -n "$OPENCODE_WORKING_DIRECTORY" ]]; then
   cd "$OPENCODE_WORKING_DIRECTORY"
+fi
+
+if [[ -n "$OPENCODE_REASONING_EFFORT" ]] || [[ "$OPENCODE_ENABLE_THINKING" == "true" ]]; then
+  configure_opencode_json "$OPENCODE_REASONING_EFFORT" "$OPENCODE_ENABLE_THINKING" "$OPENCODE_WORKING_DIRECTORY"
 fi
 
 if [[ "$OPENCODE_BIN_PATH" == */* ]]; then
