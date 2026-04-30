@@ -24,7 +24,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.event.pull_request.head.sha }}
 
       - name: Run regression test missing audit
-        uses: Svtter/opencode-actions/regression-test-missing@v2
+        uses: ./regression-test-missing
         with:
           model: ${{ vars.MODEL_NAME }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
