@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.3] - 2026-05-03
+
+### Fixed
+- fix(setup-opencode): restore default-version to opencode minimum version
+
+### Changed
+- docs: add bump version note about default-version file
+- chore: add agents.md
+
 ## [2.0.2] - 2025-05-03
 
 ### Fixed
