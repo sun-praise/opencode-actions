@@ -15,6 +15,7 @@ Write this in your CI.yaml
     github-token: ${{ secrets.GITHUB_TOKEN }}
 
     # only one is enough.
+    deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
