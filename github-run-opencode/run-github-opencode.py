@@ -183,6 +183,22 @@ def main() -> int:
     set_env("OPENCODE_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"))
     set_env("DEEPSEEK_API_KEY", get_env("GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"))
 
+    # Extra env vars from extra-env input
+    extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
+    if extra_env_raw:
+        for line in extra_env_raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                print(f"Skipping invalid extra-env line (missing '='): {line}", file=sys.stderr)
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key:
+                os.environ[key] = value
+
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
     enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
     working_directory = get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY", "")
