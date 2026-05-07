@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.4] - 2026-05-07
+
+### Fixed
+- fix(feature-missing): prevent stale analysis on new commits via prompt + version resolution + cache key prefix
+
+### Changed
+- chore: ignore worktree folder
+
 ## [2.0.3] - 2026-05-03
 
 ### Fixed
