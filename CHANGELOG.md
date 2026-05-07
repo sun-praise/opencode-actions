@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.5] - 2026-05-07
+
+### Added
+- feat(review): add extra-env input for custom environment variable passthrough
+
 ## [2.0.4] - 2026-05-07
 
 ### Fixed
