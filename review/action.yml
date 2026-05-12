@@ -74,6 +74,14 @@ inputs:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
     default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+  output-format:
+    description: "Output format for review results. Allowed values: text, json."
+    required: false
+    default: "text"
+  pass-level:
+    description: "Pass-level threshold. strict — 有条件合并 is not passing. standard — only 不可合并 is not passing."
+    required: false
+    default: "strict"
   prompt:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false
@@ -94,20 +102,26 @@ inputs:
       - 有条件合并
       - 不可合并
 
+      Feedback levels (three tiers):
+      - 阻塞项 (blocking): Must fix before merge — correctness bugs, security vulnerabilities, logic errors, data loss risks.
+      - 警告项 (warning): Strongly recommended to fix but does not block merge — potential performance issues, fragile error handling, poor readability that hinders maintenance.
+      - 建议项 (suggestion): Optional improvements — naming, code style, refactoring opportunities.
+
       Decision rules:
-      - Use "可合并" only when there are no blocking issues.
-      - Use "有条件合并" when merge is acceptable only after specific issues are fixed.
-      - Use "不可合并" when there are blocking risks, correctness issues, or major concerns that should stop the merge.
+      - 不可合并: there are blocking items.
+      - 有条件合并: no blocking items but there are warning items.
+      - 可合并: no blocking items and no warning items (suggestions are optional to address).
 
       Review the latest PR HEAD only.
       Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
       Verify any blocking claim against the current code and current CI status before listing it.
 
-      Output format:
+      Text output format:
       - First line: the decision only
       - Then a short summary
-      - Then "阻塞项" listing required fixes for merge; if none, write "阻塞项：无"
-      - Then "建议项" listing non-blocking improvements; if none, write "建议项：无"
+      - Then "阻塞项" listing must-fix items; if none, write "阻塞项：无"
+      - Then "警告项" listing strongly-recommended fixes; if none, write "警告项：无"
+      - Then "建议项" listing optional improvements; if none, write "建议项：无"
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
@@ -237,6 +251,8 @@ runs:
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
+        GITHUB_RUN_OPENCODE_OUTPUT_FORMAT: ${{ inputs.output-format }}
+        GITHUB_RUN_OPENCODE_PASS_LEVEL: ${{ inputs.pass-level }}
         GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
         GITHUB_RUN_OPENCODE_GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
@@ -250,4 +266,24 @@ runs:
           printf 'python3 is required but not installed on this runner\n' >&2
           exit 1
         fi
+
+        effective_prompt="${GITHUB_RUN_OPENCODE_PROMPT}"
+
+        if [[ "$GITHUB_RUN_OPENCODE_OUTPUT_FORMAT" == "json" ]]; then
+          json_suffix='
+
+OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
+{"decision":"可合并|有条件合并|不可合并","summary":"brief summary","blocking_items":["item",...],"warning_items":["item",...],"suggestion_items":["item",...]}
+Use empty arrays when there are no items for a level. Keep all text in Chinese.'
+          effective_prompt="${effective_prompt}${json_suffix}"
+        fi
+
+        if [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
+          standard_suffix='
+
+Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing.'
+          effective_prompt="${effective_prompt}${standard_suffix}"
+        fi
+
+        export GITHUB_RUN_OPENCODE_PROMPT="${effective_prompt}"
         python3 ${{ github.action_path }}/../github-run-opencode/run-github-opencode.py
