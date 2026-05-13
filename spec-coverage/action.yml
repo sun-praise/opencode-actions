@@ -109,7 +109,7 @@ inputs:
         - "发现遗漏" — at least one spec task is missing, not integrated, or no spec files exist at all
 
       Output format:
-      - First line: the verdict ("NO_SPEC_FOUND" / "全覆盖" / "发现遗漏")
+      - First line: the verdict ("全覆盖" or "发现遗漏")
       - Then a short summary listing which spec files you found and how many tasks were checked
       - If verdict is "发现遗漏", classify each gap:
         ### CRITICAL

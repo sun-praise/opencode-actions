@@ -102,7 +102,7 @@ Use this alongside `review` and `feature-missing` to audit whether a PR implemen
 Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage` uses the project's own spec files as the **authoritative source of intended scope**. This catches cases where a PR implements part of a larger planned feature but skips critical integration steps.
 
 - auto-discovers spec files in `openspec/changes/*/tasks.md`, `specs/**`, and other common locations
-- gracefully exits with `NO_SPEC_FOUND` for projects without specs
+- reports missing spec files as a CRITICAL gap (projects using this action should have specs)
 - cross-references unchecked task items against the PR diff
 - checks end-to-end integration (models read at runtime, configs consumed, APIs called)
 - classifies gaps by severity: CRITICAL, MEDIUM, LOW
