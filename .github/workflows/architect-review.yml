@@ -20,7 +20,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode architect review
-        uses: Svtter/opencode-actions/architect-review@v2
+        uses: Svtter/opencode-actions/architect-review@feat/architect-review
         with:
           model: ${{ vars.MODEL_NAME }}
 
