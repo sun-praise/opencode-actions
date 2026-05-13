@@ -31,6 +31,7 @@ npx skills add sun-praise/opencode-actions
 ## What it includes
 
 - `review`: opinionated PR review wrapper with built-in prompt and model defaults
+- `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
 - `feature-missing`: audits PR implementation against linked issue spec to find missing features
 - `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
 - `github-run-opencode`: one-step wrapper for the common `opencode github run` workflow
@@ -82,6 +83,23 @@ Use this when you want the simplest PR review setup.
 - still allows overriding any input when needed
 
 When `fallback-models` is set, the wrapper keeps `model` as the first choice and only rotates to the next candidate when the current model times out or emits a timeout-like error. Candidates whose provider key is unavailable are skipped automatically.
+
+## architect-review
+
+Use this alongside `review` to evaluate PR changes from an architecture perspective.
+
+- evaluates coupling, module placement, layering, interface design, and shotgun surgery risks
+- reads `AGENTS.md` (or `CLAUDE.md`) for project-specific architecture conventions
+- shares the same inputs and cache as `review`/`feature-missing`
+
+```yaml
+- name: Run OpenCode architect review
+  uses: Svtter/opencode-actions/architect-review@v2
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+```
 
 ## feature-missing
 
@@ -183,6 +201,7 @@ Public consumers should reference the subdirectory action path:
 
 ```yaml
 uses: Svtter/opencode-actions/review@v2
+uses: Svtter/opencode-actions/architect-review@v2
 uses: Svtter/opencode-actions/feature-missing@v2
 uses: Svtter/opencode-actions/spec-coverage@v2
 uses: Svtter/opencode-actions/github-run-opencode@v2
