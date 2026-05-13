@@ -66,7 +66,7 @@ inputs:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false
     default: |
-      Spec coverage audit (read-only mode, DO NOT modify any code).
+      Spec coverage audit (read-only mode, DO NOT modify any code, DO NOT commit or push any changes).
 
       Your job is to check whether the PR implements everything its associated spec/task breakdown planned.
 
@@ -103,7 +103,7 @@ inputs:
       Analyze the latest PR HEAD only.
       Verify any gap claim against the current code before listing it.
 
-      Please respond in Chinese. DO NOT modify any code, only provide analysis.
+      Please respond in Chinese. DO NOT modify any code. DO NOT run git commit, git push, or any other write operations. Only provide analysis.
 
       Verdict rule (MUST follow):
       - First line must be exactly one of:
