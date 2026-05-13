@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-05-13
+
+### Added
+- feat: add spec-coverage action for cross-referencing spec tasks against PR implementation
+
+### Fixed
+- fix(spec-coverage): add extra-env input and README documentation
+- fix(spec-coverage): treat missing spec files as CRITICAL gap, not graceful exit
+- fix(spec-coverage): remove contradictory NO_SPEC_FOUND verdict
+- fix(spec-coverage): smart spec-need detection and remove gh CLI dependency
+- fix(spec-coverage): simplify spec-need detection to semantic judgment
+
+### Changed
+- chore: ignore local settings
+
 ## [2.0.5] - 2026-05-07
 
 ### Added
