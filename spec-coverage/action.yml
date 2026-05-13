@@ -79,7 +79,7 @@ inputs:
          - `specs/**` or `docs/specs/**` — general spec directories
          - Any `tasks.md`, `TODO.md`, or `IMPLEMENTATION.md` in the repo root or `docs/`
          Use `find` to locate these files. If the PR references an issue number, look for matching directory names.
-      3. If NO spec/task files are found, output "NO_SPEC_FOUND" on the first line and stop — this project does not use spec-driven development and this audit does not apply.
+      3. If NO spec/task files are found, this is a problem — the project has configured spec-coverage CI but has no spec files. Output "发现遗漏" on the first line and report this as a CRITICAL gap: the project lacks spec-driven development artifacts, meaning there is no way to verify whether PRs implement the planned scope.
       4. Read ALL relevant spec/task files completely. The spec is the **authoritative source of intended scope**.
       5. Read the PR's changed files to understand what was actually implemented.
       6. **Cross-reference every planned task against the PR diff:**
@@ -105,9 +105,8 @@ inputs:
 
       Verdict rule (MUST follow):
       - First line must be exactly one of:
-        - "NO_SPEC_FOUND" — no spec/task files exist in this project, audit does not apply
         - "全覆盖" — ALL spec tasks are implemented with end-to-end integration
-        - "发现遗漏" — at least one spec task is missing or not integrated
+        - "发现遗漏" — at least one spec task is missing, not integrated, or no spec files exist at all
 
       Output format:
       - First line: the verdict ("NO_SPEC_FOUND" / "全覆盖" / "发现遗漏")
