@@ -71,22 +71,24 @@ inputs:
       Your job is to check whether the PR implements everything its associated spec/task breakdown planned.
 
       Steps:
-      1. Run `gh pr view --json closingIssuesReferences,title,body` to find linked issues.
-      2. Discover spec/task files in the repository. Search these locations:
+      1. Read the PR context (title, body, labels, linked issues) — this is provided by the opencode github run environment.
+      2. **Determine whether this PR needs a spec.** Judge based on the PR's nature: does it introduce new functionality, new architecture, or significant behavioral changes that should be planned via a spec? Bug fixes, docs, tests, config changes, and minor refactorings typically do NOT need a spec. Use semantic understanding — do not rely on keyword matching alone.
+      3. If the PR does NOT need a spec, output "无需审计" on the first line with a one-line explanation, then stop.
+      4. If the PR DOES need a spec, discover spec/task files. Check these locations in the repository:
          - `openspec/changes/*/tasks.md` — OpenSpec task breakdowns
          - `openspec/changes/*/design.md` — OpenSpec design docs
          - `openspec/changes/*/spec.md` — OpenSpec spec files
          - `specs/**` or `docs/specs/**` — general spec directories
          - Any `tasks.md`, `TODO.md`, or `IMPLEMENTATION.md` in the repo root or `docs/`
-         Use `find` to locate these files. If the PR references an issue number, look for matching directory names.
-      3. If NO spec/task files are found, this is a problem — the project has configured spec-coverage CI but has no spec files. Output "发现遗漏" on the first line and report this as a CRITICAL gap: the project lacks spec-driven development artifacts, meaning there is no way to verify whether PRs implement the planned scope.
-      4. Read ALL relevant spec/task files completely. The spec is the **authoritative source of intended scope**.
-      5. Read the PR's changed files to understand what was actually implemented.
-      6. **Cross-reference every planned task against the PR diff:**
+         Try to read files at these paths. If the PR references an issue number, check for matching directory names under `openspec/changes/`.
+      5. If the PR needs a spec but NO spec/task files are found, output "发现遗漏" on the first line and report this as a CRITICAL gap: this is a feature PR that should have spec-driven planning but lacks it.
+      6. Read ALL relevant spec/task files completely. The spec is the **authoritative source of intended scope**.
+      7. Read the PR's changed files to understand what was actually implemented.
+      8. **Cross-reference every planned task against the PR diff:**
          - For each task item in the spec (especially unchecked items like `- [ ]`), verify the PR diff actually implements it.
          - A task is NOT complete just because related files exist in the repo. Verify the integration is wired end-to-end.
          - Pay special attention to "integration" or "wire up" tasks — these are easy to miss because they require modifying EXISTING code, not just adding new files.
-      7. **Check end-to-end integration:**
+      9. **Check end-to-end integration:**
          - Are new data models/tables actually read by runtime code paths (not just admin CRUD)?
          - Are new configurations actually consumed by the services that need them?
          - Are new APIs actually called from the appropriate integration points?
@@ -105,12 +107,14 @@ inputs:
 
       Verdict rule (MUST follow):
       - First line must be exactly one of:
+        - "无需审计" — this PR does not need a spec (bug fix, docs, minor change)
         - "全覆盖" — ALL spec tasks are implemented with end-to-end integration
-        - "发现遗漏" — at least one spec task is missing, not integrated, or no spec files exist at all
+        - "发现遗漏" — spec tasks are missing, not integrated, or a spec is required but absent
 
       Output format:
-      - First line: the verdict ("全覆盖" or "发现遗漏")
-      - Then a short summary listing which spec files you found and how many tasks were checked
+      - First line: the verdict ("无需审计" / "全覆盖" / "发现遗漏")
+      - If "无需审计": one-line explanation of why, then stop
+      - Otherwise: a short summary listing which spec files you found and how many tasks were checked
       - If verdict is "发现遗漏", classify each gap:
         ### CRITICAL
         Spec tasks with zero implementation — planned but completely absent from the PR.
