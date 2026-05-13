@@ -28,56 +28,7 @@
 ### run-opencode — 执行 opencode 命令
 - **用途**: 运行 `opencode` 并支持重试逻辑，搭配 `setup-opencode` 使用
 
-## Common Inputs (所有 action 共享)
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `github-token` | empty | GitHub token，通常用 `${{ secrets.GITHUB_TOKEN }}` |
-| `zhipu-api-key` | empty | 智谱 API key |
-| `deepseek-api-key` | empty | DeepSeek API key |
-| `opencode-go-api-key` | empty | OpenCode Go API key |
-| `model` | auto | 模型名称，默认 `zhipuai-coding-plan/glm-5.1` |
-| `prompt` | varies by action | 自定义 prompt（各 action 有不同内置默认值） |
-| `fallback-models` | empty | 备选模型列表（逗号或换行分隔） |
-| `model-timeout-seconds` | `300` | 单模型超时（秒），超时后切换备选模型，`0` 禁用 |
-| `fallback-on-regex` | timeout regex | 输出匹配此正则时切换备选模型 |
-| `reasoning-effort` | `max` | 推理强度：`low` / `medium` / `high` / `max` |
-| `enable-thinking` | `true` | 启用 thinking 模式 |
-| `timeout-seconds` | `600` | `opencode github run` 总超时（秒），`0` 禁用 |
-| `attempts` | `3` | 重试次数 |
-| `retry-profile` | `github-network` | 内置重试预设 |
-| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
-| `retry-delay-seconds` | `15` | 重试间隔（秒） |
-| `working-directory` | empty | 工作目录 |
-| `cache` | `true` | 启用缓存 |
-| `cache-key` | `v1` | 缓存 key 后缀 |
-| `install-url` | `https://opencode.ai/install` | 安装器 URL |
-| `install-attempts` | `3` | 安装重试次数 |
-| `allow-preinstalled` | `false` | 复用 PATH 上已有的 opencode |
-| `version` | auto | 最低 opencode 版本要求，`none` 禁用检查 |
-| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
-
-## Action-Specific Inputs
-
-### review
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
-
-### feature-missing
-
-无特有 inputs，使用 common inputs 即可。
-
-### spec-coverage
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
-
-### github-run-opencode
-
-无特有 inputs，使用 common inputs 即可。注意此 action 的 `prompt` 默认为空，需用户自行提供。
+## Inputs by Action
 
 ### setup-opencode
 
@@ -115,6 +66,108 @@ Outputs:
 | `opencode-path` | `opencode` | opencode 二进制路径（来自 setup-opencode 的 output） |
 | `reasoning-effort` | `max` | 推理强度：`low` / `medium` / `high` / `max` |
 | `enable-thinking` | `true` | 启用 thinking 模式 |
+
+### review
+
+继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `600` | `opencode github run` 总超时（秒），`0` 禁用 |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 模型名称，默认 `zhipuai-coding-plan/glm-5.1` |
+| `prompt` | 内置 review 模板 | 自定义 prompt |
+| `fallback-models` | empty | 备选模型列表（逗号或换行分隔） |
+| `model-timeout-seconds` | `300` | 单模型超时（秒），`0` 禁用 |
+| `fallback-on-regex` | timeout regex | 输出匹配此正则时切换备选模型 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+
+### feature-missing
+
+继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `600` | 总超时（秒），`0` 禁用 |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 模型名称 |
+| `prompt` | 内置 feature-missing 模板 | 自定义 prompt |
+| `fallback-models` | empty | 备选模型列表 |
+| `model-timeout-seconds` | `300` | 单模型超时（秒） |
+| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+
+### spec-coverage
+
+继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `600` | 总超时（秒），`0` 禁用 |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 模型名称 |
+| `prompt` | 内置 spec-coverage 模板 | 自定义 prompt |
+| `fallback-models` | empty | 备选模型列表 |
+| `model-timeout-seconds` | `300` | 单模型超时（秒） |
+| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+
+### github-run-opencode
+
+继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `600` | 总超时（秒），`0` 禁用 |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 模型名称 |
+| `prompt` | empty | 自定义 prompt（**注意：默认为空，需用户自行提供**） |
+| `fallback-models` | empty | 备选模型列表 |
+| `model-timeout-seconds` | `300` | 单模型超时（秒） |
+| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
 
 ## Required Permissions
 
