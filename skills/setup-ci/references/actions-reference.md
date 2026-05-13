@@ -21,6 +21,13 @@
 - **用途**: 最灵活的封装，可自定义 prompt 执行任意 `opencode github run` 任务
 - **触发**: 按需（可绑定 issue_comment、pull_request 等）
 
+### setup-opencode — 安装 OpenCode CLI
+- **用途**: 在 runner 上安装、缓存 opencode 二进制，导出路径供后续步骤使用
+- **输出**: `opencode-path`、`install-dir`、`xdg-cache-home`、`cache-hit`、`version`
+
+### run-opencode — 执行 opencode 命令
+- **用途**: 运行 `opencode` 并支持重试逻辑，搭配 `setup-opencode` 使用
+
 ## Common Inputs (所有 action 共享)
 
 | Input | Default | Description |
@@ -71,6 +78,43 @@
 ### github-run-opencode
 
 无特有 inputs，使用 common inputs 即可。注意此 action 的 `prompt` 默认为空，需用户自行提供。
+
+### setup-opencode
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `install-url` | `https://opencode.ai/install` | 安装器 URL |
+| `install-dir` | auto | opencode 安装目录 |
+| `xdg-cache-home` | auto | XDG 缓存目录 |
+| `cache` | `true` | 启用 `actions/cache` |
+| `cache-key` | `v1` | 缓存 key 后缀 |
+| `install-attempts` | `3` | 安装重试次数 |
+| `allow-preinstalled` | `false` | 复用 PATH 上已有的 opencode |
+| `version` | auto | 最低版本要求，`none` 禁用 |
+
+Outputs:
+
+| Output | Description |
+| --- | --- |
+| `opencode-path` | opencode 二进制的绝对路径 |
+| `install-dir` | 安装目录 |
+| `xdg-cache-home` | XDG 缓存目录 |
+| `cache-hit` | 是否命中缓存 |
+| `version` | `opencode --version` 输出 |
+
+### run-opencode
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `args` | empty | 传给 opencode 的参数（空格分隔） |
+| `working-directory` | empty | 工作目录 |
+| `attempts` | `1` | 重试次数 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-profile` | empty | 内置重试预设（如 `github-network`） |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `opencode-path` | `opencode` | opencode 二进制路径（来自 setup-opencode 的 output） |
+| `reasoning-effort` | `max` | 推理强度：`low` / `medium` / `high` / `max` |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
 
 ## Required Permissions
 

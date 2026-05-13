@@ -44,16 +44,20 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout PR head
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - uses: Svtter/opencode-actions/review@v2
+      - name: Run OpenCode review
+        uses: Svtter/opencode-actions/review@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
 ## Full Audit Setup (Review + Feature-Missing + Spec-Coverage)
@@ -76,15 +80,18 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout PR head
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - uses: Svtter/opencode-actions/review@v2
+      - name: Run OpenCode review
+        uses: Svtter/opencode-actions/review@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
   feature-missing:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
@@ -94,15 +101,18 @@ jobs:
       pull-requests: write
       issues: read
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout PR head
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - uses: Svtter/opencode-actions/feature-missing@v2
+      - name: Run feature missing audit
+        uses: Svtter/opencode-actions/feature-missing@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
   spec-coverage:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
@@ -111,15 +121,18 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout PR head
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - uses: Svtter/opencode-actions/spec-coverage@v2
+      - name: Run spec coverage audit
+        uses: Svtter/opencode-actions/spec-coverage@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
 ## Comment Command Setup
@@ -200,6 +213,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
 ## Customization Checklist
