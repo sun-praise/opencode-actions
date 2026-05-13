@@ -75,12 +75,12 @@
 ## Required Permissions
 
 ```yaml
-permissions:
-  contents: read
-  pull-requests: write
-  issues: read       # feature-missing 需要
-  issues: write      # review 需要
-  id-token: write    # comment-command 需要
+# Per-job permissions — use the minimum required for each action:
+#
+# review:            contents: read, pull-requests: write, issues: write
+# feature-missing:   contents: read, pull-requests: write, issues: read
+# spec-coverage:     contents: read, pull-requests: write
+# comment-command:   id-token: write, contents: write, pull-requests: write, issues: write
 ```
 
 ## Secrets 配置
