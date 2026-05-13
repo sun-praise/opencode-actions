@@ -1,0 +1,277 @@
+name: OpenCode Spec Coverage
+description: Cross-references project spec/task files against a PR's implementation to find planned but unimplemented features.
+
+inputs:
+  install-url:
+    description: Installer URL used to bootstrap OpenCode.
+    required: false
+    default: https://opencode.ai/install
+  install-dir:
+    description: Directory where the opencode binary should be installed.
+    required: false
+    default: ""
+  xdg-cache-home:
+    description: Dedicated XDG cache directory for OpenCode.
+    required: false
+    default: ""
+  cache:
+    description: Cache the install and XDG cache directories with actions/cache.
+    required: false
+    default: "true"
+  cache-key:
+    description: Cache key suffix used to invalidate installer-based caches.
+    required: false
+    default: v1
+  install-attempts:
+    description: Number of installer retry attempts.
+    required: false
+    default: "3"
+  allow-preinstalled:
+    description: Reuse an existing opencode found on PATH instead of forcing installer bootstrap.
+    required: false
+    default: "false"
+  version:
+    description: Minimum required OpenCode version (semver). If the cached binary is older, it will be reinstalled. Defaults to the version in setup-opencode/default-version. Use "none" to disable version checking.
+    required: false
+    default: ""
+  working-directory:
+    description: Optional working directory before running opencode.
+    required: false
+    default: ""
+  attempts:
+    description: Total number of attempts before failing.
+    required: false
+    default: "3"
+  retry-profile:
+    description: Built-in retry profile, defaults to github-network for common GitHub usage.
+    required: false
+    default: github-network
+  retry-on-regex:
+    description: Retry only when stderr or stdout matches this regex.
+    required: false
+    default: ""
+  retry-delay-seconds:
+    description: Base delay between retries in seconds.
+    required: false
+    default: "15"
+  timeout-seconds:
+    description: Maximum execution time in seconds for `opencode github run`. Set 0 to disable.
+    required: false
+    default: "600"
+  model:
+    description: Value exported as MODEL before running `opencode github run`.
+    required: false
+    default: ""
+  prompt:
+    description: Value exported as PROMPT before running `opencode github run`.
+    required: false
+    default: |
+      Spec coverage audit (read-only mode, DO NOT modify any code).
+
+      Your job is to check whether the PR implements everything its associated spec/task breakdown planned.
+
+      Steps:
+      1. Run `gh pr view --json closingIssuesReferences,title,body` to find linked issues.
+      2. Discover spec/task files in the repository. Search these locations:
+         - `openspec/changes/*/tasks.md` — OpenSpec task breakdowns
+         - `openspec/changes/*/design.md` — OpenSpec design docs
+         - `openspec/changes/*/spec.md` — OpenSpec spec files
+         - `specs/**` or `docs/specs/**` — general spec directories
+         - Any `tasks.md`, `TODO.md`, or `IMPLEMENTATION.md` in the repo root or `docs/`
+         Use `find` to locate these files. If the PR references an issue number, look for matching directory names.
+      3. If NO spec/task files are found, this is a problem — the project has configured spec-coverage CI but has no spec files. Output "发现遗漏" on the first line and report this as a CRITICAL gap: the project lacks spec-driven development artifacts, meaning there is no way to verify whether PRs implement the planned scope.
+      4. Read ALL relevant spec/task files completely. The spec is the **authoritative source of intended scope**.
+      5. Read the PR's changed files to understand what was actually implemented.
+      6. **Cross-reference every planned task against the PR diff:**
+         - For each task item in the spec (especially unchecked items like `- [ ]`), verify the PR diff actually implements it.
+         - A task is NOT complete just because related files exist in the repo. Verify the integration is wired end-to-end.
+         - Pay special attention to "integration" or "wire up" tasks — these are easy to miss because they require modifying EXISTING code, not just adding new files.
+      7. **Check end-to-end integration:**
+         - Are new data models/tables actually read by runtime code paths (not just admin CRUD)?
+         - Are new configurations actually consumed by the services that need them?
+         - Are new APIs actually called from the appropriate integration points?
+         - Are planned migration paths implemented (e.g., "migrate from old X to new Y")?
+
+      Do NOT report:
+      - Code quality, style, or security issues (that's the review action's job)
+      - PR scope completeness vs its own title (that's the feature-missing action's job)
+      - Bugs or logic errors in existing code
+      - Test coverage suggestions
+
+      Analyze the latest PR HEAD only.
+      Verify any gap claim against the current code before listing it.
+
+      Please respond in Chinese. DO NOT modify any code, only provide analysis.
+
+      Verdict rule (MUST follow):
+      - First line must be exactly one of:
+        - "全覆盖" — ALL spec tasks are implemented with end-to-end integration
+        - "发现遗漏" — at least one spec task is missing, not integrated, or no spec files exist at all
+
+      Output format:
+      - First line: the verdict ("全覆盖" or "发现遗漏")
+      - Then a short summary listing which spec files you found and how many tasks were checked
+      - If verdict is "发现遗漏", classify each gap:
+        ### CRITICAL
+        Spec tasks with zero implementation — planned but completely absent from the PR.
+        ### MEDIUM
+        Partial implementation — structure exists but not wired into runtime code paths.
+        ### LOW
+        Minor gaps — documentation, non-essential features, or nice-to-haves.
+        For each gap: quote the spec task verbatim, describe what's missing in the implementation, and suggest which file(s) should be modified.
+      - If verdict is "全覆盖", briefly confirm all spec tasks are covered — do NOT include any severity sections.
+  use-github-token:
+    description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
+    required: false
+    default: "true"
+  github-token:
+    description: Value exported as GITHUB_TOKEN before running `opencode github run`.
+    required: false
+    default: ""
+  zhipu-api-key:
+    description: Value exported as ZHIPU_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
+  opencode-go-api-key:
+    description: Value exported as OPENCODE_API_KEY before running `opencode github run`. The opencode-go provider shares this env var with OpenCode Zen.
+    required: false
+    default: ""
+  deepseek-api-key:
+    description: Value exported as DEEPSEEK_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
+  reasoning-effort:
+    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
+    required: false
+    default: "max"
+  enable-thinking:
+    description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
+    required: false
+    default: "true"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
+  fallback-models:
+    description: Optional comma- or newline-delimited fallback models tried after timeout or timeout-like failures.
+    required: false
+    default: ""
+  model-timeout-seconds:
+    description: Per-model timeout used before rotating to the next fallback model when fallback-models is configured. Set 0 to disable.
+    required: false
+    default: "300"
+  fallback-on-regex:
+    description: Rotate to the next fallback model when output matches this regex.
+    required: false
+    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'spec-coverage currently supports Linux runners only\n' >&2
+        exit 1
+
+    - id: paths
+      shell: bash
+      env:
+        INPUT_INSTALL_DIR: ${{ inputs.install-dir }}
+        INPUT_XDG_CACHE_HOME: ${{ inputs.xdg-cache-home }}
+      run: |
+        set -euo pipefail
+        install_dir="$INPUT_INSTALL_DIR"
+        xdg_cache_home="$INPUT_XDG_CACHE_HOME"
+
+        if [[ -z "$install_dir" ]]; then
+          install_dir="${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/bin"
+        fi
+
+        if [[ -z "$xdg_cache_home" ]]; then
+          xdg_cache_home="${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/cache"
+        fi
+
+        printf 'install_dir=%s\n' "$install_dir" >>"$GITHUB_OUTPUT"
+        printf 'xdg_cache_home=%s\n' "$xdg_cache_home" >>"$GITHUB_OUTPUT"
+
+    - id: key
+      shell: bash
+      env:
+        INPUT_INSTALL_URL: ${{ inputs.install-url }}
+      run: |
+        set -euo pipefail
+        install_url_hash="$(printf '%s' "$INPUT_INSTALL_URL" | sha256sum | cut -d ' ' -f1)"
+        printf 'install_url_hash=%s\n' "$install_url_hash" >>"$GITHUB_OUTPUT"
+
+    - id: version
+      shell: bash
+      run: |
+        set -euo pipefail
+        effective="${{ inputs.version }}"
+        if [[ "$effective" == "none" ]]; then
+          effective=""
+        elif [[ -z "$effective" ]]; then
+          default_file="${{ github.action_path }}/../setup-opencode/default-version"
+          if [[ ! -f "$default_file" ]]; then
+            printf 'error: default-version file not found at %s\n' "$default_file" >&2
+            exit 1
+          fi
+          effective="$(tr -d '[:space:]' < "$default_file")"
+          if [[ ! "$effective" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'error: invalid version in %s: %s\n' "$default_file" "$(cat "$default_file")" >&2
+            exit 1
+          fi
+        fi
+        printf 'version=%s\n' "$effective" >>"$GITHUB_OUTPUT"
+
+    - id: cache
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ steps.paths.outputs.install_dir }}
+          ${{ steps.paths.outputs.xdg_cache_home }}
+        key: spec-coverage-opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.install_url_hash }}-${{ steps.version.outputs.version }}-${{ inputs.cache-key }}
+
+    - shell: bash
+      env:
+        OPENCODE_INSTALL_DIR: ${{ steps.paths.outputs.install_dir }}
+        XDG_CACHE_HOME: ${{ steps.paths.outputs.xdg_cache_home }}
+        OPENCODE_INSTALL_URL: ${{ inputs.install-url }}
+        OPENCODE_INSTALL_ATTEMPTS: ${{ inputs.install-attempts }}
+        OPENCODE_ALLOW_PREINSTALLED: ${{ inputs.allow-preinstalled }}
+        OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
+      run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
+
+    - shell: bash
+      env:
+        GITHUB_RUN_OPENCODE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        GITHUB_RUN_OPENCODE_ATTEMPTS: ${{ inputs.attempts }}
+        GITHUB_RUN_OPENCODE_RETRY_PROFILE: ${{ inputs.retry-profile }}
+        GITHUB_RUN_OPENCODE_RETRY_ON_REGEX: ${{ inputs.retry-on-regex }}
+        GITHUB_RUN_OPENCODE_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
+        GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        GITHUB_RUN_OPENCODE_MODEL: ${{ inputs.model }}
+        GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
+        GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
+        GITHUB_RUN_OPENCODE_GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
+        GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
+        GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+        GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
+        GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
+        GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
+      run: |
+        if ! command -v python3 >/dev/null 2>&1; then
+          printf 'python3 is required but not installed on this runner\n' >&2
+          exit 1
+        fi
+        python3 ${{ github.action_path }}/../github-run-opencode/run-github-opencode.py
