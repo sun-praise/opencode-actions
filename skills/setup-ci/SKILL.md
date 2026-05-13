@@ -181,10 +181,13 @@ jobs:
       - name: Skip fork PR commands
         if: ${{ steps.target.outputs.is_fork == 'true' }}
         shell: bash
-        run: printf 'Skipping OpenCode command on forked pull request.\n'
+        run: |
+          set -euo pipefail
+          printf 'Skipping OpenCode command on forked pull request comments to avoid exposing repository secrets.\n'
 
-      - uses: actions/checkout@v6
+      - name: Checkout repository
         if: ${{ steps.target.outputs.is_fork != 'true' }}
+        uses: actions/checkout@v6
         with:
           repository: ${{ steps.target.outputs.repository }}
           ref: ${{ steps.target.outputs.ref }}

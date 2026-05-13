@@ -30,13 +30,47 @@
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `model` | auto | 模型名称，默认 `zhipuai-coding-plan/glm-5.1` |
+| `prompt` | varies by action | 自定义 prompt（各 action 有不同内置默认值） |
 | `fallback-models` | empty | 备选模型列表（逗号或换行分隔） |
+| `model-timeout-seconds` | `300` | 单模型超时（秒），超时后切换备选模型，`0` 禁用 |
+| `fallback-on-regex` | timeout regex | 输出匹配此正则时切换备选模型 |
 | `reasoning-effort` | `max` | 推理强度：`low` / `medium` / `high` / `max` |
 | `enable-thinking` | `true` | 启用 thinking 模式 |
-| `timeout-seconds` | `600` | 超时时间（秒），`0` 禁用 |
+| `timeout-seconds` | `600` | `opencode github run` 总超时（秒），`0` 禁用 |
 | `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
 | `working-directory` | empty | 工作目录 |
 | `cache` | `true` | 启用缓存 |
+| `cache-key` | `v1` | 缓存 key 后缀 |
+| `install-url` | `https://opencode.ai/install` | 安装器 URL |
+| `install-attempts` | `3` | 安装重试次数 |
+| `allow-preinstalled` | `false` | 复用 PATH 上已有的 opencode |
+| `version` | auto | 最低 opencode 版本要求，`none` 禁用检查 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+
+## Action-Specific Inputs
+
+### review
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+
+### feature-missing
+
+无特有 inputs，使用 common inputs 即可。
+
+### spec-coverage
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+
+### github-run-opencode
+
+无特有 inputs，使用 common inputs 即可。注意此 action 的 `prompt` 默认为空，需用户自行提供。
 
 ## Required Permissions
 
@@ -45,6 +79,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: read       # feature-missing 需要
+  issues: write      # review 需要
   id-token: write    # comment-command 需要
 ```
 
