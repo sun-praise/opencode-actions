@@ -69,7 +69,7 @@ Outputs:
 
 ### review
 
-继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
 
 | Input | Default | Description |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ Outputs:
 
 ### feature-missing
 
-继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
 
 | Input | Default | Description |
 | --- | --- | --- |
@@ -120,7 +120,7 @@ Outputs:
 
 ### spec-coverage
 
-继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
 
 | Input | Default | Description |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ Outputs:
 
 ### github-run-opencode
 
-继承了 `setup-opencode` 的全部输入 + 以下特有输入：
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
 
 | Input | Default | Description |
 | --- | --- | --- |
