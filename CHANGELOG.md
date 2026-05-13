@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-05-13
+
+### Fixed
+- fix(spec-coverage): explicitly forbid git commit/push in prompt
+
 ## [2.1.0] - 2026-05-13
 
 ### Added
