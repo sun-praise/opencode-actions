@@ -72,18 +72,7 @@ inputs:
 
       Steps:
       1. Read the PR context (title, body, labels, linked issues) — this is provided by the opencode github run environment.
-      2. **Determine whether this PR needs a spec.** A PR needs a spec if ANY of the following apply:
-         - The PR title or body contains feature keywords: feat, feature, enhancement, 新增, 重构, refactor, implement, 设计, 新功能, 架构
-         - The PR is linked to an issue that is a feature request (not a bug report)
-         - The PR adds new user-facing functionality, new API endpoints, new models, or new pages
-         - The PR is a significant architectural change
-         A PR does NOT need a spec if it is purely:
-         - A bug fix (title/body contains fix, bug, 修复, hotfix, patch)
-         - A documentation change
-         - A test-only change
-         - A minor config or dependency update
-         - A small refactoring with no behavioral change
-         Use the PR title, body, labels, and linked issues to make this determination.
+      2. **Determine whether this PR needs a spec.** Judge based on the PR's nature: does it introduce new functionality, new architecture, or significant behavioral changes that should be planned via a spec? Bug fixes, docs, tests, config changes, and minor refactorings typically do NOT need a spec. Use semantic understanding — do not rely on keyword matching alone.
       3. If the PR does NOT need a spec, output "无需审计" on the first line with a one-line explanation, then stop.
       4. If the PR DOES need a spec, discover spec/task files. Check these locations in the repository:
          - `openspec/changes/*/tasks.md` — OpenSpec task breakdowns
