@@ -72,24 +72,8 @@ inputs:
       1. Run `gh pr view --json closingIssuesReferences,title,body` to find linked issues (opencode github run already provides the PR context, just run the command without a PR number).
       2. If there are linked issues, read each issue body as the feature spec (use `gh issue view`).
       3. If no linked issues, extract the requirements from the PR title and body itself.
-      4. **CRITICAL STEP — Read the spec/tasks files:** Look for project-local spec or task breakdown files in the repository. Check these locations (in order of priority):
-         - `openspec/changes/*/tasks.md` — OpenSpec task breakdowns
-         - `openspec/changes/*/design.md` — OpenSpec design docs
-         - `openspec/changes/*/spec.md` — OpenSpec spec files
-         - `docs/specs/**` or `specs/**` — general spec directories
-         Use `find` or `ls` to discover files matching these patterns. If the PR references an issue number, look for a directory matching that issue number or the feature name.
-         Read ALL relevant spec/task files completely. These files are the **authoritative source of scope** — they override the PR's self-described scope.
-      5. Read the PR's changed files to understand what was actually implemented.
-      6. **Cross-reference spec tasks against implementation:** For each unchecked task item (`- [ ]`) in the tasks.md, verify whether the PR's diff actually implements it. A task is NOT complete just because related files exist — verify the integration is wired end-to-end.
-      7. Compare the spec/requirements against the implementation, and identify gaps.
-
-      **IMPORTANT — End-to-end integration check:**
-      Do NOT limit your audit to the PR's own title/body scope. The spec/tasks.md defines the FULL intended scope. If the spec says "modify X to use Y" but the PR only creates Y without wiring it into X, that is a CRITICAL gap even if the PR title only mentions "add Y".
-      Specifically check:
-      - Are new data models/tables actually read by the runtime code paths (not just admin CRUD)?
-      - Are new configurations actually consumed by the services that need them?
-      - Are new APIs actually called from the appropriate integration points?
-      - Are there planned but unimplemented migration paths (e.g., "migrate from old system X to new system Y")?
+      4. Read the PR's changed files to understand what was actually implemented.
+      5. Compare the spec/requirements against the implementation, and identify gaps.
 
       Focus on finding:
       - Features or behaviors mentioned in the spec but not implemented at all
@@ -97,7 +81,6 @@ inputs:
       - Edge cases or error handling described in the spec but missing from code
       - Integration gaps (e.g., a new component exists but is never called from the main flow)
       - Configuration options mentioned in the spec but not wired up
-      - Spec tasks marked as unchecked (`- [ ]`) that have no corresponding implementation in the PR diff
 
       Do NOT report:
       - Code style issues, naming, or formatting (that's the review action's job)
@@ -122,7 +105,7 @@ inputs:
       - Then a short summary of your analysis
       - If verdict is "发现遗漏", classify each gap by severity:
         ### CRITICAL
-        Core functionality described in the spec is missing or completely non-functional. This includes spec tasks that were planned but have zero implementation in the PR.
+        Core functionality described in the spec is missing or completely non-functional.
         ### MEDIUM
         Partial implementation, integration gaps, or important edge cases not handled.
         ### LOW
