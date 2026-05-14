@@ -201,6 +201,7 @@ def main() -> int:
     # Language override: append a language instruction to the prompt.
     # When PROMPT is empty (e.g. user cleared the default), skip appending
     # language instructions since there is nothing to respond to.
+    SUPPORTED_LANGUAGES = {"zh", "en"}
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
     existing_prompt = get_env("PROMPT", "")
     zh_instruction = (
@@ -215,12 +216,12 @@ def main() -> int:
                 "Use English for all analysis, explanations, and output. "
                 "For any verdict keywords listed in the prompt, use their English equivalents."
             ))
-        elif language == "zh":
+        elif language in SUPPORTED_LANGUAGES:
             set_env("PROMPT", existing_prompt + zh_instruction)
         else:
             print(
                 f"::warning::Unsupported language: '{language}', defaulting to Chinese. "
-                "Supported values are 'zh' and 'en'."
+                f"Supported values are: {', '.join(sorted(SUPPORTED_LANGUAGES))}."
             )
             set_env("PROMPT", existing_prompt + zh_instruction)
     set_env("GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_GITHUB_TOKEN"))
@@ -242,6 +243,8 @@ def main() -> int:
             key = key.strip()
             value = value.strip()
             if key:
+                if key.startswith("GITHUB_RUN_OPENCODE_"):
+                    print(f"::warning::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_', this may override internal configuration")
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
