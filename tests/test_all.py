@@ -642,6 +642,10 @@ class TestExtractDecision(unittest.TestCase):
         text = 'Here is the review:\n{"decision": "有条件合并", "summary": "ok"}\nDone'
         self.assertEqual(self.extract_decision(text, "json"), "有条件合并")
 
+    def test_json_fast_path_with_whitespace(self):
+        text = '  \n{"decision": "可合并", "summary": "ok"}\n  '
+        self.assertEqual(self.extract_decision(text, "json"), "可合并")
+
     def test_json_invalid(self):
         self.assertEqual(self.extract_decision("not json at all", "json"), "")
 
