@@ -219,6 +219,9 @@ def main() -> int:
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
+    if reasoning_effort and reasoning_effort not in ("low", "medium", "high", "max"):
+        print(f"reasoning-effort must be one of low, medium, high, max; got '{reasoning_effort}'", file=sys.stderr)
+        sys.exit(1)
     enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
     working_directory = get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY", "")
 
