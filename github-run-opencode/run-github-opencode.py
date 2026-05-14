@@ -238,7 +238,11 @@ def main() -> int:
     permission = None
     if permission_raw:
         try:
-            permission = json.loads(permission_raw)
+            parsed = json.loads(permission_raw)
+            if not isinstance(parsed, dict):
+                print(f"GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object, got {type(parsed).__name__}: {permission_raw}", file=sys.stderr)
+                sys.exit(1)
+            permission = parsed
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
             sys.exit(1)
