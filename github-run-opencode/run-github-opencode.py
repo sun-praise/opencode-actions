@@ -95,25 +95,25 @@ def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working
 def extract_decision(output_text: str, output_format: str) -> str:
     if output_format == "json":
         cleaned = re.sub(r"```(?:json)?\s*", "", output_text)
-        brace_start = cleaned.find("{")
-        if brace_start >= 0:
-            depth = 0
-            for i in range(brace_start, len(cleaned)):
-                if cleaned[i] == "{":
-                    depth += 1
-                elif cleaned[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            data = json.loads(cleaned[brace_start : i + 1])
-                            return data.get("decision", "")
-                        except json.JSONDecodeError:
-                            break
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(cleaned):
+            brace_idx = cleaned.find("{", pos)
+            if brace_idx < 0:
+                break
+            try:
+                obj, end = decoder.raw_decode(cleaned, brace_idx)
+                if isinstance(obj, dict) and "decision" in obj:
+                    return obj["decision"]
+                pos = end
+            except json.JSONDecodeError:
+                pos = brace_idx + 1
         return ""
     for line in output_text.split("\n"):
         stripped = line.strip()
-        if stripped in ("\u53ef\u5408\u5e76", "\u6709\u6761\u4ef6\u5408\u5e76", "\u4e0d\u53ef\u5408\u5e76"):
-            return stripped
+        for decision in ("\u53ef\u5408\u5e76", "\u6709\u6761\u4ef6\u5408\u5e76", "\u4e0d\u53ef\u5408\u5e76"):
+            if stripped == decision or stripped.startswith(decision):
+                return decision
     return ""
 
 
@@ -135,17 +135,12 @@ def run_model(model: str, log_file: str, effective_timeout: int, run_script: Pat
     env = os.environ.copy()
     env["MODEL"] = model
 
-    if effective_timeout > 0:
-        cmd = ["timeout", "--foreground", f"{effective_timeout}s", str(run_script)]
-    else:
-        cmd = [str(run_script)]
-
+    cmd = _build_cmd(run_script, effective_timeout)
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
 
     with open(log_file, "wb") as f:
         f.write(result.stdout)
 
-    # Replay captured output so it is visible in CI / terminal
     sys.stdout.buffer.write(result.stdout)
     sys.stdout.buffer.flush()
 
@@ -162,23 +157,24 @@ def run_model(model: str, log_file: str, effective_timeout: int, run_script: Pat
     return result.returncode
 
 
+def _run_subprocess(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess:
+    if capture:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return subprocess.run(cmd)
+
+
+def _build_cmd(run_script: Path, timeout_sec: int) -> list[str]:
+    if timeout_sec > 0:
+        return ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
+    return [str(run_script)]
+
+
 def run_single(run_script: Path, timeout_sec: int) -> int:
     output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
     pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
 
     if _should_override_exit_code(output_format, pass_level):
-        if timeout_sec > 0:
-            result = subprocess.run(
-                ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-        else:
-            result = subprocess.run(
-                [str(run_script)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
+        result = _run_subprocess(_build_cmd(run_script, timeout_sec), capture=True)
         output = result.stdout.decode("utf-8", errors="replace")
         sys.stdout.write(output)
         sys.stdout.flush()
@@ -188,12 +184,7 @@ def run_single(run_script: Path, timeout_sec: int) -> int:
             return override
         return result.returncode
 
-    if timeout_sec > 0:
-        result = subprocess.run(
-            ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
-        )
-    else:
-        result = subprocess.run([str(run_script)])
+    result = _run_subprocess(_build_cmd(run_script, timeout_sec))
     return result.returncode
 
 
