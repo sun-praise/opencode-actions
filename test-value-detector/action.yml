@@ -140,7 +140,8 @@ inputs:
     description: >-
       Extra environment variables to pass to opencode runtime.
       Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
-      starting with '#' are ignored.
+      starting with '#' are ignored. Values may contain '=' and '#'
+      characters; only lines starting with '#' are treated as comments.
     required: false
     default: ""
 
