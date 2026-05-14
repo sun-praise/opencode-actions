@@ -92,7 +92,7 @@ inputs:
       Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
       Verify any gap claim against the current code before listing it.
 
-      Please respond in Chinese. DO NOT modify any code, only provide analysis.
+      DO NOT modify any code, only provide analysis.
 
       Verdict rule (MUST follow):
       - After completing your analysis, set the first line to exactly one of:

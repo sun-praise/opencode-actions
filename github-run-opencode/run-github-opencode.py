@@ -200,14 +200,20 @@ def main() -> int:
 
     # Language override: append a language instruction to the prompt
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
-    if language == "en":
-        existing_prompt = os.environ.get("PROMPT", "")
-        if existing_prompt:
+    existing_prompt = os.environ.get("PROMPT", "")
+    if existing_prompt:
+        if language == "en":
             os.environ["PROMPT"] = (
                 existing_prompt
                 + "\n\nIMPORTANT: Respond entirely in English. "
                 "Use English for all analysis, explanations, and output. "
                 "For any verdict keywords listed in the prompt, use their English equivalents."
+            )
+        else:
+            os.environ["PROMPT"] = (
+                existing_prompt
+                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
+                "对于 prompt 中列出的判定关键词，使用其中文版本。"
             )
     set_env("GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_GITHUB_TOKEN"))
     set_env("ZHIPU_API_KEY", get_env("GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"))
