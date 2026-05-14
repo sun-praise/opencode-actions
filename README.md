@@ -22,6 +22,12 @@ Write this in your CI.yaml
 
 You'll get a automatic reviewer in Chinese.
 
+Or add the skills to your project:
+
+```bash
+npx skills add sun-praise/opencode-actions
+```
+
 ## What it includes
 
 - `review`: opinionated PR review wrapper with built-in prompt and model defaults
