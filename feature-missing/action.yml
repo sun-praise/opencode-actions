@@ -152,6 +152,14 @@ inputs:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
     default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored. Values may contain '=' and '#'
+      characters; only lines starting with '#' are treated as comments.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -253,6 +261,7 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
       run: |

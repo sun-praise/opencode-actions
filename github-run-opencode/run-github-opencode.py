@@ -214,8 +214,9 @@ def main() -> int:
                 continue
             key, _, value = line.partition("=")
             key = key.strip()
-            value = value.strip()
             if key:
+                if re.search(r'(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)', key, re.IGNORECASE):
+                    print(f"Warning: extra-env key '{key}' looks like a sensitive variable — make sure this is intentional", file=sys.stderr)
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
@@ -229,6 +230,9 @@ def main() -> int:
             permission = json.loads(permission_raw)
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(permission, dict):
+            print(f"GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object, got {type(permission).__name__}", file=sys.stderr)
             sys.exit(1)
 
     needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
