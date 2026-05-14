@@ -5,9 +5,27 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
+  setup:
+    name: Setup OpenCode
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      install-dir: ${{ steps.setup.outputs.install-dir }}
+      xdg-cache-home: ${{ steps.setup.outputs.xdg-cache-home }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup OpenCode
+        id: setup
+        uses: ./setup-opencode
+
   review:
     name: Code Review
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [setup]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,9 +38,19 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
+      - name: Restore OpenCode cache
+        uses: ./setup-opencode
+        with:
+          cache: true
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
+
       - name: Run OpenCode review
         uses: ./review
         with:
+          cache: false
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
           model: ${{ vars.MODEL_NAME }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -31,7 +59,7 @@ jobs:
 
   feature-missing:
     name: Feature Missing
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [setup]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -48,9 +76,19 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.event.pull_request.head.sha }}
 
+      - name: Restore OpenCode cache
+        uses: ./setup-opencode
+        with:
+          cache: true
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
+
       - name: Run feature missing audit
         uses: ./feature-missing
         with:
+          cache: false
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
           model: ${{ vars.MODEL_NAME }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -59,7 +97,7 @@ jobs:
 
   regression-test-missing:
     name: Regression Test Missing
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [setup]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -76,9 +114,19 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.event.pull_request.head.sha }}
 
+      - name: Restore OpenCode cache
+        uses: ./setup-opencode
+        with:
+          cache: true
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
+
       - name: Run regression test missing audit
         uses: ./regression-test-missing
         with:
+          cache: false
+          install-dir: ${{ needs.setup.outputs.install-dir }}
+          xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
           model: ${{ vars.MODEL_NAME }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}

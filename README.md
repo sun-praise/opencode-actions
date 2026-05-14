@@ -202,6 +202,7 @@ uses: Svtter/opencode-actions/review@v2
 uses: Svtter/opencode-actions/feature-missing@v2
 uses: Svtter/opencode-actions/spec-coverage@v2
 uses: Svtter/opencode-actions/regression-test-missing@v2
+uses: Svtter/opencode-actions/pr-checks@v2
 uses: Svtter/opencode-actions/github-run-opencode@v2
 uses: Svtter/opencode-actions/setup-opencode@v2
 uses: Svtter/opencode-actions/run-opencode@v2

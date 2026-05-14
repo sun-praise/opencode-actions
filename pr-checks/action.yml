@@ -2,10 +2,6 @@ name: OpenCode PR Checks
 description: Runs review, feature-missing, and regression-test-missing checks in a single opencode invocation with a combined prompt.
 
 inputs:
-  model:
-    description: Value exported as MODEL before running `opencode github run`.
-    required: false
-    default: ""
   install-url:
     description: Installer URL used to bootstrap OpenCode.
     required: false
@@ -62,6 +58,10 @@ inputs:
     description: Maximum execution time in seconds for `opencode github run`. Set 0 to disable.
     required: false
     default: "600"
+  model:
+    description: Value exported as MODEL before running `opencode github run`.
+    required: false
+    default: ""
   fallback-models:
     description: Optional comma- or newline-delimited fallback models tried after timeout or timeout-like failures.
     required: false

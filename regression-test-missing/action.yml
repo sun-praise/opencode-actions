@@ -62,6 +62,18 @@ inputs:
     description: Value exported as MODEL before running `opencode github run`.
     required: false
     default: ""
+  fallback-models:
+    description: Optional comma- or newline-delimited fallback models tried after timeout or timeout-like failures.
+    required: false
+    default: ""
+  model-timeout-seconds:
+    description: Per-model timeout used before rotating to the next fallback model when fallback-models are configured. Set 0 to disable.
+    required: false
+    default: "300"
+  fallback-on-regex:
+    description: Rotate to the next fallback model when output matches this regex.
+    required: false
+    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
   prompt:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false
@@ -129,18 +141,6 @@ inputs:
     description: Value exported as DEEPSEEK_API_KEY before running `opencode github run`.
     required: false
     default: ""
-  fallback-models:
-    description: Optional comma- or newline-delimited fallback models tried after timeout or timeout-like failures.
-    required: false
-    default: ""
-  model-timeout-seconds:
-    description: Per-model timeout used before rotating to the next fallback model when fallback-models are configured. Set 0 to disable.
-    required: false
-    default: "300"
-  fallback-on-regex:
-    description: Rotate to the next fallback model when output matches this regex.
-    required: false
-    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
 
 runs:
   using: composite
