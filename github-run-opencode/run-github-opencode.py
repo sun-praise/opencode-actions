@@ -95,6 +95,12 @@ def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working
 def extract_decision(output_text: str, output_format: str) -> str:
     if output_format == "json":
         cleaned = re.sub(r"```(?:json)?\s*", "", output_text)
+        try:
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict) and "decision" in obj:
+                return obj["decision"]
+        except json.JSONDecodeError:
+            pass
         decoder = json.JSONDecoder()
         pos = 0
         while pos < len(cleaned):
