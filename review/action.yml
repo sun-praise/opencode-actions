@@ -140,7 +140,9 @@ inputs:
     description: >-
       Extra environment variables to pass to opencode runtime.
       Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
-      starting with '#' are ignored.
+      starting with '#' are ignored. Note: these variables are set after
+      internal configuration and may override sensitive runtime settings
+      such as MODEL, GITHUB_TOKEN, or API keys.
     required: false
     default: ""
   language:
