@@ -267,23 +267,49 @@ runs:
           exit 1
         fi
 
+        case "$GITHUB_RUN_OPENCODE_OUTPUT_FORMAT" in
+          text|json) ;;
+          *)
+            printf 'warning: invalid output-format "%s", falling back to text\n' "$GITHUB_RUN_OPENCODE_OUTPUT_FORMAT" >&2
+            GITHUB_RUN_OPENCODE_OUTPUT_FORMAT="text"
+            ;;
+        esac
+
+        case "$GITHUB_RUN_OPENCODE_PASS_LEVEL" in
+          strict|standard) ;;
+          *)
+            printf 'warning: invalid pass-level "%s", falling back to strict\n' "$GITHUB_RUN_OPENCODE_PASS_LEVEL" >&2
+            GITHUB_RUN_OPENCODE_PASS_LEVEL="strict"
+            ;;
+        esac
+
         effective_prompt="${GITHUB_RUN_OPENCODE_PROMPT}"
 
         if [[ "$GITHUB_RUN_OPENCODE_OUTPUT_FORMAT" == "json" ]]; then
-          json_suffix='
+          if [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
+            json_suffix='
 
-OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
-{"decision":"可合并|有条件合并|不可合并","summary":"brief summary","blocking_items":["item",...],"warning_items":["item",...],"suggestion_items":["item",...]}
-Use empty arrays when there are no items for a level. Keep all text in Chinese.'
+            OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
+            {"decision":"可合并|有条件合并|不可合并","summary":"brief summary","blocking_items":["item",...],"warning_items":["item",...],"suggestion_items":["item",...]}
+            Use empty arrays when there are no items for a level. Keep all text in Chinese.
+
+            Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing.'
+          else
+            json_suffix='
+
+            OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
+            {"decision":"可合并|有条件合并|不可合并","summary":"brief summary","blocking_items":["item",...],"warning_items":["item",...],"suggestion_items":["item",...]}
+            Use empty arrays when there are no items for a level. Keep all text in Chinese.'
+          fi
           effective_prompt="${effective_prompt}${json_suffix}"
-        fi
-
-        if [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
+        elif [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
           standard_suffix='
 
-Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing.'
+          Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing.'
           effective_prompt="${effective_prompt}${standard_suffix}"
         fi
 
         export GITHUB_RUN_OPENCODE_PROMPT="${effective_prompt}"
+        export GITHUB_RUN_OPENCODE_OUTPUT_FORMAT
+        export GITHUB_RUN_OPENCODE_PASS_LEVEL
         python3 ${{ github.action_path }}/../github-run-opencode/run-github-opencode.py

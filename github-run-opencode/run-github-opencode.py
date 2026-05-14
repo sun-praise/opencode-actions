@@ -92,6 +92,45 @@ def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working
         f.write("\n")
 
 
+def extract_decision(output_text: str, output_format: str) -> str:
+    if output_format == "json":
+        cleaned = re.sub(r"```(?:json)?\s*", "", output_text)
+        brace_start = cleaned.find("{")
+        if brace_start >= 0:
+            depth = 0
+            for i in range(brace_start, len(cleaned)):
+                if cleaned[i] == "{":
+                    depth += 1
+                elif cleaned[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            data = json.loads(cleaned[brace_start : i + 1])
+                            return data.get("decision", "")
+                        except json.JSONDecodeError:
+                            break
+        return ""
+    for line in output_text.split("\n"):
+        stripped = line.strip()
+        if stripped in ("\u53ef\u5408\u5e76", "\u6709\u6761\u4ef6\u5408\u5e76", "\u4e0d\u53ef\u5408\u5e76"):
+            return stripped
+    return ""
+
+
+def _should_override_exit_code(output_format: str, pass_level: str) -> bool:
+    return output_format == "json" or pass_level != "strict"
+
+
+def _apply_pass_level(decision: str, pass_level: str) -> int | None:
+    if decision == "\u53ef\u5408\u5e76":
+        return 0
+    if decision == "\u6709\u6761\u4ef6\u5408\u5e76":
+        return 0 if pass_level == "standard" else 1
+    if decision == "\u4e0d\u53ef\u5408\u5e76":
+        return 1
+    return None
+
+
 def run_model(model: str, log_file: str, effective_timeout: int, run_script: Path) -> int:
     env = os.environ.copy()
     env["MODEL"] = model
@@ -110,10 +149,45 @@ def run_model(model: str, log_file: str, effective_timeout: int, run_script: Pat
     sys.stdout.buffer.write(result.stdout)
     sys.stdout.buffer.flush()
 
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+    if _should_override_exit_code(output_format, pass_level):
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        decision = extract_decision(content, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
+
     return result.returncode
 
 
 def run_single(run_script: Path, timeout_sec: int) -> int:
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+
+    if _should_override_exit_code(output_format, pass_level):
+        if timeout_sec > 0:
+            result = subprocess.run(
+                ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+        else:
+            result = subprocess.run(
+                [str(run_script)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+        output = result.stdout.decode("utf-8", errors="replace")
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        decision = extract_decision(output, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
+        return result.returncode
+
     if timeout_sec > 0:
         result = subprocess.run(
             ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
