@@ -198,7 +198,9 @@ def main() -> int:
     set_env("PROMPT", get_env("GITHUB_RUN_OPENCODE_PROMPT"))
     set_env("USE_GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN"))
 
-    # Language override: append a language instruction to the prompt
+    # Language override: append a language instruction to the prompt.
+    # When PROMPT is empty (e.g. user cleared the default), skip appending
+    # language instructions since there is nothing to respond to.
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
     existing_prompt = get_env("PROMPT", "")
     if existing_prompt:
@@ -209,7 +211,18 @@ def main() -> int:
                 "Use English for all analysis, explanations, and output. "
                 "For any verdict keywords listed in the prompt, use their English equivalents."
             ))
+        elif language == "zh":
+            set_env("PROMPT", (
+                existing_prompt
+                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
+                "对于 prompt 中列出的判定关键词，使用其中文版本。"
+            ))
         else:
+            print(
+                f"Unsupported language: '{language}', defaulting to Chinese. "
+                "Supported values are 'zh' and 'en'.",
+                file=sys.stderr,
+            )
             set_env("PROMPT", (
                 existing_prompt
                 + "\n\n请使用中文回复。所有分析和说明均使用中文。"
