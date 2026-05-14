@@ -602,6 +602,12 @@ def _main() -> int:
             set_env("PROMPT", existing_prompt + zh_instruction)
 
     # Extra env vars from extra-env input
+    BLOCKED_ENV_KEYS = frozenset({
+        "PATH", "HOME", "USER", "SHELL", "MODEL", "GITHUB_TOKEN",
+        "GITHUB_WORKSPACE", "GITHUB_EVENT_PATH", "GITHUB_SHA",
+        "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_RUN_ID",
+        "GITHUB_ACTIONS", "LD_LIBRARY_PATH", "PYTHONPATH",
+    })
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
     allow_sensitive = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE", "false").strip().lower() in ("true", "1", "yes")
     if extra_env_raw:
@@ -616,18 +622,23 @@ def _main() -> int:
                 continue
             key, _, value = line.partition("=")
             key = key.strip()
-            if key:
-                if key.startswith("GITHUB_RUN_OPENCODE_"):
-                    print(f"::error::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_' and is not allowed")
-                    prefix_blocked.append(key)
+            if not key:
+                continue
+            if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', key):
+                print(f"::error::extra-env key '{key}' is not a valid environment variable name (must match [A-Za-z_][A-Za-z0-9_]*)", file=sys.stderr)
+                sys.exit(1)
+            if key.startswith("GITHUB_RUN_OPENCODE_"):
+                print(f"::error::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_' and is not allowed")
+                prefix_blocked.append(key)
+                continue
+            if key in SENSITIVE_ENV_KEYS:
+                if allow_sensitive:
+                    print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)")
+                else:
+                    print(f"::error::extra-env key '{key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow")
+                    sensitive_blocked.append(key)
                     continue
-                if key in SENSITIVE_ENV_KEYS:
-                    if allow_sensitive:
-                        print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)")
-                    else:
-                        print(f"::error::extra-env key '{key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow")
-                        sensitive_blocked.append(key)
-                        continue                os.environ[key] = value
+            os.environ[key] = value.strip()
         all_blocked = prefix_blocked + sensitive_blocked
         if all_blocked:
             if prefix_blocked:
