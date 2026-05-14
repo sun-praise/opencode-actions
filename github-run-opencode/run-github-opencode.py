@@ -203,6 +203,10 @@ def main() -> int:
     # language instructions since there is nothing to respond to.
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
     existing_prompt = get_env("PROMPT", "")
+    zh_instruction = (
+        "\n\n请使用中文回复。所有分析和说明均使用中文。"
+        "对于 prompt 中列出的判定关键词，使用其中文版本。"
+    )
     if existing_prompt:
         if language == "en":
             set_env("PROMPT", (
@@ -212,22 +216,13 @@ def main() -> int:
                 "For any verdict keywords listed in the prompt, use their English equivalents."
             ))
         elif language == "zh":
-            set_env("PROMPT", (
-                existing_prompt
-                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
-                "对于 prompt 中列出的判定关键词，使用其中文版本。"
-            ))
+            set_env("PROMPT", existing_prompt + zh_instruction)
         else:
             print(
-                f"Unsupported language: '{language}', defaulting to Chinese. "
-                "Supported values are 'zh' and 'en'.",
-                file=sys.stderr,
+                f"::warning::Unsupported language: '{language}', defaulting to Chinese. "
+                "Supported values are 'zh' and 'en'."
             )
-            set_env("PROMPT", (
-                existing_prompt
-                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
-                "对于 prompt 中列出的判定关键词，使用其中文版本。"
-            ))
+            set_env("PROMPT", existing_prompt + zh_instruction)
     set_env("GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_GITHUB_TOKEN"))
     set_env("ZHIPU_API_KEY", get_env("GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"))
     set_env("OPENCODE_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"))
