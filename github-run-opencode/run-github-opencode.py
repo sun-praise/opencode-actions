@@ -111,34 +111,112 @@ def configure_opencode_json(
         f.write("\n")
 
 
+def extract_decision(output_text: str, output_format: str) -> str:
+    if output_format == "json":
+        cleaned = re.sub(r"```(?:json)?\s*", "", output_text)
+        # Fast path: try direct parse first; fall back to incremental decoder for text with surrounding content
+        try:
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict) and "decision" in obj:
+                if obj["decision"] in ("可合并", "有条件合并", "不可合并"):
+                    return obj["decision"]
+                return ""
+            return ""
+        except json.JSONDecodeError:
+            pass
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(cleaned):
+            brace_idx = cleaned.find("{", pos)
+            if brace_idx < 0:
+                break
+            try:
+                obj, end = decoder.raw_decode(cleaned, brace_idx)
+                if isinstance(obj, dict) and "decision" in obj:
+                    if obj["decision"] in ("可合并", "有条件合并", "不可合并"):
+                        return obj["decision"]
+                    pos = end
+                else:
+                    pos = end
+            except json.JSONDecodeError:
+                pos = brace_idx + 1
+        return ""
+    for line in output_text.split("\n"):
+        stripped = line.strip()
+        for decision in ("\u53ef\u5408\u5e76", "\u6709\u6761\u4ef6\u5408\u5e76", "\u4e0d\u53ef\u5408\u5e76"):
+            if stripped == decision or stripped.startswith(decision):
+                return decision
+    return ""
+
+
+def _should_override_exit_code(output_format: str, pass_level: str) -> bool:
+    return output_format == "json" or pass_level != "strict"
+
+
+def _apply_pass_level(decision: str, pass_level: str) -> int | None:
+    if decision == "\u53ef\u5408\u5e76":
+        return 0
+    if decision == "\u6709\u6761\u4ef6\u5408\u5e76":
+        return 0 if pass_level == "standard" else 1
+    if decision == "\u4e0d\u53ef\u5408\u5e76":
+        return 1
+    return None
+
+
 def run_model(model: str, log_file: str, effective_timeout: int, run_script: Path) -> int:
     env = os.environ.copy()
     env["MODEL"] = model
 
-    if effective_timeout > 0:
-        cmd = ["timeout", "--foreground", f"{effective_timeout}s", str(run_script)]
-    else:
-        cmd = [str(run_script)]
-
+    cmd = _build_cmd(run_script, effective_timeout)
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
 
     with open(log_file, "wb") as f:
         f.write(result.stdout)
 
-    # Replay captured output so it is visible in CI / terminal
     sys.stdout.buffer.write(result.stdout)
     sys.stdout.buffer.flush()
+
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+    if _should_override_exit_code(output_format, pass_level):
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        decision = extract_decision(content, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
 
     return result.returncode
 
 
-def run_single(run_script: Path, timeout_sec: int) -> int:
+def _run_subprocess(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess:
+    if capture:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return subprocess.run(cmd)
+
+
+def _build_cmd(run_script: Path, timeout_sec: int) -> list[str]:
     if timeout_sec > 0:
-        result = subprocess.run(
-            ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
-        )
-    else:
-        result = subprocess.run([str(run_script)])
+        return ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
+    return [str(run_script)]
+
+
+def run_single(run_script: Path, timeout_sec: int) -> int:
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+
+    if _should_override_exit_code(output_format, pass_level):
+        result = _run_subprocess(_build_cmd(run_script, timeout_sec), capture=True)
+        output = result.stdout.decode("utf-8", errors="replace")
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        decision = extract_decision(output, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
+        return result.returncode
+
+    result = _run_subprocess(_build_cmd(run_script, timeout_sec))
     return result.returncode
 
 
