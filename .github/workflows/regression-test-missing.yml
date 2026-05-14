@@ -28,7 +28,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-        # Defense-in-depth: identity configured even though permission policy denies git ops
+        # Configure git identity as defense-in-depth; some tools may implicitly
+        # invoke git requiring user identity even though the permission policy
+        # denies write operations.
 
       - name: Run regression test missing audit
         uses: ./regression-test-missing

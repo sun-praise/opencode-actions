@@ -82,6 +82,13 @@ inputs:
     description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
     required: false
     default: "true"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
   prompt:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false
@@ -247,6 +254,7 @@ runs:
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}

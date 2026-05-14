@@ -36,3 +36,21 @@ jobs:
           attempts: "1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+      - name: Test regression-test-missing action loads
+        uses: ./regression-test-missing
+        with:
+          model: test-model
+          timeout-seconds: "5"
+          attempts: "1"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Test pr-checks action loads
+        uses: ./pr-checks
+        with:
+          model: test-model
+          timeout-seconds: "5"
+          attempts: "1"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
