@@ -262,7 +262,7 @@ runs:
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
       run: |
-        if ! command -v python3 >\/dev/null 2>&1; then
+        if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
           exit 1
         fi
