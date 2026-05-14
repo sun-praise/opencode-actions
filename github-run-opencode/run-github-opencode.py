@@ -14,6 +14,8 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 
 SUPPORTED_LANGUAGES = {"zh", "en"}
+# When adding new API keys or critical env vars to main(), add them here too
+# so that extra-env can warn users about overriding them.
 SENSITIVE_ENV_KEYS = {"GITHUB_TOKEN", "MODEL", "ZHIPU_API_KEY", "OPENCODE_API_KEY", "DEEPSEEK_API_KEY", "PROMPT"}
 
 
@@ -449,10 +451,10 @@ def _main() -> int:
                 "Use English for all analysis, explanations, and output. "
                 "For any verdict keywords listed in the prompt, use their English equivalents."
             ))
-        # When adding a new language to SUPPORTED_LANGUAGES, add a dedicated
-        # if/elif branch above with the correct instruction; otherwise the
-        # new language falls through to the zh default here.
+        elif language == "zh":
+            set_env("PROMPT", existing_prompt + zh_instruction)
         elif language in SUPPORTED_LANGUAGES:
+            print(f"::debug::Language '{language}' has no dedicated prompt instruction, defaulting to zh")
             set_env("PROMPT", existing_prompt + zh_instruction)
         else:
             print(
@@ -485,6 +487,8 @@ def _main() -> int:
                     print(f"::warning::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_', this may override internal configuration")
                 if key in SENSITIVE_ENV_KEYS:
                     print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable")
+                # Intentionally use os.environ instead of set_env() to allow
+                # users to explicitly set (or clear) a variable with an empty value.
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
