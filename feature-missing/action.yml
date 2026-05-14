@@ -140,6 +140,13 @@ inputs:
     description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
     required: false
     default: "true"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
   fallback-models:
     description: Optional comma- or newline-delimited fallback models tried after timeout or timeout-like failures.
     required: false
@@ -261,6 +268,7 @@ runs:
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

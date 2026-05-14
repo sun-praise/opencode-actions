@@ -189,11 +189,11 @@ def main() -> int:
 
     # Model resolution (same order as original shell script)
     if get_env("GITHUB_RUN_OPENCODE_MODEL"):
-        os.environ["MODEL"] = get_env("GITHUB_RUN_OPENCODE_MODEL")
+        set_env("MODEL", get_env("GITHUB_RUN_OPENCODE_MODEL"))
     elif get_env("MODEL_NAME"):
-        os.environ["MODEL"] = get_env("MODEL_NAME")
+        set_env("MODEL", get_env("MODEL_NAME"))
     else:
-        os.environ["MODEL"] = "zhipuai-coding-plan/glm-5.1"
+        set_env("MODEL", "zhipuai-coding-plan/glm-5.1")
 
     set_env("PROMPT", get_env("GITHUB_RUN_OPENCODE_PROMPT"))
     set_env("USE_GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN"))
