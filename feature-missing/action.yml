@@ -253,6 +253,8 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
+        GITHUB_RUN_OPENCODE_PERMISSION: >-
+          {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
       run: |
         if ! command -v python3 >\/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

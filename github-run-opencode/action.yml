@@ -106,6 +106,13 @@ inputs:
     description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
     required: false
     default: "true"
+  permission:
+    description: >-
+      JSON object for opencode agent-level permission overrides (merged into opencode.json).
+      See https://opencode.ai/docs/permissions/ for available keys.
+      Example: '{"edit":"deny","bash":{"git commit *":"deny"}}'
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -207,6 +214,7 @@ runs:
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        GITHUB_RUN_OPENCODE_PERMISSION: ${{ inputs.permission }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

@@ -58,8 +58,22 @@ def parse_candidate_models(raw_list: str) -> list[str]:
     return result
 
 
-def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working_directory: str = "") -> None:
-    """Generate or modify opencode.json with reasoning effort and thinking configuration."""
+def _deep_merge(base: dict, override: dict) -> None:
+    """Merge override into base dict recursively. Override values win on conflicts."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+def configure_opencode_json(
+    reasoning_effort: str,
+    enable_thinking: str,
+    working_directory: str = "",
+    permission: dict | None = None,
+) -> None:
+    """Generate or modify opencode.json with reasoning effort, thinking, and permission configuration."""
     config_path = Path(working_directory) / "opencode.json" if working_directory else Path("opencode.json")
 
     config: dict = {}
@@ -86,6 +100,11 @@ def configure_opencode_json(reasoning_effort: str, enable_thinking: str, working
 
     if enable_thinking.lower() == "true":
         config["agent"][agent_name]["options"]["thinking"] = {"type": "enabled"}
+
+    if permission:
+        if "permission" not in config["agent"][agent_name]:
+            config["agent"][agent_name]["permission"] = {}
+        _deep_merge(config["agent"][agent_name]["permission"], permission)
 
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
@@ -202,8 +221,19 @@ def main() -> int:
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
     enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
     working_directory = get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY", "")
-    if reasoning_effort or enable_thinking.lower() == "true":
-        configure_opencode_json(reasoning_effort, enable_thinking, working_directory)
+
+    permission_raw = get_env("GITHUB_RUN_OPENCODE_PERMISSION", "")
+    permission = None
+    if permission_raw:
+        try:
+            permission = json.loads(permission_raw)
+        except json.JSONDecodeError:
+            print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
+            sys.exit(1)
+
+    needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
+    if needs_config:
+        configure_opencode_json(reasoning_effort, enable_thinking, working_directory, permission)
 
     validate_regex(fallback_on_regex, "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX")
 
