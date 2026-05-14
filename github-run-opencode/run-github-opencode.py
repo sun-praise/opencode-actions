@@ -233,6 +233,9 @@ def main() -> int:
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
             sys.exit(1)
+        if not isinstance(permission, dict):
+            print("GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object", file=sys.stderr)
+            sys.exit(1)
 
     needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
     if needs_config:

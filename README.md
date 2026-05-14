@@ -252,7 +252,7 @@ This repository includes a CI workflow that:
 2. Verify `CI` passes on `main`.
 3. Create a GitHub release with a semver tag such as `v1.0.0`.
 4. Confirm the `Update Major Tag` workflow moved `v1` to that release.
-5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/feature-missing@v2` for spec coverage audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/regression-test-missing@v2` for regression test audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
+5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/regression-test-missing@v2` for regression test audit, `owner/repo/pr-checks@v2` for combined PR checks, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
 
 The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 
