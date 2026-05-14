@@ -237,7 +237,7 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./regression-test-missing`
+- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./regression-test-missing`, and `uses: ./pr-checks`
 
 ## Release Policy
 

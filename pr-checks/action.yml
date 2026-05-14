@@ -74,6 +74,21 @@ inputs:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
     default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+  reasoning-effort:
+    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
+    required: false
+    default: "max"
+  enable-thinking:
+    description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
+    required: false
+    default: "true"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
   prompt:
     description: Value exported as PROMPT before running `opencode github run`. Defaults to a combined prompt that runs all three checks.
     required: false
@@ -237,12 +252,11 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
-        GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
-        GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
-        GITHUB_RUN_OPENCODE_GITHUB_TOKEN: ${{ inputs.github-token }}
-        GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
-        GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
-        GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+        GITHUB_RUN_OPENCODE_PERMISSION: >-
+          {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
