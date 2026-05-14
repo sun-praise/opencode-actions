@@ -45,6 +45,11 @@ jobs:
           install-dir: ${{ needs.setup.outputs.install-dir }}
           xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run OpenCode review
         uses: ./review
         with:
@@ -83,6 +88,11 @@ jobs:
           install-dir: ${{ needs.setup.outputs.install-dir }}
           xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run feature missing audit
         uses: ./feature-missing
         with:
@@ -120,6 +130,11 @@ jobs:
           cache: true
           install-dir: ${{ needs.setup.outputs.install-dir }}
           xdg-cache-home: ${{ needs.setup.outputs.xdg-cache-home }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run regression test missing audit
         uses: ./regression-test-missing
