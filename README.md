@@ -238,7 +238,9 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, and `uses: ./spec-coverage`
+<<<<<<< HEAD
+- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./architect-review`
+>>>>>>> 659a3dc (fix: address architect-review check failure and review feedback)
 
 ## Release Policy
 
