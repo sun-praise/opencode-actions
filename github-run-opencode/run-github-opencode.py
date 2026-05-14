@@ -99,7 +99,9 @@ def extract_decision(output_text: str, output_format: str) -> str:
         try:
             obj = json.loads(cleaned)
             if isinstance(obj, dict) and "decision" in obj:
-                return obj["decision"]
+                if obj["decision"] in ("可合并", "有条件合并", "不可合并"):
+                    return obj["decision"]
+                return ""
             return ""
         except json.JSONDecodeError:
             pass
@@ -112,8 +114,11 @@ def extract_decision(output_text: str, output_format: str) -> str:
             try:
                 obj, end = decoder.raw_decode(cleaned, brace_idx)
                 if isinstance(obj, dict) and "decision" in obj:
-                    return obj["decision"]
-                pos = end
+                    if obj["decision"] in ("可合并", "有条件合并", "不可合并"):
+                        return obj["decision"]
+                    pos = end
+                else:
+                    pos = end
             except json.JSONDecodeError:
                 pos = brace_idx + 1
         return ""

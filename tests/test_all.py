@@ -667,6 +667,9 @@ class TestExtractDecision(unittest.TestCase):
     def test_text_no_decision(self):
         self.assertEqual(self.extract_decision("nothing relevant here", "text"), "")
 
+    def test_json_unknown_decision(self):
+        self.assertEqual(self.extract_decision('{"decision": "unknown"}', "json"), "")
+
     def test_text_decision_with_prefix(self):
         self.assertEqual(self.extract_decision("可合并 - everything looks good", "text"), "可合并")
 

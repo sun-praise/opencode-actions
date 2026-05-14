@@ -286,17 +286,14 @@ runs:
         effective_prompt="${GITHUB_RUN_OPENCODE_PROMPT}"
 
         if [[ "$GITHUB_RUN_OPENCODE_OUTPUT_FORMAT" == "json" ]]; then
+          json_schema='{"decision": "可合并" or "有条件合并" or "不可合并", "summary": "brief summary", "blocking_items": [{"file":"...", "line":0, "description":"...", "severity":"high|medium|low", "suggested_fix":"..."}, ...], "warning_items": [{"file":"...", "line":0, "description":"...", "severity":"high|medium|low", "suggested_fix":"..."}, ...], "suggestion_items": [{"file":"...", "line":0, "description":"...", "severity":"high|medium|low", "suggested_fix":"..."}, ...]}'
+          json_suffix='
+          OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
+          '"${json_schema}"'
+          Use empty arrays when there are no items for a level. Keep all text in Chinese.'
           if [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
-            json_suffix='
-            OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
-            {"decision": "可合并" or "有条件合并" or "不可合并", "summary": "brief summary", "blocking_items": [{...}, ...], "warning_items": [{...}, ...], "suggestion_items": [{...}, ...]}
-            Use empty arrays when there are no items for a level. Keep all text in Chinese.
-            Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing.'
-          else
-            json_suffix='
-            OVERRIDE: ignore the "Text output format" section above. Output ONLY a raw JSON object — no markdown fences, no commentary, no leading decision line. Schema:
-            {"decision": "可合并" or "有条件合并" or "不可合并", "summary": "brief summary", "blocking_items": [{...}, ...], "warning_items": [{...}, ...], "suggestion_items": [{...}, ...]}
-            Use empty arrays when there are no items for a level. Keep all text in Chinese.'
+            json_suffix="${json_suffix}
+          Pass-level: standard — only blocking items (阻塞项) prevent merge. 有条件合并 is considered passing."
           fi
           effective_prompt="${effective_prompt}${json_suffix}"
         elif [[ "$GITHUB_RUN_OPENCODE_PASS_LEVEL" == "standard" ]]; then
