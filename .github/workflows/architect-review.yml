@@ -26,7 +26,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run OpenCode architect review
-        uses: Svtter/opencode-actions/architect-review@v2
+        # TODO: switch to Svtter/opencode-actions/architect-review@v2 after release
+        uses: ./architect-review
         with:
           model: ${{ vars.MODEL_NAME }}
 
