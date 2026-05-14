@@ -219,6 +219,9 @@ def main() -> int:
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
+    if reasoning_effort and reasoning_effort not in ("low", "medium", "high", "max"):
+        print(f"reasoning-effort must be one of low, medium, high, max; got '{reasoning_effort}'", file=sys.stderr)
+        sys.exit(1)
     enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
     working_directory = get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY", "")
 
@@ -229,6 +232,9 @@ def main() -> int:
             permission = json.loads(permission_raw)
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(permission, dict):
+            print("GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object", file=sys.stderr)
             sys.exit(1)
 
     needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
