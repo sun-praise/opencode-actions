@@ -99,6 +99,7 @@ def extract_decision(output_text: str, output_format: str) -> str:
             obj = json.loads(cleaned)
             if isinstance(obj, dict) and "decision" in obj:
                 return obj["decision"]
+            return ""
         except json.JSONDecodeError:
             pass
         decoder = json.JSONDecoder()
