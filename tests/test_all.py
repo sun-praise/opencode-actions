@@ -613,6 +613,60 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertNotIn("TIMEOUT_DURATION", result.stdout)
 
 
+class TestExtractDecision(unittest.TestCase):
+    """Tests for extract_decision function."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "run_github_opencode",
+            REPO_ROOT / "github-run-opencode" / "run-github-opencode.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        cls.extract_decision = staticmethod(mod.extract_decision)
+
+    def test_json_pure(self):
+        self.assertEqual(
+            self.extract_decision('{"decision": "可合并", "summary": "ok"}', "json"),
+            "可合并",
+        )
+
+    def test_json_with_markdown_fence(self):
+        text = '```json\n{"decision": "不可合并", "summary": "bad"}\n```'
+        self.assertEqual(self.extract_decision(text, "json"), "不可合并")
+
+    def test_json_with_surrounding_text(self):
+        text = 'Here is the review:\n{"decision": "有条件合并", "summary": "ok"}\nDone'
+        self.assertEqual(self.extract_decision(text, "json"), "有条件合并")
+
+    def test_json_invalid(self):
+        self.assertEqual(self.extract_decision("not json at all", "json"), "")
+
+    def test_json_missing_decision(self):
+        self.assertEqual(self.extract_decision('{"summary": "no decision field"}', "json"), "")
+
+    def test_json_array_not_dict(self):
+        self.assertEqual(self.extract_decision('[{"decision": "可合并"}]', "json"), "")
+
+    def test_text_可合并(self):
+        self.assertEqual(self.extract_decision("可合并\nother text", "text"), "可合并")
+
+    def test_text_不可合并(self):
+        self.assertEqual(self.extract_decision("不可合并", "text"), "不可合并")
+
+    def test_text_有条件合并(self):
+        self.assertEqual(self.extract_decision("有条件合并", "text"), "有条件合并")
+
+    def test_text_no_decision(self):
+        self.assertEqual(self.extract_decision("nothing relevant here", "text"), "")
+
+    def test_text_decision_with_prefix(self):
+        self.assertEqual(self.extract_decision("可合并 - everything looks good", "text"), "可合并")
+
+
 class TestReviewAction(unittest.TestCase):
     """Tests for review action metadata."""
 
