@@ -616,7 +616,6 @@ def _main() -> int:
                 continue
             key, _, value = line.partition("=")
             key = key.strip()
-            value = value.strip()
             if key:
                 if key.startswith("GITHUB_RUN_OPENCODE_"):
                     print(f"::error::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_' and is not allowed")
@@ -628,8 +627,7 @@ def _main() -> int:
                     else:
                         print(f"::error::extra-env key '{key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow")
                         sensitive_blocked.append(key)
-                        continue
-                os.environ[key] = value
+                        continue                os.environ[key] = value
         all_blocked = prefix_blocked + sensitive_blocked
         if all_blocked:
             if prefix_blocked:
@@ -653,6 +651,9 @@ def _main() -> int:
             permission = parsed
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(permission, dict):
+            print(f"GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object, got {type(permission).__name__}", file=sys.stderr)
             sys.exit(1)
 
     needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission

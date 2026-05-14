@@ -144,6 +144,15 @@ inputs:
       characters; only lines starting with '#' are treated as comments.
     required: false
     default: ""
+  permission:
+    description: >-
+      JSON object for opencode agent-level permission overrides (merged into opencode.json).
+      When empty, uses the default read-only permission policy.
+      See https://opencode.ai/docs/permissions/ for available keys.
+      Example: '{"edit":"deny","bash":{"git commit *":"deny"}}'
+    required: false
+    default: >-
+      {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
 
 runs:
   using: composite
@@ -246,8 +255,7 @@ runs:
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
-        GITHUB_RUN_OPENCODE_PERMISSION: >-
-          {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+        GITHUB_RUN_OPENCODE_PERMISSION: ${{ inputs.permission }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
