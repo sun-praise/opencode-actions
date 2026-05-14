@@ -88,7 +88,7 @@ inputs:
       - Performance issues
       - Suggest improvements
 
-      Please respond in Chinese. DO NOT modify any code, only provide review comments.
+      DO NOT modify any code, only provide review comments.
       The first line of your response must be exactly one of:
       - 可合并 / CAN MERGE
       - 有条件合并 / CONDITIONAL MERGE

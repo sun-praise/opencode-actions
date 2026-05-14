@@ -103,7 +103,7 @@ inputs:
       Analyze the latest PR HEAD only.
       Verify any gap claim against the current code before listing it.
 
-      Please respond in Chinese. DO NOT modify any code. DO NOT run git commit, git push, or any other write operations. Only provide analysis.
+      DO NOT modify any code. DO NOT run git commit, git push, or any other write operations. Only provide analysis.
 
       Verdict rule (MUST follow):
       - First line must be exactly one of:
