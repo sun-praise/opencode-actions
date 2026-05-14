@@ -82,7 +82,7 @@ inputs:
 
       First, read AGENTS.md (or CLAUDE.md) if it exists in the repository root to understand the project's architecture conventions and constraints.
 
-      If neither AGENTS.md nor CLAUDE.md exists, infer architecture conventions by examining the project's directory tree (e.g., via `ls -la`, `find . -maxdepth 3 -type d`) and key configuration files (e.g., `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`). Use the inferred structure to reason about layering, module responsibilities, and naming conventions.
+      If neither AGENTS.md nor CLAUDE.md exists, infer architecture conventions by examining the project's directory tree (e.g., via `ls -la`, `find . -maxdepth 3 -type d -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/vendor/*'`) and key configuration files (e.g., `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`). Use the inferred structure to reason about layering, module responsibilities, and naming conventions.
 
       Then analyze the PR changes for the following architecture concerns:
 

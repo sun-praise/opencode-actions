@@ -142,11 +142,12 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
-### How the three review actions differ
+### How the review actions differ
 
 | Action | Scope source | What it catches |
 | --- | --- | --- |
 | `review` | PR diff | Code quality, security, bugs |
+| `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
 
@@ -238,9 +239,7 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-<<<<<<< HEAD
 - smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./architect-review`
->>>>>>> 659a3dc (fix: address architect-review check failure and review feedback)
 
 ## Release Policy
 
@@ -255,7 +254,7 @@ This repository includes a CI workflow that:
 2. Verify `CI` passes on `main`.
 3. Create a GitHub release with a semver tag such as `v1.0.0`.
 4. Confirm the `Update Major Tag` workflow moved `v1` to that release.
-5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
+5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/architect-review@v2` for architecture review, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
 
 The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 

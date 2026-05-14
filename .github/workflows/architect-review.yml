@@ -20,6 +20,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Configure git identity
+        # OpenCode requires git identity even in read-only mode for internal operations like diff/worktree
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
