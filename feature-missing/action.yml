@@ -280,7 +280,7 @@ runs:
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
       run: |
-        if ! command -v python3 >\/dev/null 2>&1; then
+        if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
           exit 1
         fi
