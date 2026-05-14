@@ -36,3 +36,12 @@ jobs:
           attempts: "1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+      - name: Test test-value-detector action loads
+        uses: ./test-value-detector
+        with:
+          model: test-model
+          timeout-seconds: "5"
+          attempts: "1"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
