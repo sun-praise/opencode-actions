@@ -90,14 +90,14 @@ inputs:
 
       Please respond in Chinese. DO NOT modify any code, only provide review comments.
       The first line of your response must be exactly one of:
-      - 可合并
-      - 有条件合并
-      - 不可合并
+      - 可合并 / CAN MERGE
+      - 有条件合并 / CONDITIONAL MERGE
+      - 不可合并 / CANNOT MERGE
 
       Decision rules:
-      - Use "可合并" only when there are no blocking issues.
-      - Use "有条件合并" when merge is acceptable only after specific issues are fixed.
-      - Use "不可合并" when there are blocking risks, correctness issues, or major concerns that should stop the merge.
+      - Use "可合并" / "CAN MERGE" only when there are no blocking issues.
+      - Use "有条件合并" / "CONDITIONAL MERGE" when merge is acceptable only after specific issues are fixed.
+      - Use "不可合并" / "CANNOT MERGE" when there are blocking risks, correctness issues, or major concerns that should stop the merge.
 
       Review the latest PR HEAD only.
       Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
@@ -106,8 +106,8 @@ inputs:
       Output format:
       - First line: the decision only
       - Then a short summary
-      - Then "阻塞项" listing required fixes for merge; if none, write "阻塞项：无"
-      - Then "建议项" listing non-blocking improvements; if none, write "建议项：无"
+      - Then "阻塞项" / "Blocking Issues" listing required fixes for merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+      - Then "建议项" / "Suggestions" listing non-blocking improvements; if none, write "建议项：无" / "Suggestions: None"
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
@@ -143,6 +143,11 @@ inputs:
       starting with '#' are ignored.
     required: false
     default: ""
+  language:
+    description: >-
+      Response language for the agent. `zh` (default) for Chinese, `en` for English.
+    required: false
+    default: "zh"
 
 runs:
   using: composite
@@ -247,6 +252,7 @@ runs:
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+        GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

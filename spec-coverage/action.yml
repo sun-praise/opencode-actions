@@ -107,15 +107,15 @@ inputs:
 
       Verdict rule (MUST follow):
       - First line must be exactly one of:
-        - "无需审计" — this PR does not need a spec (bug fix, docs, minor change)
-        - "全覆盖" — ALL spec tasks are implemented with end-to-end integration
-        - "发现遗漏" — spec tasks are missing, not integrated, or a spec is required but absent
+        - "无需审计" / "SKIP" — this PR does not need a spec (bug fix, docs, minor change)
+        - "全覆盖" / "FULL COVERAGE" — ALL spec tasks are implemented with end-to-end integration
+        - "发现遗漏" / "GAPS FOUND" — spec tasks are missing, not integrated, or a spec is required but absent
 
       Output format:
-      - First line: the verdict ("无需审计" / "全覆盖" / "发现遗漏")
-      - If "无需审计": one-line explanation of why, then stop
+      - First line: the verdict ("无需审计" / "全覆盖" / "发现遗漏" for Chinese; "SKIP" / "FULL COVERAGE" / "GAPS FOUND" for English)
+      - If "无需审计" / "SKIP": one-line explanation of why, then stop
       - Otherwise: a short summary listing which spec files you found and how many tasks were checked
-      - If verdict is "发现遗漏", classify each gap:
+      - If verdict is "发现遗漏" / "GAPS FOUND", classify each gap:
         ### CRITICAL
         Spec tasks with zero implementation — planned but completely absent from the PR.
         ### MEDIUM
@@ -123,7 +123,7 @@ inputs:
         ### LOW
         Minor gaps — documentation, non-essential features, or nice-to-haves.
         For each gap: quote the spec task verbatim, describe what's missing in the implementation, and suggest which file(s) should be modified.
-      - If verdict is "全覆盖", briefly confirm all spec tasks are covered — do NOT include any severity sections.
+      - If verdict is "全覆盖" / "FULL COVERAGE", briefly confirm all spec tasks are covered — do NOT include any severity sections.
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
@@ -171,6 +171,11 @@ inputs:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
     default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+  language:
+    description: >-
+      Response language for the agent. `zh` (default) for Chinese, `en` for English.
+    required: false
+    default: "zh"
 
 runs:
   using: composite
@@ -275,6 +280,7 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+        GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

@@ -197,6 +197,18 @@ def main() -> int:
 
     set_env("PROMPT", get_env("GITHUB_RUN_OPENCODE_PROMPT"))
     set_env("USE_GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN"))
+
+    # Language override: append a language instruction to the prompt
+    language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
+    if language == "en":
+        existing_prompt = os.environ.get("PROMPT", "")
+        if existing_prompt:
+            os.environ["PROMPT"] = (
+                existing_prompt
+                + "\n\nIMPORTANT: Respond entirely in English. "
+                "Use English for all analysis, explanations, and output. "
+                "For any verdict keywords listed in the prompt, use their English equivalents."
+            )
     set_env("GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_GITHUB_TOKEN"))
     set_env("ZHIPU_API_KEY", get_env("GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"))
     set_env("OPENCODE_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"))
