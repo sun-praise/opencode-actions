@@ -203,6 +203,12 @@ def main() -> int:
     set_env("DEEPSEEK_API_KEY", get_env("GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"))
 
     # Extra env vars from extra-env input
+    BLOCKED_ENV_KEYS = frozenset({
+        "PATH", "HOME", "USER", "SHELL", "MODEL", "GITHUB_TOKEN",
+        "GITHUB_WORKSPACE", "GITHUB_EVENT_PATH", "GITHUB_SHA",
+        "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_RUN_ID",
+        "GITHUB_ACTIONS", "LD_LIBRARY_PATH", "PYTHONPATH",
+    })
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
     if extra_env_raw:
         for line in extra_env_raw.splitlines():
@@ -214,10 +220,17 @@ def main() -> int:
                 continue
             key, _, value = line.partition("=")
             key = key.strip()
-            if key:
-                if re.search(r'(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)', key, re.IGNORECASE):
-                    print(f"Warning: extra-env key '{key}' looks like a sensitive variable — make sure this is intentional", file=sys.stderr)
-                os.environ[key] = value
+            if not key:
+                continue
+            if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', key):
+                print(f"::error::extra-env key '{key}' is not a valid environment variable name (must match [A-Za-z_][A-Za-z0-9_]*)", file=sys.stderr)
+                sys.exit(1)
+            if key in BLOCKED_ENV_KEYS:
+                print(f"::error::extra-env key '{key}' is blocked — overriding this variable is not allowed", file=sys.stderr)
+                sys.exit(1)
+            if re.search(r'(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)', key, re.IGNORECASE):
+                print(f"::warning::extra-env key '{key}' looks like a sensitive variable — make sure this is intentional")
+            os.environ[key] = value.strip()
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
     enable_thinking = get_env("GITHUB_RUN_OPENCODE_ENABLE_THINKING", "false")
