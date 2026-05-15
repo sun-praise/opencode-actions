@@ -1,0 +1,96 @@
+name: Setup Kimi CLI
+description: Install and cache the Kimi CLI on Linux runners.
+
+inputs:
+  version:
+    description: Kimi CLI version to install (e.g. 1.2.3). Installs latest if empty.
+    required: false
+    default: ""
+  install-dir:
+    description: Directory where the kimi binary should be installed.
+    required: false
+    default: ""
+  cache:
+    description: Cache the install directory with actions/cache.
+    required: false
+    default: "true"
+  cache-key:
+    description: Cache key suffix used to invalidate caches.
+    required: false
+    default: v1
+
+outputs:
+  kimi-cli-path:
+    description: Resolved absolute path to the kimi binary.
+    value: ${{ steps.metadata.outputs.kimi_cli_path }}
+  install-dir:
+    description: Resolved install directory.
+    value: ${{ steps.paths.outputs.install_dir }}
+  cache-hit:
+    description: Whether actions/cache restored a matching cache entry.
+    value: ${{ steps.metadata.outputs.cache_hit }}
+  version:
+    description: Resolved Kimi CLI version string.
+    value: ${{ steps.metadata.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'setup-kimi-cli currently supports Linux runners only\n' >&2
+        exit 1
+
+    - id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        install_dir="${{ inputs.install-dir }}"
+
+        if [[ -z "$install_dir" ]]; then
+          install_dir="${RUNNER_TOOL_CACHE:-$HOME/.cache}/kimi-cli"
+        fi
+
+        printf 'install_dir=%s\n' "$install_dir" >>"$GITHUB_OUTPUT"
+
+    - id: key
+      shell: bash
+      run: |
+        set -euo pipefail
+        version_hash="$(printf '%s' '${{ inputs.version }}' | sha256sum | cut -d' ' -f1)"
+        printf 'version_hash=%s\n' "$version_hash" >>"$GITHUB_OUTPUT"
+
+    - id: cache
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@v5
+      with:
+        path: ${{ steps.paths.outputs.install_dir }}
+        key: setup-kimi-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.version_hash }}-${{ inputs.cache-key }}
+
+    - id: install
+      shell: bash
+      env:
+        KIMI_INSTALL_DIR: ${{ steps.paths.outputs.install_dir }}
+        KIMI_VERSION: ${{ inputs.version }}
+      run: |
+        export KIMI_INSTALL_DIR="${{ steps.paths.outputs.install_dir }}"
+        export KIMI_VERSION="${{ inputs.version }}"
+        ${{ github.action_path }}/install-kimi-cli.sh
+
+    - id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="${{ steps.paths.outputs.install_dir }}/bin:$PATH"
+        kimi_path="$(command -v kimi)"
+        version="$(kimi --version 2>/dev/null || true)"
+        cache_hit="${{ steps.cache.outputs.cache-hit }}"
+        if [[ -z "$cache_hit" ]]; then
+          cache_hit="false"
+        fi
+
+        printf 'kimi_cli_path=%s\n' "$kimi_path" >>"$GITHUB_OUTPUT"
+        printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+        printf 'cache_hit=%s\n' "$cache_hit" >>"$GITHUB_OUTPUT"

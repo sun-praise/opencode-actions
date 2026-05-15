@@ -1,0 +1,61 @@
+name: Test Kimi CLI
+
+on:
+  push:
+    branches: [feat/add-kimi-cli-support]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-kimi-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Prepare fake kimi binary
+        run: |
+          cp tests/fixtures/fake-kimi.sh /usr/local/bin/kimi
+          chmod +x /usr/local/bin/kimi
+
+      - name: Setup Kimi CLI via local action
+        uses: ./setup-kimi-cli
+        with:
+          cache: false
+        env:
+          FAKE_KIMI_VERSION: 1.0.0-smoke
+
+      - name: Run Kimi CLI via local action
+        uses: ./run-kimi-cli
+        with:
+          prompt: smoke kimi prompt
+          model: smoke-kimi-model
+          attempts: 1
+
+      - name: Run review with Kimi CLI
+        uses: ./review
+        with:
+          cli: kimi-cli
+          cache: false
+          attempts: 1
+          prompt: kimi review prompt
+          model: kimi-review-model
+
+      - name: Run feature-missing with Kimi CLI
+        uses: ./feature-missing
+        with:
+          cli: kimi-cli
+          cache: false
+          attempts: 1
+          prompt: kimi feature prompt
+          model: kimi-feature-model
+
+      - name: Run spec-coverage with Kimi CLI
+        uses: ./spec-coverage
+        with:
+          cli: kimi-cli
+          cache: false
+          attempts: 1
+          prompt: kimi spec prompt
+          model: kimi-spec-model

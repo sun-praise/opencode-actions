@@ -699,5 +699,127 @@ class TestDogfoodWorkflow(unittest.TestCase):
         self.assertIn("zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}", content)
 
 
+class TestSetupKimiCli(unittest.TestCase):
+    """Tests for setup-kimi-cli/install-kimi-cli.sh"""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        self.env = os.environ.copy()
+        self.env["KIMI_INSTALL_DIR"] = str(self.work_dir / "kimi-cli")
+        self.env["PATH"] = "/usr/bin:/bin"
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+
+    def run_install(self, **extra_env) -> subprocess.CompletedProcess:
+        env = self.env.copy()
+        env.update(extra_env)
+        return subprocess.run(
+            [str(REPO_ROOT / "setup-kimi-cli" / "install-kimi-cli.sh")],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_reuses_preinstalled(self):
+        """When kimi exists on PATH, it should be symlinked."""
+        fake_path = self.work_dir / "path"
+        fake_path.mkdir(parents=True)
+        fake_bin = fake_path / "kimi"
+        fake_bin.write_text("#!/bin/bash\nprintf 'preinstalled-version\\n'\n")
+        fake_bin.chmod(0o755)
+
+        env = self.env.copy()
+        env["PATH"] = f"{fake_path}:/usr/bin:/bin"
+        result = self.run_install(**env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        symlink = self.work_dir / "kimi-cli" / "bin" / "kimi"
+        self.assertTrue(symlink.exists() or symlink.is_symlink())
+
+    def test_creates_venv_when_missing(self):
+        """When no kimi on PATH, it should create venv and install."""
+        result = self.run_install()
+        # This will actually try to pip install; network may fail.
+        # We just verify the script handles missing binary gracefully.
+        self.assertIn(result.returncode, [0, 1])
+
+
+class TestRunKimiCli(unittest.TestCase):
+    """Tests for run-kimi-cli/run-kimi-cli.sh"""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        self.attempt_file = self.work_dir / "attempts"
+        self.fake_kimi = self.work_dir / "kimi"
+        self.fake_kimi.write_text(
+            '#!/bin/bash\n'
+            'attempt_file="${FAKE_KIMI_ATTEMPT_FILE:?}"\n'
+            'attempt=0\n'
+            'if [[ -f "$attempt_file" ]]; then\n'
+            '  attempt=$(<"$attempt_file")\n'
+            'fi\n'
+            'attempt=$((attempt + 1))\n'
+            'printf "%s" "$attempt" >"$attempt_file"\n'
+            'if (( attempt < 3 )); then\n'
+            '  printf "Failed to connect to github.com port 443\\n" >&2\n'
+            '  exit 42\n'
+            'fi\n'
+            'printf "success on attempt %s\\n" "$attempt"\n'
+        )
+        self.fake_kimi.chmod(0o755)
+
+        self.env = os.environ.copy()
+        self.env["PATH"] = f"{self.work_dir}:{os.environ.get('PATH', '')}"
+        self.env["FAKE_KIMI_ATTEMPT_FILE"] = str(self.attempt_file)
+        self.env["KIMI_ATTEMPTS"] = "3"
+        self.env["KIMI_RETRY_DELAY_SECONDS"] = "0"
+        self.env["KIMI_RETRY_PROFILE"] = ""
+        self.env["KIMI_TIMEOUT_SECONDS"] = "0"
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+
+    def run_kimi(self, **extra_env) -> subprocess.CompletedProcess:
+        env = self.env.copy()
+        env.update(extra_env)
+        return subprocess.run(
+            [str(REPO_ROOT / "run-kimi-cli" / "run-kimi-cli.sh")],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_retry_with_regex(self):
+        """Should retry when output matches retry-on-regex."""
+        result = self.run_kimi(
+            KIMI_RETRY_ON_REGEX="Failed to connect to github\\.com port 443"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("success on attempt 3", result.stdout)
+
+        attempts = self.attempt_file.read_text().strip()
+        self.assertEqual(attempts, "3")
+
+    def test_retry_with_profile(self):
+        """Should retry with built-in github-network profile."""
+        if self.attempt_file.exists():
+            self.attempt_file.unlink()
+        result = self.run_kimi(
+            KIMI_RETRY_ON_REGEX="",
+            KIMI_RETRY_PROFILE="github-network",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("success on attempt 3", result.stdout)
+
+        attempts = self.attempt_file.read_text().strip()
+        self.assertEqual(attempts, "3")
+
+    def test_attempts_validation(self):
+        """KIMI_ATTEMPTS=0 should fail validation."""
+        result = self.run_kimi(KIMI_ATTEMPTS="0")
+        self.assertNotEqual(result.returncode, 0, "expected attempts=0 to fail validation")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

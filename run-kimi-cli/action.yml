@@ -1,0 +1,71 @@
+name: Run Kimi CLI
+description: Execute Kimi CLI with optional retry logic.
+
+inputs:
+  prompt:
+    description: Prompt passed to the Kimi CLI agent.
+    required: false
+    default: ""
+  model:
+    description: Model passed to Kimi CLI via --model or KIMI_MODEL_NAME env.
+    required: false
+    default: ""
+  working-directory:
+    description: Optional working directory before running kimi.
+    required: false
+    default: ""
+  attempts:
+    description: Total number of attempts before failing.
+    required: false
+    default: "1"
+  retry-on-regex:
+    description: Retry only when stderr or stdout matches this regex.
+    required: false
+    default: ""
+  retry-profile:
+    description: Built-in retry profile, for example github-network.
+    required: false
+    default: ""
+  retry-delay-seconds:
+    description: Base delay between retries in seconds.
+    required: false
+    default: "15"
+  timeout-seconds:
+    description: Maximum execution time in seconds. Set 0 to disable.
+    required: false
+    default: "600"
+  kimi-cli-path:
+    description: Optional explicit path to the kimi binary.
+    required: false
+    default: kimi
+  extra-env:
+    description: >-
+      Extra environment variables to pass to kimi runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'run-kimi-cli currently supports Linux runners only\n' >&2
+        exit 1
+
+    - shell: bash
+      run: |
+        export KIMI_PROMPT='${{ inputs.prompt }}'
+        export KIMI_MODEL='${{ inputs.model }}'
+        export KIMI_WORKING_DIRECTORY='${{ inputs.working-directory }}'
+        export KIMI_ATTEMPTS='${{ inputs.attempts }}'
+        export KIMI_RETRY_ON_REGEX='${{ inputs.retry-on-regex }}'
+        export KIMI_RETRY_PROFILE='${{ inputs.retry-profile }}'
+        export KIMI_RETRY_DELAY_SECONDS='${{ inputs.retry-delay-seconds }}'
+        export KIMI_TIMEOUT_SECONDS='${{ inputs.timeout-seconds }}'
+        export KIMI_BIN_PATH='${{ inputs.kimi-cli-path }}'
+        export KIMI_EXTRA_ENV='${{ inputs.extra-env }}'
+        ${{ github.action_path }}/run-kimi-cli.sh
