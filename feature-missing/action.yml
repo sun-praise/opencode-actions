@@ -2,6 +2,10 @@ name: OpenCode Feature Missing
 description: Compares PR implementation against the linked issue spec to find missing or incomplete features before merge.
 
 inputs:
+  cli:
+    description: CLI tool to use. Allowed values are opencode, kimi-cli.
+    required: false
+    default: opencode
   install-url:
     description: Installer URL used to bootstrap OpenCode.
     required: false
@@ -164,6 +168,7 @@ runs:
         exit 1
 
     - id: paths
+      if: ${{ inputs.cli == 'opencode' }}
       shell: bash
       env:
         INPUT_INSTALL_DIR: ${{ inputs.install-dir }}
@@ -185,6 +190,7 @@ runs:
         printf 'xdg_cache_home=%s\n' "$xdg_cache_home" >>"$GITHUB_OUTPUT"
 
     - id: key
+      if: ${{ inputs.cli == 'opencode' }}
       shell: bash
       env:
         INPUT_INSTALL_URL: ${{ inputs.install-url }}
@@ -194,6 +200,7 @@ runs:
         printf 'install_url_hash=%s\n' "$install_url_hash" >>"$GITHUB_OUTPUT"
 
     - id: version
+      if: ${{ inputs.cli == 'opencode' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -215,7 +222,7 @@ runs:
         printf 'version=%s\n' "$effective" >>"$GITHUB_OUTPUT"
 
     - id: cache
-      if: ${{ inputs.cache == 'true' }}
+      if: ${{ inputs.cli == 'opencode' && inputs.cache == 'true' }}
       uses: actions/cache@v5
       with:
         path: |
@@ -223,7 +230,8 @@ runs:
           ${{ steps.paths.outputs.xdg_cache_home }}
         key: feature-missing-opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.install_url_hash }}-${{ steps.version.outputs.version }}-${{ inputs.cache-key }}
 
-    - shell: bash
+    - if: ${{ inputs.cli == 'opencode' }}
+      shell: bash
       env:
         OPENCODE_INSTALL_DIR: ${{ steps.paths.outputs.install_dir }}
         XDG_CACHE_HOME: ${{ steps.paths.outputs.xdg_cache_home }}
@@ -233,7 +241,8 @@ runs:
         OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
       run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
 
-    - shell: bash
+    - if: ${{ inputs.cli == 'opencode' }}
+      shell: bash
       env:
         GITHUB_RUN_OPENCODE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         GITHUB_RUN_OPENCODE_ATTEMPTS: ${{ inputs.attempts }}
@@ -261,3 +270,24 @@ runs:
           exit 1
         fi
         python3 ${{ github.action_path }}/../github-run-opencode/run-github-opencode.py
+
+    - if: ${{ inputs.cli == 'kimi-cli' }}
+      id: setup-kimi
+      uses: ./setup-kimi-cli
+      with:
+        cache: ${{ inputs.cache }}
+        cache-key: ${{ inputs.cache-key }}
+
+    - if: ${{ inputs.cli == 'kimi-cli' }}
+      uses: ./run-kimi-cli
+      with:
+        prompt: ${{ inputs.prompt }}
+        model: ${{ inputs.model }}
+        working-directory: ${{ inputs.working-directory }}
+        attempts: ${{ inputs.attempts }}
+        retry-profile: ${{ inputs.retry-profile }}
+        retry-on-regex: ${{ inputs.retry-on-regex }}
+        retry-delay-seconds: ${{ inputs.retry-delay-seconds }}
+        timeout-seconds: ${{ inputs.timeout-seconds }}
+        kimi-cli-path: ${{ steps.setup-kimi.outputs.kimi-cli-path }}
+        extra-env: ${{ inputs.extra-env }}
