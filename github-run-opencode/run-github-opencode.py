@@ -200,8 +200,8 @@ def cleanup_error_comments() -> None:
             [
                 gh_path, "api",
                 "--paginate",
+                "-H", "Accept: application/vnd.github+json",
                 f"/repos/{github_repository}/issues/{pr_number}/comments",
-                "--jq", ".[] | .id,.body",
             ],
             capture_output=True,
             text=True,
@@ -211,21 +211,18 @@ def cleanup_error_comments() -> None:
         if result.returncode != 0:
             print(f"cleanup-error-comments: failed to list comments: {result.stderr}", file=sys.stderr)
             return
-        lines = result.stdout.splitlines()
-    except (subprocess.TimeoutExpired, Exception) as e:
+        comments = json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
         print(f"cleanup-error-comments: error listing comments: {e}", file=sys.stderr)
         return
 
-    comment_ids_to_delete: list[str] = []
-    i = 0
-    while i + 1 < len(lines):
-        comment_id = lines[i].strip()
-        body = lines[i + 1]
-        if run_link_pattern in body and error_indicators.search(body):
-            comment_ids_to_delete.append(comment_id)
-        i += 2
-
-    for comment_id in comment_ids_to_delete:
+    for comment in comments:
+        comment_id = comment.get("id")
+        body = comment.get("body", "")
+        if not comment_id or not body:
+            continue
+        if run_link_pattern not in body or not error_indicators.search(body):
+            continue
         try:
             del_result = subprocess.run(
                 [
