@@ -113,6 +113,13 @@ inputs:
       Example: '{"edit":"deny","bash":{"git commit *":"deny"}}'
     required: false
     default: ""
+  cleanup-error-comments:
+    description: >-
+      When true, automatically delete error comments posted by opencode to the PR
+      after a failed run. Error comments are identified by matching the GITHUB_RUN_ID
+      in the "[github run]" link combined with error indicators (fatal:, remote:, 403, etc.).
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -215,6 +222,7 @@ runs:
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_PERMISSION: ${{ inputs.permission }}
+        GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
