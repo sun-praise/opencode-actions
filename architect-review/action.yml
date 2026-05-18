@@ -75,55 +75,18 @@ inputs:
     required: false
     default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
   prompt:
-    description: Value exported as PROMPT before running `opencode github run`.
+    description: Value exported as PROMPT before running `opencode github run`. When empty, the built-in architect review prompt is used.
     required: false
-    default: |
-      Review this pull request from an architecture perspective (read-only mode, DO NOT modify any code).
-
-      First, read AGENTS.md (or CLAUDE.md) if it exists in the repository root to understand the project's architecture conventions and constraints.
-
-      If neither AGENTS.md nor CLAUDE.md exists, infer architecture conventions by examining the project's directory tree (e.g., via `ls -la`, `find . -maxdepth 3 -type d -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/vendor/*'`) and key configuration files (e.g., `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`). Use the inferred structure to reason about layering, module responsibilities, and naming conventions.
-
-      Then analyze the PR changes for the following architecture concerns:
-
-      1. **Coupling**: Does this change introduce unnecessary coupling between modules or layers? Are there hidden dependencies or circular imports that did not exist before?
-
-      2. **Module placement**: Are new files, packages, or modules placed in the correct location according to the project's directory conventions? Does the naming align with neighboring modules?
-
-      3. **Layering / responsibility boundaries**: Does this change respect existing separation of concerns? For example, does it mix business logic with presentation, or put infrastructure code in domain modules?
-
-      4. **Interface design**: Are new APIs, classes, or functions designed with appropriate abstraction levels? Are they too broad, too narrow, or leaking implementation details?
-
-      5. **Shotgun surgery**: Would adding a similar feature in the future require touching many files across different layers? Is the change scattered across N files when it should be localized?
-
-      6. **Consistency**: Is the architectural pattern used here consistent with how similar concerns are handled elsewhere in the codebase?
-
-      Do NOT report:
-      - Code style, naming, or formatting issues (that's the review action's job)
-      - Bugs or logic errors (that's the review action's job)
-      - Test coverage suggestions
-      - Minor refactoring suggestions unrelated to architecture
-
-      Please respond in Chinese. DO NOT modify any code, only provide architecture review comments.
-      The first line of your response must be exactly one of:
-      - 架构合理
-      - 架构有疑虑
-      - 架构有问题
-
-      Decision rules:
-      - Use "架构合理" when the change follows existing architecture patterns and introduces no structural concerns.
-      - Use "架构有疑虑" when there are non-blocking architecture concerns that should be discussed but do not prevent merge.
-      - Use "架构有问题" when the change introduces serious architectural violations that should block merge (e.g., breaking layering, introducing circular dependencies, creating a pattern that would be costly to reverse).
-
-      Analyze the latest PR HEAD only.
-      Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
-      Verify any blocking claim against the current code before listing it.
-
-      Output format:
-      - First line: the decision only
-      - Then a short summary of the architectural analysis
-      - Then "阻塞项" listing architecture issues that should block merge; if none, write "阻塞项：无"
-      - Then "建议项" listing non-blocking architecture improvements; if none, write "建议项：无"
+    default: ""
+  architecture-context:
+    description: >-
+      Comma-separated file paths containing project architecture documentation
+      (e.g. "AGENTS.md,docs/architecture.md"). File contents are appended to the
+      prompt so the reviewer understands project structure. Files that do not
+      exist are silently skipped. When empty, the default prompt reads AGENTS.md
+      or CLAUDE.md automatically.
+    required: false
+    default: ""
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
@@ -159,6 +122,13 @@ inputs:
       starting with '#' are ignored.
     required: false
     default: ""
+  cleanup-error-comments:
+    description: >-
+      When true, automatically delete error comments posted by opencode to the PR
+      after a failed run. Error comments are identified by matching the GITHUB_RUN_ID
+      in the "[github run]" link combined with error indicators (fatal:, remote:, 403, etc.).
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -240,6 +210,88 @@ runs:
         OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
       run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
 
+    - id: build-prompt
+      shell: bash
+      env:
+        INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_ARCHITECTURE_CONTEXT: ${{ inputs.architecture-context }}
+      run: |
+        set -euo pipefail
+
+        if [[ -n "$INPUT_PROMPT" ]]; then
+          prompt="$INPUT_PROMPT"
+        else
+          prompt=$(cat <<'PROMPT_EOF'
+        Review this pull request from an architecture perspective (read-only mode, DO NOT modify any code).
+
+        First, read AGENTS.md (or CLAUDE.md) if it exists in the repository root to understand the project's architecture conventions and constraints.
+
+        If neither AGENTS.md nor CLAUDE.md exists, infer architecture conventions by examining the project's directory tree (e.g., via `ls -la`, `find . -maxdepth 3 -type d -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/vendor/*'`) and key configuration files (e.g., `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`). Use the inferred structure to reason about layering, module responsibilities, and naming conventions.
+
+        Then analyze the PR changes for the following architecture concerns:
+
+        1. **Coupling**: Does this change introduce unnecessary coupling between modules or layers? Are there hidden dependencies or circular imports that did not exist before?
+
+        2. **Module placement**: Are new files, packages, or modules placed in the correct location according to the project's directory conventions? Does the naming align with neighboring modules?
+
+        3. **Layering / responsibility boundaries**: Does this change respect existing separation of concerns? For example, does it mix business logic with presentation, or put infrastructure code in domain modules?
+
+        4. **Interface design**: Are new APIs, classes, or functions designed with appropriate abstraction levels? Are they too broad, too narrow, or leaking implementation details?
+
+        5. **Shotgun surgery**: Would adding a similar feature in the future require touching many files across different layers? Is the change scattered across N files when it should be localized?
+
+        6. **Consistency**: Is the architectural pattern used here consistent with how similar concerns are handled elsewhere in the codebase?
+
+        Do NOT report:
+        - Code style, naming, or formatting issues (that's the review action's job)
+        - Bugs or logic errors (that's the review action's job)
+        - Test coverage suggestions
+        - Minor refactoring suggestions unrelated to architecture
+
+        Please respond in Chinese. DO NOT modify any code, only provide architecture review comments.
+        The first line of your response must be exactly one of:
+        - 架构合理
+        - 架构有疑虑
+        - 架构有问题
+
+        Decision rules:
+        - Use "架构合理" when the change follows existing architecture patterns and introduces no structural concerns.
+        - Use "架构有疑虑" when there are non-blocking architecture concerns that should be discussed but do not prevent merge.
+        - Use "架构有问题" when the change introduces serious architectural violations that should block merge (e.g., breaking layering, introducing circular dependencies, creating a pattern that would be costly to reverse).
+
+        Analyze the latest PR HEAD only.
+        Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+        Verify any blocking claim against the current code before listing it.
+
+        Output format:
+        - First line: the decision only
+        - Then a short summary of the architectural analysis
+        - Then "阻塞项" listing architecture issues that should block merge; if none, write "阻塞项：无"
+        - Then "建议项" listing non-blocking architecture improvements; if none, write "建议项：无"
+        PROMPT_EOF
+        )
+        fi
+
+        if [[ -n "$INPUT_ARCHITECTURE_CONTEXT" ]]; then
+          prompt="$prompt"$'\n\n'"---"$'\n'"Project architecture context (read the following files before reviewing):"$'\n'
+          IFS=',' read -ra files <<< "$INPUT_ARCHITECTURE_CONTEXT"
+          for f in "${files[@]}"; do
+            f="${f#/}"
+            f="${f#./}"
+            if [[ -f "$f" ]]; then
+              prompt="$prompt"$'\n'"--- File: $f ---"$'\n'"$(cat "$f")"$'\n'
+            else
+              printf 'warning: architecture-context file not found, skipping: %s\n' "$f" >&2
+            fi
+          done
+        fi
+
+        {
+          printf 'prompt<<OPENCODE_PROMPT_EOF\n'
+          printf '%s' "$prompt"
+          printf '\nOPENCODE_PROMPT_EOF\n'
+        } >>"$GITHUB_OUTPUT"
+
     - shell: bash
       env:
         GITHUB_RUN_OPENCODE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -252,7 +304,7 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
-        GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
+        GITHUB_RUN_OPENCODE_PROMPT: ${{ steps.build-prompt.outputs.prompt }}
         GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
         GITHUB_RUN_OPENCODE_GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
@@ -263,6 +315,7 @@ runs:
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+        GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2
