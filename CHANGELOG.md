@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-05-18
+
+### Added
+- feat: add setup-ci skill for configuring opencode-actions workflows (#70)
+- feat: auto-delete error comments posted by opencode to PRs after failed runs (#77)
+
+### Changed
+- fix: enforce read-only mode via opencode permission config (#72)
+- docs: add npx skills add command to README (#71)
+- chore: add os spec
+
 ## [2.1.1] - 2026-05-13
 
 ### Fixed
