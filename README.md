@@ -31,6 +31,7 @@ npx skills add sun-praise/opencode-actions
 ## What it includes
 
 - `review`: opinionated PR review wrapper with built-in prompt and model defaults
+- `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
 - `feature-missing`: audits PR implementation against linked issue spec to find missing features
 - `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
 - `github-run-opencode`: one-step wrapper for the common `opencode github run` workflow
@@ -83,6 +84,23 @@ Use this when you want the simplest PR review setup.
 
 When `fallback-models` is set, the wrapper keeps `model` as the first choice and only rotates to the next candidate when the current model times out or emits a timeout-like error. Candidates whose provider key is unavailable are skipped automatically.
 
+## architect-review
+
+Use this alongside `review` to evaluate PR changes from an architecture perspective.
+
+- evaluates coupling, module placement, layering, interface design, and shotgun surgery risks
+- reads `AGENTS.md` (or `CLAUDE.md`) for project-specific architecture conventions
+- shares the same inputs and cache as `review`/`feature-missing`
+
+```yaml
+- name: Run OpenCode architect review
+  uses: Svtter/opencode-actions/architect-review@v2
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+```
+
 ## feature-missing
 
 Use this alongside `review` to audit whether a PR's implementation covers all requirements from the linked issue spec.
@@ -124,11 +142,12 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
-### How the three review actions differ
+### How the review actions differ
 
 | Action | Scope source | What it catches |
 | --- | --- | --- |
 | `review` | PR diff | Code quality, security, bugs |
+| `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
 
@@ -183,6 +202,7 @@ Public consumers should reference the subdirectory action path:
 
 ```yaml
 uses: Svtter/opencode-actions/review@v2
+uses: Svtter/opencode-actions/architect-review@v2
 uses: Svtter/opencode-actions/feature-missing@v2
 uses: Svtter/opencode-actions/spec-coverage@v2
 uses: Svtter/opencode-actions/github-run-opencode@v2
@@ -219,7 +239,7 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, and `uses: ./spec-coverage`
+- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./architect-review`
 
 ## Release Policy
 
@@ -234,7 +254,7 @@ This repository includes a CI workflow that:
 2. Verify `CI` passes on `main`.
 3. Create a GitHub release with a semver tag such as `v1.0.0`.
 4. Confirm the `Update Major Tag` workflow moved `v1` to that release.
-5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
+5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/architect-review@v2` for architecture review, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
 
 The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 

@@ -28,6 +28,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
+      - name: Test architect-review action loads
+        uses: ./architect-review
+        with:
+          model: test-model
+          timeout-seconds: "5"
+          attempts: "1"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Test feature-missing action loads
         uses: ./feature-missing
         with:

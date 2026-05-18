@@ -61,6 +61,16 @@ jobs:
           github-token: smoke-gh-token
           zhipu-api-key: smoke-zhipu-token
 
+      - name: Run architect-review convenience action
+        uses: ./architect-review
+        with:
+          install-url: http://127.0.0.1:8765/fake-installer.sh
+          cache: false
+          install-attempts: 1
+          attempts: 1
+          github-token: smoke-gh-token
+          zhipu-api-key: smoke-zhipu-token
+
       - name: Stop fake installer server
         if: always()
         run: |
