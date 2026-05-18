@@ -3,6 +3,7 @@ import atexit
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -164,7 +165,98 @@ def compute_effective_timeout(
     return 0
 
 
+def cleanup_error_comments() -> None:
+    """Delete error comments posted by opencode to the current PR."""
+    enabled = get_env("GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS", "true")
+    if enabled.lower() != "true":
+        return
+
+    github_ref = get_env("GITHUB_REF", "")
+    github_repository = get_env("GITHUB_REPOSITORY", "")
+    github_run_id = get_env("GITHUB_RUN_ID", "")
+
+    match = re.fullmatch(r"refs/pull/(\d+)/merge", github_ref)
+    if not match:
+        return
+    pr_number = match.group(1)
+
+    if not github_repository or not github_run_id:
+        print("cleanup-error-comments: skipping, missing GITHUB_REPOSITORY or GITHUB_RUN_ID", file=sys.stderr)
+        return
+
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        print("cleanup-error-comments: skipping, gh CLI not available", file=sys.stderr)
+        return
+
+    run_link_pattern = f"/{github_repository}/actions/runs/{github_run_id}"
+    error_indicators = re.compile(
+        r"(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)",
+        re.IGNORECASE,
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                gh_path, "api",
+                "--paginate",
+                f"/repos/{github_repository}/issues/{pr_number}/comments",
+                "--jq", ".[] | .id,.body",
+            ],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"cleanup-error-comments: failed to list comments: {result.stderr}", file=sys.stderr)
+            return
+        lines = result.stdout.splitlines()
+    except (subprocess.TimeoutExpired, Exception) as e:
+        print(f"cleanup-error-comments: error listing comments: {e}", file=sys.stderr)
+        return
+
+    comment_ids_to_delete: list[str] = []
+    i = 0
+    while i + 1 < len(lines):
+        comment_id = lines[i].strip()
+        body = lines[i + 1]
+        if run_link_pattern in body and error_indicators.search(body):
+            comment_ids_to_delete.append(comment_id)
+        i += 2
+
+    for comment_id in comment_ids_to_delete:
+        try:
+            del_result = subprocess.run(
+                [
+                    gh_path, "api",
+                    "-X", "DELETE",
+                    f"/repos/{github_repository}/issues/comments/{comment_id}",
+                ],
+                capture_output=True,
+                text=True,
+                env=os.environ.copy(),
+                timeout=10,
+            )
+            if del_result.returncode == 0:
+                print(f"cleanup-error-comments: deleted error comment {comment_id}")
+            else:
+                print(f"cleanup-error-comments: failed to delete comment {comment_id}: {del_result.stderr}", file=sys.stderr)
+        except (subprocess.TimeoutExpired, Exception) as e:
+            print(f"cleanup-error-comments: error deleting comment {comment_id}: {e}", file=sys.stderr)
+
+
 def main() -> int:
+    try:
+        return _main()
+    finally:
+        try:
+            cleanup_error_comments()
+        except Exception:
+            pass
+
+
+def _main() -> int:
     timeout_seconds = require_non_negative_integer(
         get_env("GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS", "600"),
         "GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS",

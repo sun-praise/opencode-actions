@@ -699,5 +699,122 @@ class TestDogfoodWorkflow(unittest.TestCase):
         self.assertIn("zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}", content)
 
 
+class TestCleanupErrorComments(unittest.TestCase):
+    """Tests for the cleanup_error_comments function."""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        # Import the module to test its functions directly
+        self.script = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
+        self.env = os.environ.copy()
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        for key in [
+            "GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS",
+            "GITHUB_REF",
+            "GITHUB_REPOSITORY",
+            "GITHUB_RUN_ID",
+        ]:
+            os.environ.pop(key, None)
+
+    def _run_cleanup_via_subprocess(self, **extra_env) -> subprocess.CompletedProcess:
+        """Run a small Python snippet that calls cleanup_error_comments()."""
+        env = self.env.copy()
+        env.update(extra_env)
+        snippet = (
+            "import sys, importlib.util; "
+            f"spec = importlib.util.spec_from_file_location('m', '{self.script}'); "
+            "mod = importlib.util.module_from_spec(spec); "
+            "spec.loader.exec_module(mod); "
+            "mod.cleanup_error_comments()"
+        )
+        return subprocess.run(
+            ["python3", "-c", snippet],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_skips_when_disabled(self):
+        """Should return immediately when cleanup-error-comments is false."""
+        result = self._run_cleanup_via_subprocess(
+            GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS="false",
+            GITHUB_REF="refs/pull/123/merge",
+            GITHUB_REPOSITORY="owner/repo",
+            GITHUB_RUN_ID="12345",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("cleanup-error-comments", result.stderr)
+
+    def test_skips_non_pr_context(self):
+        """Should skip when not in a PR context (e.g., refs/heads/main)."""
+        result = self._run_cleanup_via_subprocess(
+            GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS="true",
+            GITHUB_REF="refs/heads/main",
+            GITHUB_REPOSITORY="owner/repo",
+            GITHUB_RUN_ID="12345",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("cleanup-error-comments", result.stderr)
+
+    def test_error_pattern_matching(self):
+        """Test that the error indicators regex matches expected patterns."""
+        import re as re_mod
+
+        # Import the module's pattern by running the same regex
+        error_indicators = re_mod.compile(
+            r"(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)",
+            re_mod.IGNORECASE,
+        )
+
+        # Should match
+        self.assertIsNotNone(error_indicators.search("fatal: unable to access"))
+        self.assertIsNotNone(error_indicators.search("remote: Write access not granted"))
+        self.assertIsNotNone(error_indicators.search("error: 403"))
+        self.assertIsNotNone(error_indicators.search("The requested URL returned error: 403"))
+        self.assertIsNotNone(error_indicators.search("Write access to repository"))
+        self.assertIsNotNone(error_indicators.search("permission denied"))
+
+        # Should NOT match legitimate review comments
+        self.assertIsNone(error_indicators.search("This PR looks good, the code is clean."))
+        self.assertIsNone(error_indicators.search("建议项：无"))
+        self.assertIsNone(error_indicators.search("可合并"))
+
+    def test_pr_number_extraction(self):
+        """Test that refs/pull/N/merge correctly extracts PR number."""
+        import re as re_mod
+
+        cases = [
+            ("refs/pull/123/merge", "123"),
+            ("refs/pull/42/merge", "42"),
+            ("refs/heads/main", None),
+            ("refs/tags/v1.0.0", None),
+        ]
+        for ref, expected in cases:
+            match = re_mod.fullmatch(r"refs/pull/(\d+)/merge", ref)
+            if expected is None:
+                self.assertIsNone(match, f"Expected no match for {ref}")
+            else:
+                self.assertIsNotNone(match, f"Expected match for {ref}")
+                self.assertEqual(match.group(1), expected)
+
+    def test_cleanup_input_exists_in_actions(self):
+        """All actions using the Python script should have cleanup-error-comments input."""
+        for action_dir in ["github-run-opencode", "review", "feature-missing", "spec-coverage"]:
+            action_file = REPO_ROOT / action_dir / "action.yml"
+            content = action_file.read_text()
+            self.assertIn(
+                "cleanup-error-comments:",
+                content,
+                f"{action_dir}/action.yml missing cleanup-error-comments input",
+            )
+            self.assertIn(
+                "GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS",
+                content,
+                f"{action_dir}/action.yml missing CLEANUP_ERROR_COMMENTS env var",
+            )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
