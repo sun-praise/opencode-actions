@@ -261,7 +261,7 @@ runs:
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
-          {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+          {"edit":"deny","bash":{"git commit":"deny","git commit *":"deny","git push":"deny","git push *":"deny","git add":"deny","git add *":"deny","git stash":"deny","git stash *":"deny","git reset":"deny","git reset *":"deny","git checkout":"deny","git checkout *":"deny"}}
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
       run: |
         if ! command -v python3 >\/dev/null 2>&1; then
