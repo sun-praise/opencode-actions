@@ -360,18 +360,22 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
-def post_pr_comment(body: str) -> bool:
-    """Post a comment to the current PR using gh CLI. Returns True on success."""
+def _get_pr_context() -> tuple[str, str] | None:
+    """Return (pr_number, repository) if running in a PR context, else None."""
     github_ref = get_env("GITHUB_REF", "")
     github_repository = get_env("GITHUB_REPOSITORY", "")
-
     match = re.fullmatch(r"refs/pull/(\d+)/merge", github_ref)
-    if not match:
-        return False
-    pr_number = match.group(1)
+    if not match or not github_repository:
+        return None
+    return match.group(1), github_repository
 
-    if not github_repository:
+
+def post_pr_comment(body: str) -> bool:
+    """Post a comment to the current PR using gh CLI. Returns True on success."""
+    ctx = _get_pr_context()
+    if not ctx:
         return False
+    pr_number, repository = ctx
 
     gh_path = shutil.which("gh")
     if not gh_path:
@@ -379,7 +383,7 @@ def post_pr_comment(body: str) -> bool:
 
     try:
         result = subprocess.run(
-            [gh_path, "pr", "comment", pr_number, "--repo", github_repository, "--body", body],
+            [gh_path, "pr", "comment", pr_number, "--repo", repository, "--body", body],
             capture_output=True, text=True, env=os.environ.copy(), timeout=30,
         )
         if result.returncode == 0:
@@ -398,23 +402,20 @@ def cleanup_error_comments() -> None:
     if enabled.lower() != "true":
         return
 
-    github_ref = get_env("GITHUB_REF", "")
-    github_repository = get_env("GITHUB_REPOSITORY", "")
-    github_run_id = get_env("GITHUB_RUN_ID", "")
-
-    match = re.fullmatch(r"refs/pull/(\d+)/merge", github_ref)
-    if not match:
+    ctx = _get_pr_context()
+    if not ctx:
         return
-    pr_number = match.group(1)
+    pr_number, repository = ctx
 
-    if not github_repository or not github_run_id:
+    github_run_id = get_env("GITHUB_RUN_ID", "")
+    if not github_run_id:
         return
 
     gh_path = shutil.which("gh")
     if not gh_path:
         return
 
-    run_link_pattern = f"/{github_repository}/actions/runs/{github_run_id}"
+    run_link_pattern = f"/{repository}/actions/runs/{github_run_id}"
     error_indicators = re.compile(
         r"(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)",
         re.IGNORECASE,
@@ -422,8 +423,8 @@ def cleanup_error_comments() -> None:
 
     try:
         result = subprocess.run(
-            [gh_path, "api", "--paginate", "-H", "Accept: application/vnd.github+json",
-             f"/repos/{github_repository}/issues/{pr_number}/comments"],
+            [gh_path, "api", "-H", "Accept: application/vnd.github+json",
+             f"/repos/{repository}/issues/{pr_number}/comments"],
             capture_output=True, text=True, env=os.environ.copy(), timeout=30,
         )
         if result.returncode != 0:
@@ -434,15 +435,15 @@ def cleanup_error_comments() -> None:
 
     for comment in comments:
         comment_id = comment.get("id")
-        body = comment.get("body", "")
-        if not comment_id or not body:
+        comment_body = comment.get("body", "")
+        if not comment_id or not comment_body:
             continue
-        if run_link_pattern not in body or not error_indicators.search(body):
+        if run_link_pattern not in comment_body or not error_indicators.search(comment_body):
             continue
         try:
             subprocess.run(
                 [gh_path, "api", "-X", "DELETE",
-                 f"/repos/{github_repository}/issues/comments/{comment_id}"],
+                 f"/repos/{repository}/issues/comments/{comment_id}"],
                 capture_output=True, text=True, env=os.environ.copy(), timeout=10,
             )
         except Exception:
