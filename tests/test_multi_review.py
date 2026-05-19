@@ -1,11 +1,8 @@
 """Unit tests for multi-review orchestrator."""
-import json
 import os
 import sys
-import tempfile
-import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Import the module by path since the filename has a hyphen
 import importlib.util

@@ -5,7 +5,6 @@ Launches multiple reviewer agents in parallel, collects their outputs,
 then runs a coordinator agent to synthesize a final review report.
 """
 
-import glob
 import json
 import os
 import re
@@ -13,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +59,10 @@ def _parse_simple_yaml(path: Path) -> dict[str, Any] | None:
     except OSError:
         return None
 
+    def _flush(result, key, lines):
+        if key and lines:
+            result[key] = "\n".join(lines).strip()
+
     result: dict[str, Any] = {}
     current_key = None
     current_lines: list[str] = []
@@ -69,26 +72,21 @@ def _parse_simple_yaml(path: Path) -> dict[str, Any] | None:
         if not stripped:
             continue
         if line.startswith("name:"):
-            if current_key and current_lines:
-                result[current_key] = "\n".join(current_lines).strip()
+            _flush(result, current_key, current_lines)
             current_key = "name"
             current_lines = [stripped[len("name:"):].strip().strip('"').strip("'")]
         elif line.startswith("prompt:"):
-            if current_key and current_lines:
-                result[current_key] = "\n".join(current_lines).strip()
+            _flush(result, current_key, current_lines)
             current_key = "prompt"
             current_lines = []
         elif line.startswith("  ") or line.startswith("\t"):
             current_lines.append(line[2:] if line.startswith("  ") else line[1:])
         else:
-            if current_key and current_lines:
-                result[current_key] = "\n".join(current_lines).strip()
+            _flush(result, current_key, current_lines)
             current_key = None
             current_lines = []
 
-    if current_key and current_lines:
-        result[current_key] = "\n".join(current_lines).strip()
-
+    _flush(result, current_key, current_lines)
     return result if result else None
 
 
@@ -190,6 +188,24 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
     return team
 
 
+def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int) -> tuple[int, str]:
+    """Run a single opencode github run invocation. Returns (returncode, output)."""
+    env = os.environ.copy()
+    env["MODEL"] = model
+    env["PROMPT"] = prompt
+    env["OPENCODE_ARGS"] = "github run"
+
+    if timeout > 0:
+        cmd = ["timeout", "--foreground", f"{timeout}s", str(run_script)]
+        sub_timeout = timeout + 30
+    else:
+        cmd = [str(run_script)]
+        sub_timeout = None
+
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=sub_timeout)
+    return result.returncode, result.stdout.decode("utf-8", errors="replace")
+
+
 def run_reviewer(
     reviewer: dict[str, Any],
     run_script: Path,
@@ -198,11 +214,10 @@ def run_reviewer(
     fallback_models: list[str],
     fallback_on_regex: str,
 ) -> dict[str, Any]:
-    """Run a single reviewer agent, return result dict."""
+    """Run a single reviewer agent with model fallback, return result dict."""
     name = reviewer["name"]
     prompt = reviewer["prompt"]
 
-    # Build candidate model list
     model = os.environ.get("MODEL", "zhipuai-coding-plan/glm-5.1")
     candidates = [m for m in [model] + fallback_models if _supports_model(m)]
 
@@ -210,40 +225,24 @@ def run_reviewer(
         return {"name": name, "status": "error", "output": "No eligible models available"}
 
     outputs: list[str] = []
-    for idx, m in enumerate(candidates):
-        time_remaining = None
+    for m in candidates:
         if global_deadline:
-            time_remaining = max(0, global_deadline - time.time())
-            if time_remaining <= 0:
+            remaining = max(0, global_deadline - time.time())
+            if remaining <= 0:
                 return {"name": name, "status": "timeout", "output": "Global timeout exceeded"}
-
-        effective_timeout = 0
-        if time_remaining is not None:
-            effective_timeout = int(time_remaining) if model_timeout <= 0 else min(model_timeout, int(time_remaining))
+            effective_timeout = min(model_timeout, int(remaining)) if model_timeout > 0 else int(remaining)
         elif model_timeout > 0:
             effective_timeout = model_timeout
-
-        env = os.environ.copy()
-        env["MODEL"] = m
-        env["PROMPT"] = prompt
-        env["OPENCODE_ARGS"] = "github run"
-
-        cmd = ["timeout", "--foreground", f"{effective_timeout}s", str(run_script)] if effective_timeout > 0 else [str(run_script)]
+        else:
+            effective_timeout = 0
 
         try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=env,
-                timeout=effective_timeout + 30 if effective_timeout > 0 else None,
-            )
-            output = result.stdout.decode("utf-8", errors="replace")
+            rc, output = _run_opencode(run_script, prompt, m, effective_timeout)
 
-            if result.returncode == 0:
+            if rc == 0:
                 return {"name": name, "status": "success", "output": output}
 
-            if result.returncode == 124:
+            if rc == 124:
                 print(f"Reviewer {name} model {m} timed out after {effective_timeout}s", file=sys.stderr)
                 outputs.append(output)
                 continue
@@ -253,7 +252,7 @@ def run_reviewer(
                 outputs.append(output)
                 continue
 
-            return {"name": name, "status": "error", "output": output, "returncode": result.returncode}
+            return {"name": name, "status": "error", "output": output, "returncode": rc}
 
         except subprocess.TimeoutExpired:
             print(f"Reviewer {name} model {m} process killed (timeout)", file=sys.stderr)
@@ -282,27 +281,21 @@ def run_coordinator(
     coordinator_prompt_template: str | None,
 ) -> str | None:
     """Run the coordinator agent to synthesize all reviewer outputs."""
-    reviews_text = ""
-    for r in reviewer_results:
-        reviews_text += f"\n\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{r.get('output', '')}\n"
+    reviews_text = "\n".join(
+        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{r.get('output', '')}\n"
+        for r in reviewer_results
+    )
 
     if coordinator_prompt_template:
         prompt = coordinator_prompt_template.replace("{{REVIEWS}}", reviews_text)
     else:
         prompt = _default_coordinator_prompt(reviews_text)
 
-    env = os.environ.copy()
-    env["PROMPT"] = prompt
-    env["OPENCODE_ARGS"] = "github run"
-
-    cmd = ["timeout", "--foreground", f"{timeout}s", str(run_script)] if timeout > 0 else [str(run_script)]
-
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=timeout + 30 if timeout > 0 else None)
-        output = result.stdout.decode("utf-8", errors="replace")
-        if result.returncode == 0:
+        rc, output = _run_opencode(run_script, prompt, os.environ.get("MODEL", ""), timeout)
+        if rc == 0:
             return output
-        print(f"Coordinator failed (exit {result.returncode}): {output[:500]}", file=sys.stderr)
+        print(f"Coordinator failed (exit {rc}): {output[:500]}", file=sys.stderr)
         return None
     except subprocess.TimeoutExpired:
         print("Coordinator timed out", file=sys.stderr)
@@ -338,21 +331,22 @@ Output format:
 """
 
 
+def _truncate(text: str, limit: int = 8000) -> str:
+    text = text.strip()
+    if len(text) > limit:
+        return text[:limit] + "\n... (output truncated)"
+    return text
+
+
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [coordinator_output.strip()]
-
-    parts.append("\n\n---\n**详细审查报告：**\n")
+    parts = [coordinator_output.strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = r.get("output", "").strip()
-        # Truncate very long outputs
-        if len(output) > 8000:
-            output = output[:8000] + "\n... (output truncated)"
+        output = _truncate(r.get("output", ""))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
-
     return "".join(parts)
 
 
@@ -360,9 +354,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = r.get("output", "").strip()
-        if len(output) > 8000:
-            output = output[:8000] + "\n... (output truncated)"
+        output = _truncate(r.get("output", ""))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
@@ -448,16 +440,20 @@ def _main() -> int:
     )
     coordinator_prompt_template = get_env("MULTI_REVIEW_COORDINATOR_PROMPT", "")
 
-    # Core opencode env
-    set_env("OPENCODE_WORKING_DIRECTORY", get_env("MULTI_REVIEW_WORKING_DIRECTORY"))
-    set_env("OPENCODE_ATTEMPTS", get_env("MULTI_REVIEW_ATTEMPTS", "3"))
-    set_env("OPENCODE_RETRY_PROFILE", get_env("MULTI_REVIEW_RETRY_PROFILE", "github-network"))
-    set_env("OPENCODE_RETRY_DELAY_SECONDS", get_env("MULTI_REVIEW_RETRY_DELAY_SECONDS", "15"))
-    set_env("USE_GITHUB_TOKEN", get_env("MULTI_REVIEW_USE_GITHUB_TOKEN", "true"))
-    set_env("GITHUB_TOKEN", get_env("MULTI_REVIEW_GITHUB_TOKEN"))
-    set_env("ZHIPU_API_KEY", get_env("MULTI_REVIEW_ZHIPU_API_KEY"))
-    set_env("OPENCODE_API_KEY", get_env("MULTI_REVIEW_OPENCODE_GO_API_KEY"))
-    set_env("DEEPSEEK_API_KEY", get_env("MULTI_REVIEW_DEEPSEEK_API_KEY"))
+    # Core opencode env — forward MULTI_REVIEW_* → standard env vars
+    env_forward = {
+        "OPENCODE_WORKING_DIRECTORY": ("MULTI_REVIEW_WORKING_DIRECTORY", ""),
+        "OPENCODE_ATTEMPTS": ("MULTI_REVIEW_ATTEMPTS", "3"),
+        "OPENCODE_RETRY_PROFILE": ("MULTI_REVIEW_RETRY_PROFILE", "github-network"),
+        "OPENCODE_RETRY_DELAY_SECONDS": ("MULTI_REVIEW_RETRY_DELAY_SECONDS", "15"),
+        "USE_GITHUB_TOKEN": ("MULTI_REVIEW_USE_GITHUB_TOKEN", "true"),
+        "GITHUB_TOKEN": ("MULTI_REVIEW_GITHUB_TOKEN", ""),
+        "ZHIPU_API_KEY": ("MULTI_REVIEW_ZHIPU_API_KEY", ""),
+        "OPENCODE_API_KEY": ("MULTI_REVIEW_OPENCODE_GO_API_KEY", ""),
+        "DEEPSEEK_API_KEY": ("MULTI_REVIEW_DEEPSEEK_API_KEY", ""),
+    }
+    for target, (source, default) in env_forward.items():
+        set_env(target, get_env(source, default))
 
     # Model resolution
     if get_env("MULTI_REVIEW_MODEL"):
@@ -508,17 +504,13 @@ def _main() -> int:
             f.write("\n")
 
     # Extra env vars
-    extra_env_raw = get_env("MULTI_REVIEW_EXTRA_ENV")
-    if extra_env_raw:
-        for line in extra_env_raw.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip()
-            if key:
-                os.environ[key] = value
+    for line in get_env("MULTI_REVIEW_EXTRA_ENV").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip():
+            os.environ[key.strip()] = value.strip()
 
     # --- Resolve reviewers ---
     reviewers = resolve_reviewers(config_path or None, default_team or None)
