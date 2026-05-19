@@ -190,11 +190,11 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
 
 
 def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
-    """Run a single opencode github run invocation. Returns (returncode, output)."""
+    """Run a single opencode github run invocation. Returns (returncode, stdout)."""
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
-    env["OPENCODE_ARGS"] = "github run"
+    env["OPENCODE_ARGS"] = "github run --print-logs --log-level ERROR"
     env["USE_GITHUB_TOKEN"] = "true"  # opencode CLI needs auth to avoid OIDC crash
 
     # Give each reviewer its own XDG_CACHE_HOME to avoid SQLite conflicts
@@ -208,7 +208,11 @@ def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int, cache
         cmd = [str(run_script)]
         sub_timeout = None
 
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=sub_timeout)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
+    # Log stderr for debugging but only return stdout (the actual review output)
+    stderr_output = result.stderr.decode("utf-8", errors="replace")
+    if stderr_output.strip():
+        print(f"[opencode stderr] {stderr_output[:500]}", file=sys.stderr)
     return result.returncode, result.stdout.decode("utf-8", errors="replace")
 
 
@@ -357,30 +361,9 @@ Output format:
 
 
 def _clean_output(raw: str) -> str:
-    """Strip opencode CLI noise (ANSI codes, log lines, session metadata) from output."""
-    # Remove ANSI escape sequences
+    """Strip residual noise from opencode CLI output (ANSI codes, stray metadata)."""
     text = re.sub(r"\x1b\[[0-9;]*m", "", raw)
-    # Remove lines that are opencode internal log output
-    cleaned_lines = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        # Skip timestamped log lines like [12:39:32.962] INFO (#298): ...
-        if re.match(r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)", stripped):
-            continue
-        # Skip opencode CLI metadata lines
-        if stripped.startswith(("sqlite-migration", "Database migration", "Performing one time database", "Asserting permissions", "Adding reaction", "Removing reaction", "Fetching prompt data", "Checking out local branch", "Sending message to opencode", "Checking if branch is dirty", "Creating comment", "Pushing to local branch", "opencode session ses_")):
-            continue
-        # Skip tool call output lines like | Shell    {"command":...
-        if re.match(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s", stripped):
-            continue
-        # Skip "opencode session" and session URLs
-        if "opencode.ai/s/" in stripped:
-            continue
-        # Skip ANSI-bare tool call lines that start with pipe
-        if stripped.startswith("| ") and '{"' in stripped:
-            continue
-        cleaned_lines.append(line)
-    return "\n".join(cleaned_lines).strip()
+    return text.strip()
 
 
 def _truncate(text: str, limit: int = 8000) -> str:
