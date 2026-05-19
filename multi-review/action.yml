@@ -220,6 +220,7 @@ runs:
         MULTI_REVIEW_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
         MULTI_REVIEW_MODEL: ${{ inputs.model }}
         MULTI_REVIEW_FALLBACK_MODELS: ${{ inputs.fallback-models }}
+        MULTI_REVIEW_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         MULTI_REVIEW_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         MULTI_REVIEW_COORDINATOR_PROMPT: ${{ inputs.coordinator-prompt }}
         MULTI_REVIEW_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}

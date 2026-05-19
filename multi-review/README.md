@@ -99,6 +99,8 @@ Custom personas override built-in personas with the same name.
 | `coordinator-timeout-seconds` | `300` | Coordinator agent timeout |
 | `model` | `zhipuai-coding-plan/glm-5.1` | Model for all agents |
 | `fallback-models` | `""` | Comma-separated fallback models |
+| `model-timeout-seconds` | `300` | Per-model timeout before rotating to fallback |
+| `fallback-on-regex` | timeout regex | Rotate to next fallback model when output matches this regex |
 | `default-team` | `""` | Team definition string |
 | `reviewer-config` | `""` | Path to custom YAML config |
 | `coordinator-prompt` | `""` | Custom coordinator prompt template |

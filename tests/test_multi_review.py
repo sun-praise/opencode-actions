@@ -153,7 +153,8 @@ class TestSupportsModel:
             assert mr._supports_model("zhipuai-model") is False
 
     def test_generic_model_always_supported(self):
-        assert mr._supports_model("some-other-model") is True
+        with patch.dict(os.environ, {}, clear=True):
+            assert mr._supports_model("some-other-model") is True
 
 
 if __name__ == "__main__":

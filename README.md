@@ -10,7 +10,7 @@ Write this in your CI.yaml
 
 ```yaml
 - name: Run OpenCode review
-  uses: Svtter/opencode-actions/review@v2
+  uses: sun-praise/opencode-actions/review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -95,7 +95,7 @@ Use this alongside `review` to evaluate PR changes from an architecture perspect
 
 ```yaml
 - name: Run OpenCode architect review
-  uses: Svtter/opencode-actions/architect-review@v2
+  uses: sun-praise/opencode-actions/architect-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -114,7 +114,7 @@ Use this for multi-agent parallel code review with automatic synthesis. Runs mul
 
 ```yaml
 - name: Run multi-agent review
-  uses: Svtter/opencode-actions/multi-review@v2
+  uses: sun-praise/opencode-actions/multi-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -124,7 +124,7 @@ With custom team:
 
 ```yaml
 - name: Run multi-agent review
-  uses: Svtter/opencode-actions/multi-review@v2
+  uses: sun-praise/opencode-actions/multi-review@v2
   with:
     default-team: "quality:1,security:1,performance:1"
     github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -142,7 +142,7 @@ Use this alongside `review` to audit whether a PR's implementation covers all re
 
 ```yaml
 - name: Run feature missing audit
-  uses: Svtter/opencode-actions/feature-missing@v2
+  uses: sun-praise/opencode-actions/feature-missing@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -165,7 +165,7 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
 
 ```yaml
 - name: Run spec coverage audit
-  uses: Svtter/opencode-actions/spec-coverage@v2
+  uses: sun-praise/opencode-actions/spec-coverage@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -232,19 +232,19 @@ In the common same-job case, `setup-opencode` already exports `opencode` to `PAT
 Public consumers should reference the subdirectory action path:
 
 ```yaml
-uses: Svtter/opencode-actions/review@v2
-uses: Svtter/opencode-actions/multi-review@v2
-uses: Svtter/opencode-actions/architect-review@v2
-uses: Svtter/opencode-actions/feature-missing@v2
-uses: Svtter/opencode-actions/spec-coverage@v2
-uses: Svtter/opencode-actions/github-run-opencode@v2
-uses: Svtter/opencode-actions/setup-opencode@v2
-uses: Svtter/opencode-actions/run-opencode@v2
+uses: sun-praise/opencode-actions/review@v2
+uses: sun-praise/opencode-actions/multi-review@v2
+uses: sun-praise/opencode-actions/architect-review@v2
+uses: sun-praise/opencode-actions/feature-missing@v2
+uses: sun-praise/opencode-actions/spec-coverage@v2
+uses: sun-praise/opencode-actions/github-run-opencode@v2
+uses: sun-praise/opencode-actions/setup-opencode@v2
+uses: sun-praise/opencode-actions/run-opencode@v2
 ```
 
 ```yaml
 - name: Run OpenCode review
-  uses: Svtter/opencode-actions/review@v2
+  uses: sun-praise/opencode-actions/review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}

@@ -194,6 +194,7 @@ def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int) -> tu
     env["MODEL"] = model
     env["PROMPT"] = prompt
     env["OPENCODE_ARGS"] = "github run"
+    env["USE_GITHUB_TOKEN"] = "false"  # prevent per-agent PR comments
 
     if timeout > 0:
         cmd = ["timeout", "--foreground", f"{timeout}s", str(run_script)]
@@ -359,6 +360,38 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
+def post_pr_comment(body: str) -> bool:
+    """Post a comment to the current PR using gh CLI. Returns True on success."""
+    github_ref = get_env("GITHUB_REF", "")
+    github_repository = get_env("GITHUB_REPOSITORY", "")
+
+    match = re.fullmatch(r"refs/pull/(\d+)/merge", github_ref)
+    if not match:
+        return False
+    pr_number = match.group(1)
+
+    if not github_repository:
+        return False
+
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        return False
+
+    try:
+        result = subprocess.run(
+            [gh_path, "pr", "comment", pr_number, "--repo", github_repository, "--body", body],
+            capture_output=True, text=True, env=os.environ.copy(), timeout=30,
+        )
+        if result.returncode == 0:
+            print(f"Posted synthesized review comment to PR #{pr_number}", file=sys.stderr)
+            return True
+        print(f"Failed to post PR comment: {result.stderr}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"Failed to post PR comment: {e}", file=sys.stderr)
+        return False
+
+
 def cleanup_error_comments() -> None:
     """Delete error comments posted by opencode to the current PR."""
     enabled = get_env("MULTI_REVIEW_CLEANUP_ERROR_COMMENTS", "true")
@@ -432,6 +465,7 @@ def _main() -> int:
     default_team = get_env("MULTI_REVIEW_DEFAULT_TEAM", "")
     global_timeout = int(get_env("MULTI_REVIEW_TIMEOUT_SECONDS", "900"))
     reviewer_timeout = int(get_env("MULTI_REVIEW_REVIEWER_TIMEOUT_SECONDS", "300"))
+    model_timeout = int(get_env("MULTI_REVIEW_MODEL_TIMEOUT_SECONDS", "300"))
     coordinator_timeout = int(get_env("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", "300"))
     fallback_models_str = get_env("MULTI_REVIEW_FALLBACK_MODELS", "")
     fallback_on_regex = get_env(
@@ -532,7 +566,7 @@ def _main() -> int:
                 reviewer,
                 run_script,
                 global_deadline,
-                reviewer_timeout,
+                model_timeout,
                 fallback_models,
                 fallback_on_regex,
             )
@@ -578,8 +612,12 @@ def _main() -> int:
         print("Coordinator failed, posting raw reviewer outputs", file=sys.stderr)
         comment = post_fallback_comment(reviewer_results)
 
-    # Output the final comment (opencode github run will post it)
-    print(comment)
+    # Post synthesized comment to PR
+    posted = post_pr_comment(comment)
+    if not posted:
+        print("Could not post to PR via gh CLI, writing to stdout as fallback", file=sys.stderr)
+        print(comment)
+
     return 0
 
 
