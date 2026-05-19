@@ -470,7 +470,7 @@ def _main() -> int:
     fallback_models_str = get_env("MULTI_REVIEW_FALLBACK_MODELS", "")
     fallback_on_regex = get_env(
         "MULTI_REVIEW_FALLBACK_ON_REGEX",
-        "timed out|timeout|deadline exceeded|context deadline exceeded",
+        "timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out",
     )
     coordinator_prompt_template = get_env("MULTI_REVIEW_COORDINATOR_PROMPT", "")
 
@@ -595,7 +595,7 @@ def _main() -> int:
         if remaining_time <= 0:
             print("No time left for coordinator, posting raw outputs", file=sys.stderr)
             comment = post_fallback_comment(reviewer_results)
-            print(comment)
+            post_pr_comment(comment)
             return 0
 
     coord_timeout = min(coordinator_timeout, remaining_time) if global_deadline else coordinator_timeout

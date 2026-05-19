@@ -95,21 +95,26 @@ Custom personas override built-in personas with the same name.
 | Input | Default | Description |
 |-------|---------|-------------|
 | `timeout-seconds` | `900` | Global timeout for the entire process |
-| `reviewer-timeout-seconds` | `300` | Per-reviewer timeout |
 | `coordinator-timeout-seconds` | `300` | Coordinator agent timeout |
 | `model` | `zhipuai-coding-plan/glm-5.1` | Model for all agents |
 | `fallback-models` | `""` | Comma-separated fallback models |
 | `model-timeout-seconds` | `300` | Per-model timeout before rotating to fallback |
-| `fallback-on-regex` | timeout regex | Rotate to next fallback model when output matches this regex |
+| `fallback-on-regex` | `timed out\|timeout\|...` | Rotate to next fallback model when output matches this regex |
 | `default-team` | `""` | Team definition string |
 | `reviewer-config` | `""` | Path to custom YAML config |
 | `coordinator-prompt` | `""` | Custom coordinator prompt template |
+| `attempts` | `3` | Total attempts per reviewer |
+| `retry-profile` | `github-network` | Built-in retry preset |
+| `retry-delay-seconds` | `15` | Base delay between retries |
 | `reasoning-effort` | `max` | Reasoning effort level |
 | `enable-thinking` | `true` | Enable thinking mode |
+| `use-github-token` | `true` | Whether to use GitHub token for PR access |
 | `github-token` | `""` | GitHub token |
 | `zhipu-api-key` | `""` | ZhipuAI API key |
 | `deepseek-api-key` | `""` | DeepSeek API key |
 | `opencode-go-api-key` | `""` | OpenCode Go API key |
+| `extra-env` | `""` | Extra KEY=VALUE environment variables |
+| `cleanup-error-comments` | `true` | Auto-delete error comments from failed runs |
 
 ## Cost Consideration
 

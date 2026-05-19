@@ -54,10 +54,6 @@ inputs:
     description: Global timeout for the entire multi-review process in seconds.
     required: false
     default: "900"
-  reviewer-timeout-seconds:
-    description: Per-reviewer timeout in seconds before rotating to fallback model.
-    required: false
-    default: "300"
   coordinator-timeout-seconds:
     description: Timeout for the coordinator agent in seconds.
     required: false
@@ -212,7 +208,7 @@ runs:
         MULTI_REVIEW_CONFIG: ${{ inputs.reviewer-config }}
         MULTI_REVIEW_DEFAULT_TEAM: ${{ inputs.default-team }}
         MULTI_REVIEW_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
-        MULTI_REVIEW_REVIEWER_TIMEOUT_SECONDS: ${{ inputs.reviewer-timeout-seconds }}
+        MULTI_REVIEW_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS: ${{ inputs.coordinator-timeout-seconds }}
         MULTI_REVIEW_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         MULTI_REVIEW_ATTEMPTS: ${{ inputs.attempts }}
@@ -220,7 +216,6 @@ runs:
         MULTI_REVIEW_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
         MULTI_REVIEW_MODEL: ${{ inputs.model }}
         MULTI_REVIEW_FALLBACK_MODELS: ${{ inputs.fallback-models }}
-        MULTI_REVIEW_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         MULTI_REVIEW_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         MULTI_REVIEW_COORDINATOR_PROMPT: ${{ inputs.coordinator-prompt }}
         MULTI_REVIEW_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
