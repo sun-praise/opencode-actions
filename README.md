@@ -10,7 +10,7 @@ Write this in your CI.yaml
 
 ```yaml
 - name: Run OpenCode review
-  uses: Svtter/opencode-actions/review@v2
+  uses: sun-praise/opencode-actions/review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -31,6 +31,7 @@ npx skills add sun-praise/opencode-actions
 ## What it includes
 
 - `review`: opinionated PR review wrapper with built-in prompt and model defaults
+- `multi-review`: multi-agent parallel code review with coordinator synthesis — runs multiple reviewer personas (quality, security, etc.) in parallel, then synthesizes a unified report
 - `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
 - `feature-missing`: audits PR implementation against linked issue spec to find missing features
 - `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
@@ -94,11 +95,40 @@ Use this alongside `review` to evaluate PR changes from an architecture perspect
 
 ```yaml
 - name: Run OpenCode architect review
-  uses: Svtter/opencode-actions/architect-review@v2
+  uses: sun-praise/opencode-actions/architect-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+```
+
+## multi-review
+
+Use this for multi-agent parallel code review with automatic synthesis. Runs multiple reviewer personas in parallel, then a coordinator agent synthesizes a unified report with cross-validation and deduplication.
+
+- built-in personas: quality, security, performance, architecture
+- parallel execution on a single runner via Python subprocess
+- coordinator synthesis with dedup, cross-validation, and conflict resolution
+- supports custom personas via YAML config file
+- reviewer redundancy (multiple instances of the same persona)
+
+```yaml
+- name: Run multi-agent review
+  uses: sun-praise/opencode-actions/multi-review@v2
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+```
+
+With custom team:
+
+```yaml
+- name: Run multi-agent review
+  uses: sun-praise/opencode-actions/multi-review@v2
+  with:
+    default-team: "quality:1,security:1,performance:1"
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
 ```
 
 ## feature-missing
@@ -112,7 +142,7 @@ Use this alongside `review` to audit whether a PR's implementation covers all re
 
 ```yaml
 - name: Run feature missing audit
-  uses: Svtter/opencode-actions/feature-missing@v2
+  uses: sun-praise/opencode-actions/feature-missing@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -135,7 +165,7 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
 
 ```yaml
 - name: Run spec coverage audit
-  uses: Svtter/opencode-actions/spec-coverage@v2
+  uses: sun-praise/opencode-actions/spec-coverage@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -147,6 +177,7 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
 | Action | Scope source | What it catches |
 | --- | --- | --- |
 | `review` | PR diff | Code quality, security, bugs |
+| `multi-review` | PR diff (multi-agent) | Quality, security, performance, architecture in parallel |
 | `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
@@ -201,18 +232,19 @@ In the common same-job case, `setup-opencode` already exports `opencode` to `PAT
 Public consumers should reference the subdirectory action path:
 
 ```yaml
-uses: Svtter/opencode-actions/review@v2
-uses: Svtter/opencode-actions/architect-review@v2
-uses: Svtter/opencode-actions/feature-missing@v2
-uses: Svtter/opencode-actions/spec-coverage@v2
-uses: Svtter/opencode-actions/github-run-opencode@v2
-uses: Svtter/opencode-actions/setup-opencode@v2
-uses: Svtter/opencode-actions/run-opencode@v2
+uses: sun-praise/opencode-actions/review@v2
+uses: sun-praise/opencode-actions/multi-review@v2
+uses: sun-praise/opencode-actions/architect-review@v2
+uses: sun-praise/opencode-actions/feature-missing@v2
+uses: sun-praise/opencode-actions/spec-coverage@v2
+uses: sun-praise/opencode-actions/github-run-opencode@v2
+uses: sun-praise/opencode-actions/setup-opencode@v2
+uses: sun-praise/opencode-actions/run-opencode@v2
 ```
 
 ```yaml
 - name: Run OpenCode review
-  uses: Svtter/opencode-actions/review@v2
+  uses: sun-praise/opencode-actions/review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
