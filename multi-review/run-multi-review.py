@@ -189,27 +189,26 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
     return team
 
 
-def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
-    """Run a single opencode github run invocation. Returns (returncode, stdout)."""
+def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
+    """Run opencode github run directly. Returns (returncode, stdout)."""
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
-    env["OPENCODE_ARGS"] = "github run --print-logs --log-level ERROR"
-    env["USE_GITHUB_TOKEN"] = "true"  # opencode CLI needs auth to avoid OIDC crash
+    env["USE_GITHUB_TOKEN"] = "true"
 
-    # Give each reviewer its own XDG_CACHE_HOME to avoid SQLite conflicts
     if cache_dir:
         env["XDG_CACHE_HOME"] = cache_dir
 
+    opencode_bin = env.get("OPENCODE_BIN_PATH", "opencode")
+    cmd = [opencode_bin, "github", "run", "--print-logs", "--log-level", "ERROR"]
+
     if timeout > 0:
-        cmd = ["timeout", "--foreground", f"{timeout}s", str(run_script)]
+        cmd = ["timeout", "--foreground", f"{timeout}s"] + cmd
         sub_timeout = timeout + 30
     else:
-        cmd = [str(run_script)]
         sub_timeout = None
 
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
-    # Log stderr for debugging but only return stdout (the actual review output)
     stderr_output = result.stderr.decode("utf-8", errors="replace")
     if stderr_output.strip():
         print(f"[opencode stderr] {stderr_output[:500]}", file=sys.stderr)
@@ -218,7 +217,6 @@ def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int, cache
 
 def run_reviewer(
     reviewer: dict[str, Any],
-    run_script: Path,
     global_deadline: float | None,
     model_timeout: int,
     fallback_models: list[str],
@@ -237,7 +235,7 @@ def run_reviewer(
     # Isolate XDG cache to prevent SQLite conflicts between parallel reviewers
     cache_dir = tempfile.mkdtemp(prefix=f"opencode-review-{name}-")
     try:
-        return _run_reviewer_inner(name, prompt, candidates, run_script, cache_dir,
+        return _run_reviewer_inner(name, prompt, candidates, cache_dir,
                                    global_deadline, model_timeout, fallback_on_regex)
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
@@ -247,7 +245,6 @@ def _run_reviewer_inner(
     name: str,
     prompt: str,
     candidates: list[str],
-    run_script: Path,
     cache_dir: str,
     global_deadline: float | None,
     model_timeout: int,
@@ -266,7 +263,7 @@ def _run_reviewer_inner(
             effective_timeout = 0
 
         try:
-            rc, output = _run_opencode(run_script, prompt, m, effective_timeout, cache_dir=cache_dir)
+            rc, output = _run_opencode(prompt, m, effective_timeout, cache_dir=cache_dir)
 
             if rc == 0:
                 return {"name": name, "status": "success", "output": output}
@@ -305,7 +302,6 @@ def _supports_model(model: str) -> bool:
 
 def run_coordinator(
     reviewer_results: list[dict[str, Any]],
-    run_script: Path,
     timeout: int,
     coordinator_prompt_template: str | None,
 ) -> str | None:
@@ -321,7 +317,7 @@ def run_coordinator(
         prompt = _default_coordinator_prompt(reviews_text)
 
     try:
-        rc, output = _run_opencode(run_script, prompt, os.environ.get("MODEL", ""), timeout)
+        rc, output = _run_opencode(prompt, os.environ.get("MODEL", ""), timeout)
         if rc == 0:
             return output
         print(f"Coordinator failed (exit {rc}): {output[:500]}", file=sys.stderr)
@@ -586,11 +582,6 @@ def _main() -> int:
 
     fallback_models = [m.strip() for m in re.split(r"[\r\n,]+", fallback_models_str) if m.strip()]
 
-    run_script = SCRIPT_DIR / ".." / "run-opencode" / "run-opencode.sh"
-    if not run_script.exists():
-        print(f"Run script not found: {run_script}", file=sys.stderr)
-        return 1
-
     # --- Run reviewers in parallel ---
     global_deadline = time.time() + global_timeout if global_timeout > 0 else None
 
@@ -601,7 +592,6 @@ def _main() -> int:
             f = executor.submit(
                 run_reviewer,
                 reviewer,
-                run_script,
                 global_deadline,
                 model_timeout,
                 fallback_models,
@@ -641,7 +631,6 @@ def _main() -> int:
     coord_timeout = min(coordinator_timeout, remaining_time) if global_deadline else coordinator_timeout
     coordinator_output = run_coordinator(
         reviewer_results,
-        run_script,
         coord_timeout,
         coordinator_prompt_template or None,
     )
