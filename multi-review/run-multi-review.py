@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -188,13 +189,17 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
     return team
 
 
-def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int) -> tuple[int, str]:
+def _run_opencode(run_script: Path, prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
     """Run a single opencode github run invocation. Returns (returncode, output)."""
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
     env["OPENCODE_ARGS"] = "github run"
-    env["USE_GITHUB_TOKEN"] = "false"  # prevent per-agent PR comments
+    env["USE_GITHUB_TOKEN"] = "true"  # opencode CLI needs auth to avoid OIDC crash
+
+    # Give each reviewer its own XDG_CACHE_HOME to avoid SQLite conflicts
+    if cache_dir:
+        env["XDG_CACHE_HOME"] = cache_dir
 
     if timeout > 0:
         cmd = ["timeout", "--foreground", f"{timeout}s", str(run_script)]
@@ -225,6 +230,25 @@ def run_reviewer(
     if not candidates:
         return {"name": name, "status": "error", "output": "No eligible models available"}
 
+    # Isolate XDG cache to prevent SQLite conflicts between parallel reviewers
+    cache_dir = tempfile.mkdtemp(prefix=f"opencode-review-{name}-")
+    try:
+        return _run_reviewer_inner(name, prompt, candidates, run_script, cache_dir,
+                                   global_deadline, model_timeout, fallback_on_regex)
+    finally:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+
+def _run_reviewer_inner(
+    name: str,
+    prompt: str,
+    candidates: list[str],
+    run_script: Path,
+    cache_dir: str,
+    global_deadline: float | None,
+    model_timeout: int,
+    fallback_on_regex: str,
+) -> dict[str, Any]:
     outputs: list[str] = []
     for m in candidates:
         if global_deadline:
@@ -238,7 +262,7 @@ def run_reviewer(
             effective_timeout = 0
 
         try:
-            rc, output = _run_opencode(run_script, prompt, m, effective_timeout)
+            rc, output = _run_opencode(run_script, prompt, m, effective_timeout, cache_dir=cache_dir)
 
             if rc == 0:
                 return {"name": name, "status": "success", "output": output}
@@ -283,7 +307,7 @@ def run_coordinator(
 ) -> str | None:
     """Run the coordinator agent to synthesize all reviewer outputs."""
     reviews_text = "\n".join(
-        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{r.get('output', '')}\n"
+        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_clean_output(r.get('output', ''))}\n"
         for r in reviewer_results
     )
 
@@ -332,6 +356,33 @@ Output format:
 """
 
 
+def _clean_output(raw: str) -> str:
+    """Strip opencode CLI noise (ANSI codes, log lines, session metadata) from output."""
+    # Remove ANSI escape sequences
+    text = re.sub(r"\x1b\[[0-9;]*m", "", raw)
+    # Remove lines that are opencode internal log output
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        # Skip timestamped log lines like [12:39:32.962] INFO (#298): ...
+        if re.match(r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)", stripped):
+            continue
+        # Skip opencode CLI metadata lines
+        if stripped.startswith(("sqlite-migration", "Database migration", "Performing one time database", "Asserting permissions", "Adding reaction", "Removing reaction", "Fetching prompt data", "Checking out local branch", "Sending message to opencode", "Checking if branch is dirty", "Creating comment", "Pushing to local branch", "opencode session ses_")):
+            continue
+        # Skip tool call output lines like | Shell    {"command":...
+        if re.match(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s", stripped):
+            continue
+        # Skip "opencode session" and session URLs
+        if "opencode.ai/s/" in stripped:
+            continue
+        # Skip ANSI-bare tool call lines that start with pipe
+        if stripped.startswith("| ") and '{"' in stripped:
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
 def _truncate(text: str, limit: int = 8000) -> str:
     text = text.strip()
     if len(text) > limit:
@@ -341,10 +392,10 @@ def _truncate(text: str, limit: int = 8000) -> str:
 
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [coordinator_output.strip(), "\n\n---\n**详细审查报告：**\n"]
+    parts = [_clean_output(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(r.get("output", ""))
+        output = _truncate(_clean_output(r.get("output", "")))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -355,7 +406,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(r.get("output", ""))
+        output = _truncate(_clean_output(r.get("output", "")))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
@@ -553,6 +604,9 @@ def _main() -> int:
     fallback_models = [m.strip() for m in re.split(r"[\r\n,]+", fallback_models_str) if m.strip()]
 
     run_script = SCRIPT_DIR / ".." / "run-opencode" / "run-opencode.sh"
+    if not run_script.exists():
+        print(f"Run script not found: {run_script}", file=sys.stderr)
+        return 1
 
     # --- Run reviewers in parallel ---
     global_deadline = time.time() + global_timeout if global_timeout > 0 else None
@@ -579,6 +633,9 @@ def _main() -> int:
                 reviewer_results.append(result)
                 status = result["status"]
                 print(f"Reviewer {name}: {status}", file=sys.stderr)
+                if status == "error":
+                    output = result.get("output", "")
+                    print(f"Reviewer {name} output (first 500 chars): {output[:500]}", file=sys.stderr)
             except Exception as e:
                 print(f"Reviewer {name} raised exception: {e}", file=sys.stderr)
                 reviewer_results.append({"name": name, "status": "error", "output": str(e)})
