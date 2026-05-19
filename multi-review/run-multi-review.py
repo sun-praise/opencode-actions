@@ -307,7 +307,7 @@ def run_coordinator(
 ) -> str | None:
     """Run the coordinator agent to synthesize all reviewer outputs."""
     reviews_text = "\n".join(
-        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{r.get('output', '')}\n"
+        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_clean_output(r.get('output', ''))}\n"
         for r in reviewer_results
     )
 
@@ -356,6 +356,33 @@ Output format:
 """
 
 
+def _clean_output(raw: str) -> str:
+    """Strip opencode CLI noise (ANSI codes, log lines, session metadata) from output."""
+    # Remove ANSI escape sequences
+    text = re.sub(r"\x1b\[[0-9;]*m", "", raw)
+    # Remove lines that are opencode internal log output
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        # Skip timestamped log lines like [12:39:32.962] INFO (#298): ...
+        if re.match(r"\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)", stripped):
+            continue
+        # Skip opencode CLI metadata lines
+        if stripped.startswith(("sqlite-migration", "Database migration", "Performing one time database", "Asserting permissions", "Adding reaction", "Removing reaction", "Fetching prompt data", "Checking out local branch", "Sending message to opencode", "Checking if branch is dirty", "Creating comment", "Pushing to local branch", "opencode session ses_")):
+            continue
+        # Skip tool call output lines like | Shell    {"command":...
+        if re.match(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s", stripped):
+            continue
+        # Skip "opencode session" and session URLs
+        if "opencode.ai/s/" in stripped:
+            continue
+        # Skip ANSI-bare tool call lines that start with pipe
+        if stripped.startswith("| ") and '{"' in stripped:
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
 def _truncate(text: str, limit: int = 8000) -> str:
     text = text.strip()
     if len(text) > limit:
@@ -365,10 +392,10 @@ def _truncate(text: str, limit: int = 8000) -> str:
 
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [coordinator_output.strip(), "\n\n---\n**详细审查报告：**\n"]
+    parts = [_clean_output(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(r.get("output", ""))
+        output = _truncate(_clean_output(r.get("output", "")))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -379,7 +406,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(r.get("output", ""))
+        output = _truncate(_clean_output(r.get("output", "")))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
