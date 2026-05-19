@@ -465,7 +465,6 @@ def _main() -> int:
     config_path = get_env("MULTI_REVIEW_CONFIG", "")
     default_team = get_env("MULTI_REVIEW_DEFAULT_TEAM", "")
     global_timeout = int(get_env("MULTI_REVIEW_TIMEOUT_SECONDS", "900"))
-    reviewer_timeout = int(get_env("MULTI_REVIEW_REVIEWER_TIMEOUT_SECONDS", "300"))
     model_timeout = int(get_env("MULTI_REVIEW_MODEL_TIMEOUT_SECONDS", "300"))
     coordinator_timeout = int(get_env("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", "300"))
     fallback_models_str = get_env("MULTI_REVIEW_FALLBACK_MODELS", "")
@@ -560,7 +559,7 @@ def _main() -> int:
 
     reviewer_results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
-        futures: dict[Future, str] = {}
+        futures = {}
         for reviewer in reviewers:
             f = executor.submit(
                 run_reviewer,
