@@ -307,7 +307,7 @@ def run_coordinator(
 ) -> str | None:
     """Run the coordinator agent to synthesize all reviewer outputs."""
     reviews_text = "\n".join(
-        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_clean_output(r.get('output', ''))}\n"
+        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_strip_ansi(r.get('output', ''))}\n"
         for r in reviewer_results
     )
 
@@ -356,9 +356,9 @@ Output format:
 """
 
 
-def _clean_output(raw: str) -> str:
-    """Strip residual noise from opencode CLI output (ANSI codes, stray metadata)."""
-    text = re.sub(r"\x1b\[[0-9;]*m", "", raw)
+def _strip_ansi(raw: str) -> str:
+    """Remove ANSI escape sequences from CLI output."""
+    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw)
     return text.strip()
 
 
@@ -371,10 +371,10 @@ def _truncate(text: str, limit: int = 8000) -> str:
 
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [_clean_output(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
+    parts = [_strip_ansi(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(_clean_output(r.get("output", "")))
+        output = _truncate(_strip_ansi(r.get("output", "")))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -385,7 +385,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(_clean_output(r.get("output", "")))
+        output = _truncate(_strip_ansi(r.get("output", "")))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
