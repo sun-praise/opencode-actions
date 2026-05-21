@@ -240,6 +240,7 @@ Outputs:
 | `zhipu-api-key` | empty | 智谱 API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
+| `permission` | empty | JSON 对象，opencode agent 级别权限覆盖（合并进 opencode.json） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
 ## Required Permissions
@@ -252,7 +253,7 @@ Outputs:
 # architect-review:  contents: read, pull-requests: write, issues: write
 # feature-missing:   contents: read, pull-requests: write, issues: read
 # spec-coverage:     contents: read, pull-requests: write
-# comment-command:   id-token: write, contents: write, pull-requests: write, issues: write
+# github-run-opencode (comment trigger): id-token: write, contents: write, pull-requests: write, issues: write
 ```
 
 ## Secrets 配置
