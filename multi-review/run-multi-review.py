@@ -456,8 +456,10 @@ def _filter_noise(text: str) -> str:
             skipping = True
             continue
         if _TOOL_LINE_RE.match(stripped):
+            skipping = True
             continue
         if _LOG_LINE_RE.match(stripped):
+            skipping = True
             continue
         if "opencode.ai/s/" in stripped:
             continue
@@ -539,7 +541,7 @@ def _fetch_latest_bot_comment(before_comment_id: int | None = None) -> str | Non
     except Exception:
         return None
 
-    for c in reversed(comments):
+    for c in comments:
         c_id = c.get("id", 0)
         if before_comment_id and c_id <= before_comment_id:
             continue
