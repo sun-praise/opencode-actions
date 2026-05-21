@@ -541,7 +541,7 @@ def _main() -> int:
     fallback_models_str = get_env("MULTI_REVIEW_FALLBACK_MODELS", "")
     fallback_on_regex = get_env(
         "MULTI_REVIEW_FALLBACK_ON_REGEX",
-        "timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out",
+        "timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out|ProviderModelNotFoundError",
     )
     coordinator_prompt_template = get_env("MULTI_REVIEW_COORDINATOR_PROMPT", "")
 
