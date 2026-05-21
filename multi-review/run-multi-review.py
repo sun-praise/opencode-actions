@@ -495,8 +495,8 @@ def post_pr_comment(body: str) -> int | None:
         result = subprocess.run(
             [gh_path, "api", "-X", "POST",
              f"/repos/{repository}/issues/{pr_number}/comments",
-             "--input", payload],
-            capture_output=True, text=True, env=os.environ.copy(), timeout=30,
+             "--input", "-"],
+            input=payload, capture_output=True, text=True, env=os.environ.copy(), timeout=30,
         )
         if result.returncode != 0:
             print(f"Failed to post PR comment: {result.stderr}", file=sys.stderr)
