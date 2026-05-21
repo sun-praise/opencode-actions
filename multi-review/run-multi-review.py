@@ -5,6 +5,7 @@ Launches multiple reviewer agents in parallel, collects their outputs,
 then runs a coordinator agent to synthesize a final review report.
 """
 
+import glob
 import json
 import os
 import re
@@ -191,6 +192,13 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
 
 def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
     """Run opencode github run directly. Returns (returncode, stdout)."""
+    # Clean stale git lock files to prevent race conditions between parallel reviewers
+    for lock_file in glob.glob(".git/*.lock"):
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
