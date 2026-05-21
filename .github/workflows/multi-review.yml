@@ -28,7 +28,7 @@ jobs:
         uses: ./multi-review
         with:
           model: ${{ vars.MODEL_NAME }}
-          default-team: "quality:1,security:1"
+          default-team: "quality:1,security:1,architecture:1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
