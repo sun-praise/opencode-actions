@@ -479,30 +479,35 @@ def _get_pr_context() -> tuple[str, str] | None:
     return match.group(1), github_repository
 
 
-def post_pr_comment(body: str) -> bool:
-    """Post a comment to the current PR using gh CLI. Returns True on success."""
+def post_pr_comment(body: str) -> int | None:
+    """Post a comment to the current PR via gh api. Returns comment ID on success."""
     ctx = _get_pr_context()
     if not ctx:
-        return False
+        return None
     pr_number, repository = ctx
 
     gh_path = shutil.which("gh")
     if not gh_path:
-        return False
+        return None
 
     try:
+        payload = json.dumps({"body": body})
         result = subprocess.run(
-            [gh_path, "pr", "comment", pr_number, "--repo", repository, "--body", body],
+            [gh_path, "api", "-X", "POST",
+             f"/repos/{repository}/issues/{pr_number}/comments",
+             "--input", payload],
             capture_output=True, text=True, env=os.environ.copy(), timeout=30,
         )
-        if result.returncode == 0:
-            print(f"Posted synthesized review comment to PR #{pr_number}", file=sys.stderr)
-            return True
-        print(f"Failed to post PR comment: {result.stderr}", file=sys.stderr)
-        return False
+        if result.returncode != 0:
+            print(f"Failed to post PR comment: {result.stderr}", file=sys.stderr)
+            return None
+        data = json.loads(result.stdout)
+        comment_id = data.get("id")
+        print(f"Posted synthesized review comment to PR #{pr_number} (id={comment_id})", file=sys.stderr)
+        return comment_id
     except Exception as e:
         print(f"Failed to post PR comment: {e}", file=sys.stderr)
-        return False
+        return None
 
 
 def cleanup_error_comments() -> None:
@@ -559,12 +564,12 @@ def cleanup_error_comments() -> None:
             pass
 
 
-def cleanup_reviewer_comments() -> None:
-    """Delete per-reviewer comments, keeping only the coordinator comment.
+def cleanup_reviewer_comments(keep_comment_id: int | None = None) -> None:
+    """Delete per-reviewer comments, keeping the coordinator comment.
 
-    Called after the coordinator comment is posted. Identifies comments from
-    the same CI run and deletes all except the most recent one (the coordinator
-    synthesis).
+    Uses keep_comment_id (returned by post_pr_comment) to identify the
+    coordinator comment. Falls back to keeping the latest run comment if
+    keep_comment_id is unavailable.
     """
     ctx = _get_pr_context()
     if not ctx:
@@ -602,8 +607,11 @@ def cleanup_reviewer_comments() -> None:
     if len(run_comments) <= 1:
         return
 
-    # The last comment is the coordinator synthesis — keep it, delete the rest
-    to_delete = run_comments[:-1]
+    # Keep the coordinator comment (identified by keep_comment_id or latest)
+    if keep_comment_id:
+        to_delete = [c for c in run_comments if c.get("id") != keep_comment_id]
+    else:
+        to_delete = run_comments[:-1]
     for comment in to_delete:
         comment_id = comment.get("id")
         if not comment_id:
@@ -764,7 +772,11 @@ def _main() -> int:
         if remaining_time <= 0:
             print("No time left for coordinator, posting raw outputs", file=sys.stderr)
             comment = post_fallback_comment(reviewer_results)
-            post_pr_comment(comment)
+            posted_id = post_pr_comment(comment)
+            try:
+                cleanup_reviewer_comments(keep_comment_id=posted_id)
+            except Exception:
+                pass
             return 0
 
     coord_timeout = min(coordinator_timeout, remaining_time) if global_deadline else coordinator_timeout
@@ -781,14 +793,14 @@ def _main() -> int:
         comment = post_fallback_comment(reviewer_results)
 
     # Post synthesized comment to PR
-    posted = post_pr_comment(comment)
-    if not posted:
+    posted_id = post_pr_comment(comment)
+    if not posted_id:
         print("Could not post to PR via gh CLI, writing to stdout as fallback", file=sys.stderr)
         print(comment)
 
     # Clean up per-reviewer comments, keep only the coordinator synthesis
     try:
-        cleanup_reviewer_comments()
+        cleanup_reviewer_comments(keep_comment_id=posted_id)
     except Exception as e:
         print(f"Failed to cleanup reviewer comments: {e}", file=sys.stderr)
 
