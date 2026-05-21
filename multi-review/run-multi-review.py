@@ -403,6 +403,44 @@ def _strip_ansi(raw: str) -> str:
     return text.strip()
 
 
+_NOISE_PREFIXES = (
+    "asserting permissions",
+    "adding reaction",
+    "removing reaction",
+    "fetching prompt data",
+    "checking out local branch",
+    "sending message to opencode",
+    "checking if branch is dirty",
+    "creating comment",
+    "pushing to local branch",
+    "opencode session ses_",
+    "performing one time database",
+    "sqlite-migration",
+    "database migration",
+)
+_TOOL_LINE_RE = re.compile(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s")
+_LOG_LINE_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)")
+
+
+def _filter_noise(text: str) -> str:
+    """Remove opencode CLI boilerplate lines from reviewer output."""
+    cleaned = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_NOISE_PREFIXES):
+            continue
+        if _TOOL_LINE_RE.match(stripped):
+            continue
+        if _LOG_LINE_RE.match(stripped):
+            continue
+        if "opencode.ai/s/" in stripped:
+            continue
+        if stripped.startswith("| ") and '{"' in stripped:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def _truncate(text: str, limit: int = 8000) -> str:
     text = text.strip()
     if len(text) > limit:
@@ -412,10 +450,10 @@ def _truncate(text: str, limit: int = 8000) -> str:
 
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [_strip_ansi(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
+    parts = [_filter_noise(_strip_ansi(coordinator_output)).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(_strip_ansi(r.get("output", "")))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -426,7 +464,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(_strip_ansi(r.get("output", "")))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
@@ -520,6 +558,66 @@ def cleanup_error_comments() -> None:
         except Exception:
             pass
 
+
+def cleanup_reviewer_comments() -> None:
+    """Delete per-reviewer comments, keeping only the coordinator comment.
+
+    Called after the coordinator comment is posted. Identifies comments from
+    the same CI run and deletes all except the most recent one (the coordinator
+    synthesis).
+    """
+    ctx = _get_pr_context()
+    if not ctx:
+        return
+    pr_number, repository = ctx
+
+    github_run_id = get_env("GITHUB_RUN_ID", "")
+    if not github_run_id:
+        return
+
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        return
+
+    run_link_pattern = f"/{repository}/actions/runs/{github_run_id}"
+
+    try:
+        result = subprocess.run(
+            [gh_path, "api", "-H", "Accept: application/vnd.github+json",
+             f"/repos/{repository}/issues/{pr_number}/comments"],
+            capture_output=True, text=True, env=os.environ.copy(), timeout=30,
+        )
+        if result.returncode != 0:
+            return
+        comments = json.loads(result.stdout)
+    except Exception:
+        return
+
+    # Find comments from this CI run
+    run_comments = [
+        c for c in comments
+        if run_link_pattern in c.get("body", "")
+    ]
+
+    if len(run_comments) <= 1:
+        return
+
+    # The last comment is the coordinator synthesis — keep it, delete the rest
+    to_delete = run_comments[:-1]
+    for comment in to_delete:
+        comment_id = comment.get("id")
+        if not comment_id:
+            continue
+        try:
+            subprocess.run(
+                [gh_path, "api", "-X", "DELETE",
+                 f"/repos/{repository}/issues/comments/{comment_id}"],
+                capture_output=True, text=True, env=os.environ.copy(), timeout=10,
+            )
+        except Exception:
+            pass
+
+    print(f"Cleaned up {len(to_delete)} per-reviewer comment(s), kept coordinator comment", file=sys.stderr)
 
 def main() -> int:
     try:
@@ -687,6 +785,12 @@ def _main() -> int:
     if not posted:
         print("Could not post to PR via gh CLI, writing to stdout as fallback", file=sys.stderr)
         print(comment)
+
+    # Clean up per-reviewer comments, keep only the coordinator synthesis
+    try:
+        cleanup_reviewer_comments()
+    except Exception as e:
+        print(f"Failed to cleanup reviewer comments: {e}", file=sys.stderr)
 
     return 0
 
