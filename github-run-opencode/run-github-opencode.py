@@ -265,11 +265,11 @@ def _main() -> int:
     )
     fallback_on_regex = get_env(
         "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX",
-        "timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out",
+        "timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out|ProviderModelNotFoundError",
     )
 
     # Core opencode env
-    os.environ["OPENCODE_ARGS"] = "github run"
+    os.environ["OPENCODE_ARGS"] = "github run --print-logs --log-level ERROR"
     set_env("OPENCODE_WORKING_DIRECTORY", get_env("GITHUB_RUN_OPENCODE_WORKING_DIRECTORY"))
     set_env("OPENCODE_ATTEMPTS", get_env("GITHUB_RUN_OPENCODE_ATTEMPTS", "3"))
     set_env("OPENCODE_RETRY_PROFILE", get_env("GITHUB_RUN_OPENCODE_RETRY_PROFILE", "github-network"))

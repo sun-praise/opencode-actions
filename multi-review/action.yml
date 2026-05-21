@@ -73,7 +73,7 @@ inputs:
   fallback-on-regex:
     description: Rotate to next fallback model when output matches this regex.
     required: false
-    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out|ProviderModelNotFoundError
   reviewer-config:
     description: Path to a YAML file defining custom reviewer personas and team composition.
     required: false

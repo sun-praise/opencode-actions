@@ -170,7 +170,7 @@ inputs:
   fallback-on-regex:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
-    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out|ProviderModelNotFoundError
   cleanup-error-comments:
     description: >-
       When true, automatically delete error comments posted by opencode to the PR
