@@ -198,7 +198,7 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
-    env["USE_GITHUB_TOKEN"] = "false"
+    env["USE_GITHUB_TOKEN"] = "true"
 
     if cache_dir:
         env["XDG_CACHE_HOME"] = cache_dir
@@ -559,6 +559,66 @@ def cleanup_error_comments() -> None:
             pass
 
 
+def cleanup_reviewer_comments() -> None:
+    """Delete per-reviewer comments, keeping only the coordinator comment.
+
+    Called after the coordinator comment is posted. Identifies comments from
+    the same CI run and deletes all except the most recent one (the coordinator
+    synthesis).
+    """
+    ctx = _get_pr_context()
+    if not ctx:
+        return
+    pr_number, repository = ctx
+
+    github_run_id = get_env("GITHUB_RUN_ID", "")
+    if not github_run_id:
+        return
+
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        return
+
+    run_link_pattern = f"/{repository}/actions/runs/{github_run_id}"
+
+    try:
+        result = subprocess.run(
+            [gh_path, "api", "-H", "Accept: application/vnd.github+json",
+             f"/repos/{repository}/issues/{pr_number}/comments"],
+            capture_output=True, text=True, env=os.environ.copy(), timeout=30,
+        )
+        if result.returncode != 0:
+            return
+        comments = json.loads(result.stdout)
+    except Exception:
+        return
+
+    # Find comments from this CI run
+    run_comments = [
+        c for c in comments
+        if run_link_pattern in c.get("body", "")
+    ]
+
+    if len(run_comments) <= 1:
+        return
+
+    # The last comment is the coordinator synthesis — keep it, delete the rest
+    to_delete = run_comments[:-1]
+    for comment in to_delete:
+        comment_id = comment.get("id")
+        if not comment_id:
+            continue
+        try:
+            subprocess.run(
+                [gh_path, "api", "-X", "DELETE",
+                 f"/repos/{repository}/issues/comments/{comment_id}"],
+                capture_output=True, text=True, env=os.environ.copy(), timeout=10,
+            )
+        except Exception:
+            pass
+
+    print(f"Cleaned up {len(to_delete)} per-reviewer comment(s), kept coordinator comment", file=sys.stderr)
+
 def main() -> int:
     try:
         return _main()
@@ -725,6 +785,12 @@ def _main() -> int:
     if not posted:
         print("Could not post to PR via gh CLI, writing to stdout as fallback", file=sys.stderr)
         print(comment)
+
+    # Clean up per-reviewer comments, keep only the coordinator synthesis
+    try:
+        cleanup_reviewer_comments()
+    except Exception as e:
+        print(f"Failed to cleanup reviewer comments: {e}", file=sys.stderr)
 
     return 0
 
