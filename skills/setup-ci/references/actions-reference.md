@@ -21,6 +21,16 @@
 - **用途**: 最灵活的封装，可自定义 prompt 执行任意 `opencode github run` 任务
 - **触发**: 按需（可绑定 issue_comment、pull_request 等）
 
+### architect-review — 架构级 PR 审查
+- **用途**: 从架构视角审查 PR 变更，关注耦合度、分层、模块放置、接口设计
+- **触发**: 同 review
+- **输出语言**: 中文，首行给出判定（架构合理 / 架构有疑虑 / 架构有问题）
+
+### multi-review — 多 agent 并行审查
+- **用途**: 并行运行多个 reviewer persona，由 coordinator 汇总去重并输出统一报告
+- **触发**: 同 review
+- **输出语言**: 中文，合并后的审查报告
+
 ### setup-opencode — 安装 OpenCode CLI
 - **用途**: 在 runner 上安装、缓存 opencode 二进制，导出路径供后续步骤使用
 - **输出**: `opencode-path`、`install-dir`、`xdg-cache-home`、`cache-hit`、`version`
@@ -92,6 +102,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ### feature-missing
 
@@ -117,6 +128,7 @@ Outputs:
 | `zhipu-api-key` | empty | 智谱 API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ### spec-coverage
 
@@ -143,6 +155,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ### github-run-opencode
 
@@ -168,6 +181,64 @@ Outputs:
 | `zhipu-api-key` | empty | 智谱 API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
+
+### architect-review
+
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-on-regex` | empty | 仅当输出匹配此正则时重试 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `600` | 总超时（秒），`0` 禁用 |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 模型名称 |
+| `prompt` | empty | 自定义 prompt，为空时使用内置架构审查模板 |
+| `architecture-context` | empty | 逗号分隔的架构文档路径，内容会追加到 prompt |
+| `fallback-models` | empty | 备选模型列表 |
+| `model-timeout-seconds` | `300` | 单模型超时（秒） |
+| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `extra-env` | empty | 额外环境变量 |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
+
+### multi-review
+
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `attempts` | `3` | 每个 reviewer 的重试次数 |
+| `retry-profile` | `github-network` | 内置重试预设 |
+| `retry-delay-seconds` | `15` | 重试间隔（秒） |
+| `timeout-seconds` | `900` | 整个 multi-review 流程总超时（秒） |
+| `coordinator-timeout-seconds` | `300` | coordinator agent 超时（秒） |
+| `working-directory` | empty | 工作目录 |
+| `model` | auto | 默认模型，用于所有 reviewer 和 coordinator |
+| `fallback-models` | empty | 备选模型列表 |
+| `model-timeout-seconds` | `300` | 单模型超时（秒） |
+| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
+| `reviewer-config` | empty | 自定义 reviewer persona 和团队配置的 YAML 文件路径 |
+| `default-team` | empty | 默认团队定义，如 `"quality:1,security:1"`，`reviewer-config` 设置时忽略 |
+| `coordinator-prompt` | empty | coordinator agent 自定义 prompt 模板，使用 `{{REVIEWS}}` 占位符 |
+| `reasoning-effort` | `max` | 推理强度 |
+| `enable-thinking` | `true` | 启用 thinking 模式 |
+| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
+| `github-token` | empty | GitHub token |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `extra-env` | empty | 额外环境变量 |
+| `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ## Required Permissions
 
@@ -177,6 +248,8 @@ Outputs:
 # review:            contents: read, pull-requests: write, issues: write
 # feature-missing:   contents: read, pull-requests: write, issues: read
 # spec-coverage:     contents: read, pull-requests: write
+# architect-review:  contents: read, pull-requests: write, issues: write
+# multi-review:      contents: read, pull-requests: write, issues: write
 # comment-command:   id-token: write, contents: write, pull-requests: write, issues: write
 ```
 
