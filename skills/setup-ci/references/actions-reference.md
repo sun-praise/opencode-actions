@@ -128,7 +128,6 @@ Outputs:
 | `zhipu-api-key` | empty | 智谱 API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
-| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ### spec-coverage
@@ -182,7 +181,6 @@ Outputs:
 | `zhipu-api-key` | empty | 智谱 API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
-| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 运行失败后自动删除 PR 中的错误评论 |
 
 ### architect-review
