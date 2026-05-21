@@ -307,7 +307,11 @@ def _run_reviewer_inner(
             rc, output = _run_opencode(prompt, m, effective_timeout, cache_dir=cache_dir)
 
             if rc == 0:
-                return {"name": name, "status": "success", "output": output}
+                # The actual review content was posted as a PR comment by opencode CLI.
+                # Fetch it so the coordinator gets real review text, not CLI noise.
+                comment_body = _fetch_latest_bot_comment()
+                return {"name": name, "status": "success", "output": output,
+                        "comment": comment_body or output}
 
             if rc == 124:
                 print(f"Reviewer {name} model {m} timed out after {effective_timeout}s", file=sys.stderr)
@@ -348,7 +352,7 @@ def run_coordinator(
 ) -> str | None:
     """Run the coordinator agent to synthesize all reviewer outputs."""
     reviews_text = "\n".join(
-        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_strip_ansi(r.get('output', ''))}\n"
+        f"\n--- Reviewer: {r['name']} (status: {r['status']}) ---\n{_strip_ansi(r.get('comment', '') or r.get('output', ''))}\n"
         for r in reviewer_results
     )
 
@@ -481,7 +485,7 @@ def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, 
     parts = [_filter_noise(_strip_ansi(coordinator_output)).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("comment", "") or r.get("output", ""))))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -492,7 +496,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("comment", "") or r.get("output", ""))))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
@@ -505,6 +509,45 @@ def _get_pr_context() -> tuple[str, str] | None:
     if not match or not github_repository:
         return None
     return match.group(1), github_repository
+
+
+def _fetch_latest_bot_comment(before_comment_id: int | None = None) -> str | None:
+    """Fetch the latest PR comment by github-actions[bot].
+
+    If before_comment_id is given, return the latest bot comment whose id
+    is strictly greater than before_comment_id. Otherwise return the
+    absolute latest bot comment.
+    """
+    ctx = _get_pr_context()
+    if not ctx:
+        return None
+    pr_number, repository = ctx
+
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        return None
+
+    try:
+        result = subprocess.run(
+            [gh_path, "api", "-H", "Accept: application/vnd.github+json",
+             f"/repos/{repository}/issues/{pr_number}/comments?per_page=10&sort=created&direction=desc"],
+            capture_output=True, text=True, env=os.environ.copy(), timeout=15,
+        )
+        if result.returncode != 0:
+            return None
+        comments = json.loads(result.stdout)
+    except Exception:
+        return None
+
+    for c in reversed(comments):
+        c_id = c.get("id", 0)
+        if before_comment_id and c_id <= before_comment_id:
+            continue
+        if c.get("user", {}).get("login") == "github-actions[bot]":
+            body = c.get("body", "")
+            if body.strip():
+                return body
+    return None
 
 
 def post_pr_comment(body: str) -> int | None:
