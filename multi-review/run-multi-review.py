@@ -307,11 +307,7 @@ def _run_reviewer_inner(
             rc, output = _run_opencode(prompt, m, effective_timeout, cache_dir=cache_dir)
 
             if rc == 0:
-                # The actual review content was posted as a PR comment by opencode CLI.
-                # Fetch it so the coordinator gets real review text, not CLI noise.
-                comment_body = _fetch_latest_bot_comment()
-                return {"name": name, "status": "success", "output": output,
-                        "comment": comment_body or output}
+                return {"name": name, "status": "success", "output": output}
 
             if rc == 124:
                 print(f"Reviewer {name} model {m} timed out after {effective_timeout}s", file=sys.stderr)
@@ -513,43 +509,58 @@ def _get_pr_context() -> tuple[str, str] | None:
     return match.group(1), github_repository
 
 
-def _fetch_latest_bot_comment(before_comment_id: int | None = None) -> str | None:
-    """Fetch the latest PR comment by github-actions[bot].
-
-    If before_comment_id is given, return the latest bot comment whose id
-    is strictly greater than before_comment_id. Otherwise return the
-    absolute latest bot comment.
-    """
+def _snapshot_comment_ids() -> set[int]:
+    """Return the set of all current github-actions[bot] comment IDs."""
     ctx = _get_pr_context()
     if not ctx:
-        return None
+        return set()
     pr_number, repository = ctx
-
     gh_path = shutil.which("gh")
     if not gh_path:
-        return None
-
+        return set()
     try:
         result = subprocess.run(
             [gh_path, "api", "-H", "Accept: application/vnd.github+json",
-             f"/repos/{repository}/issues/{pr_number}/comments?per_page=10&sort=created&direction=desc"],
+             f"/repos/{repository}/issues/{pr_number}/comments?per_page=100"],
             capture_output=True, text=True, env=os.environ.copy(), timeout=15,
         )
         if result.returncode != 0:
-            return None
+            return set()
         comments = json.loads(result.stdout)
+        return {c["id"] for c in comments
+                if c.get("user", {}).get("login") == "github-actions[bot]" and c.get("id")}
     except Exception:
-        return None
+        return set()
 
-    for c in comments:
-        c_id = c.get("id", 0)
-        if before_comment_id and c_id <= before_comment_id:
-            continue
-        if c.get("user", {}).get("login") == "github-actions[bot]":
-            body = c.get("body", "")
-            if body.strip():
-                return body
-    return None
+
+def _fetch_new_bot_comments(before_ids: set[int]) -> list[dict[str, Any]]:
+    """Fetch bot comments created after the snapshot, sorted by creation time."""
+    ctx = _get_pr_context()
+    if not ctx:
+        return []
+    pr_number, repository = ctx
+    gh_path = shutil.which("gh")
+    if not gh_path:
+        return []
+    try:
+        result = subprocess.run(
+            [gh_path, "api", "-H", "Accept: application/vnd.github+json",
+             f"/repos/{repository}/issues/{pr_number}/comments?per_page=100"],
+            capture_output=True, text=True, env=os.environ.copy(), timeout=15,
+        )
+        if result.returncode != 0:
+            return []
+        comments = json.loads(result.stdout)
+        new_comments = []
+        for c in comments:
+            if c.get("id") not in before_ids and c.get("user", {}).get("login") == "github-actions[bot]":
+                body = c.get("body", "")
+                if body.strip():
+                    new_comments.append({"id": c["id"], "body": body, "created_at": c.get("created_at", "")})
+        new_comments.sort(key=lambda c: c["created_at"])
+        return new_comments
+    except Exception:
+        return []
 
 
 def post_pr_comment(body: str) -> int | None:
@@ -802,6 +813,10 @@ def _main() -> int:
 
     fallback_models = [m.strip() for m in re.split(r"[\r\n,]+", fallback_models_str) if m.strip()]
 
+    # --- Snapshot existing comments before reviewers start ---
+    pre_comment_ids = _snapshot_comment_ids()
+    print(f"Snapshot {len(pre_comment_ids)} existing bot comments before review", file=sys.stderr)
+
     # --- Run reviewers in parallel ---
     global_deadline = time.time() + global_timeout if global_timeout > 0 else None
 
@@ -833,12 +848,22 @@ def _main() -> int:
                 print(f"Reviewer {name} raised exception: {e}", file=sys.stderr)
                 reviewer_results.append({"name": name, "status": "error", "output": str(e)})
 
+    # --- Fetch actual review content from PR comments ---
     successful = [r for r in reviewer_results if r["status"] == "success"]
+    if successful:
+        new_comments = _fetch_new_bot_comments(pre_comment_ids)
+        print(f"Fetched {len(new_comments)} new bot comments ({len(successful)} successful reviewers)", file=sys.stderr)
+        # Assign new comments to successful reviewers (order matched by creation time)
+        for i, r in enumerate(successful):
+            if i < len(new_comments):
+                r["comment"] = new_comments[i]["body"]
+                r["comment_id"] = new_comments[i]["id"]
+
     if not successful:
         print("All reviewers failed", file=sys.stderr)
         return 1
 
-    # --- Run coordinator ---
+    # --- Snapshot before coordinator ---
     remaining_time = 0
     if global_deadline:
         remaining_time = max(0, int(global_deadline - time.time()))
@@ -853,11 +878,18 @@ def _main() -> int:
             return 0
 
     coord_timeout = min(coordinator_timeout, remaining_time) if global_deadline else coordinator_timeout
+    pre_coord_ids = _snapshot_comment_ids()
     coordinator_output = run_coordinator(
         reviewer_results,
         coord_timeout,
         coordinator_prompt_template or None,
     )
+
+    # Fetch coordinator's actual synthesis from PR comment
+    coord_comments = _fetch_new_bot_comments(pre_coord_ids)
+    if coord_comments:
+        coordinator_output = coord_comments[-1]["body"]
+        print(f"Fetched coordinator synthesis from PR comment (id={coord_comments[-1]['id']})", file=sys.stderr)
 
     if coordinator_output:
         comment = format_pr_comment(coordinator_output, reviewer_results)
