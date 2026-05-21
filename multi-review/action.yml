@@ -87,9 +87,9 @@ inputs:
     required: false
     default: ""
   use-github-token:
-    description: Value exported as USE_GITHUB_TOKEN.
+    description: Value exported as USE_GITHUB_TOKEN. Set to false to prevent opencode CLI from posting per-reviewer comments; only the coordinator summary will be posted.
     required: false
-    default: "true"
+    default: "false"
   github-token:
     description: Value exported as GITHUB_TOKEN.
     required: false

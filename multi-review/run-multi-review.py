@@ -198,7 +198,7 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
-    env["USE_GITHUB_TOKEN"] = "true"
+    env["USE_GITHUB_TOKEN"] = "false"
 
     if cache_dir:
         env["XDG_CACHE_HOME"] = cache_dir
@@ -403,6 +403,44 @@ def _strip_ansi(raw: str) -> str:
     return text.strip()
 
 
+_NOISE_PREFIXES = (
+    "asserting permissions",
+    "adding reaction",
+    "removing reaction",
+    "fetching prompt data",
+    "checking out local branch",
+    "sending message to opencode",
+    "checking if branch is dirty",
+    "creating comment",
+    "pushing to local branch",
+    "opencode session ses_",
+    "performing one time database",
+    "sqlite-migration",
+    "database migration",
+)
+_TOOL_LINE_RE = re.compile(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s")
+_LOG_LINE_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)")
+
+
+def _filter_noise(text: str) -> str:
+    """Remove opencode CLI boilerplate lines from reviewer output."""
+    cleaned = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_NOISE_PREFIXES):
+            continue
+        if _TOOL_LINE_RE.match(stripped):
+            continue
+        if _LOG_LINE_RE.match(stripped):
+            continue
+        if "opencode.ai/s/" in stripped:
+            continue
+        if stripped.startswith("| ") and '{"' in stripped:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def _truncate(text: str, limit: int = 8000) -> str:
     text = text.strip()
     if len(text) > limit:
@@ -412,10 +450,10 @@ def _truncate(text: str, limit: int = 8000) -> str:
 
 def format_pr_comment(coordinator_output: str, reviewer_results: list[dict[str, Any]]) -> str:
     """Format the final PR comment with coordinator output and collapsible reviewer details."""
-    parts = [_strip_ansi(coordinator_output).strip(), "\n\n---\n**详细审查报告：**\n"]
+    parts = [_filter_noise(_strip_ansi(coordinator_output)).strip(), "\n\n---\n**详细审查报告：**\n"]
     for r in reviewer_results:
         status_label = "✅" if r["status"] == "success" else "⚠️"
-        output = _truncate(_strip_ansi(r.get("output", "")))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
         parts.append(
             f"\n<details>\n<summary>{status_label} {r['name']}</summary>\n\n{output}\n</details>\n"
         )
@@ -426,7 +464,7 @@ def post_fallback_comment(reviewer_results: list[dict[str, Any]]) -> str:
     """Format a fallback comment with raw reviewer outputs when coordinator fails."""
     parts = ["⚠️ Coordinator agent failed. Showing raw reviewer outputs:\n"]
     for r in reviewer_results:
-        output = _truncate(_strip_ansi(r.get("output", "")))
+        output = _truncate(_filter_noise(_strip_ansi(r.get("output", ""))))
         parts.append(f"\n### {r['name']} ({r['status']})\n\n{output}\n")
     return "".join(parts)
 
