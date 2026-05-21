@@ -403,6 +403,7 @@ def _strip_ansi(raw: str) -> str:
     return text.strip()
 
 
+
 _NOISE_PREFIXES = (
     "asserting permissions",
     "adding reaction",
@@ -418,16 +419,37 @@ _NOISE_PREFIXES = (
     "sqlite-migration",
     "database migration",
 )
+_NOISE_CONTINUATION = (
+    "permission:",
+    "service:",
+    '"session.id"',
+    "step:",
+    '"llm.runtime"',
+    '"llm.provider"',
+    '"llm.model"',
+)
 _TOOL_LINE_RE = re.compile(r"^\|\s+(Shell|Read|Write|Edit|Bash)\s")
-_LOG_LINE_RE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)")
+_LOG_LINE_RE = re.compile(r"^\[\d{2}:\d{2}\.\d{3}\]\s+(INFO|WARN|ERROR|DEBUG)")
+_NOISE_BLOCK_RE = re.compile(
+    r'^\s*"[\w.]+":\s|'
+    r"^\s*[}{]$|"
+    r"^\s*step:\s*\d|"
+    r"^\s*permission:"
+)
 
 
 def _filter_noise(text: str) -> str:
     """Remove opencode CLI boilerplate lines from reviewer output."""
     cleaned = []
+    skipping = False
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith(_NOISE_PREFIXES):
+        if not stripped:
+            skipping = False
+            cleaned.append(line)
+            continue
+        if stripped.lower().startswith(_NOISE_PREFIXES):
+            skipping = True
             continue
         if _TOOL_LINE_RE.match(stripped):
             continue
@@ -437,6 +459,12 @@ def _filter_noise(text: str) -> str:
             continue
         if stripped.startswith("| ") and '{"' in stripped:
             continue
+        if skipping:
+            if stripped.startswith(_NOISE_CONTINUATION) or _NOISE_BLOCK_RE.match(stripped):
+                continue
+            if stripped in ("}", "{"):
+                continue
+            skipping = False
         cleaned.append(line)
     return "\n".join(cleaned).strip()
 
