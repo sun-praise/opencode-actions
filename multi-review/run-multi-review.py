@@ -190,7 +190,11 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
 
 
 def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
-    """Run opencode github run directly. Returns (returncode, stdout)."""
+    """Run opencode github run directly. Returns (returncode, stdout).
+
+    Each invocation gets its own git worktree to prevent lock file race
+    conditions between parallel reviewers sharing the same .git directory.
+    """
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
@@ -199,6 +203,21 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
     if cache_dir:
         env["XDG_CACHE_HOME"] = cache_dir
 
+    # Create a detached HEAD worktree so this reviewer has an isolated .git
+    worktree_dir = tempfile.mkdtemp(prefix="opencode-worktree-")
+    try:
+        subprocess.run(
+            ["git", "worktree", "add", "--detach", worktree_dir, "HEAD"],
+            capture_output=True, check=False,
+        )
+        return _run_opencode_in_worktree(worktree_dir, env, timeout)
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", worktree_dir],
+                       capture_output=True, check=False)
+
+
+def _run_opencode_in_worktree(worktree_dir: str, env: dict[str, str], timeout: int) -> tuple[int, str]:
+    """Execute opencode CLI inside the given worktree directory."""
     opencode_bin = env.get("OPENCODE_BIN_PATH", "opencode")
     cmd = [opencode_bin, "github", "run", "--print-logs", "--log-level", "ERROR"]
 
@@ -208,7 +227,7 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
     else:
         sub_timeout = None
 
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
+    result = subprocess.run(cmd, cwd=worktree_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
     stderr_output = result.stderr.decode("utf-8", errors="replace")
     if stderr_output.strip():
         print(f"[opencode stderr] {stderr_output[:500]}", file=sys.stderr)
