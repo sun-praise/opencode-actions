@@ -190,7 +190,11 @@ def _parse_team_string(team_str: str, personas: dict) -> list[dict[str, Any]]:
 
 
 def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None = None) -> tuple[int, str]:
-    """Run opencode github run directly. Returns (returncode, stdout)."""
+    """Run opencode github run directly. Returns (returncode, stdout).
+
+    Each invocation gets its own git clone to prevent lock file race
+    conditions between parallel reviewers sharing the same .git directory.
+    """
     env = os.environ.copy()
     env["MODEL"] = model
     env["PROMPT"] = prompt
@@ -199,6 +203,25 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
     if cache_dir:
         env["XDG_CACHE_HOME"] = cache_dir
 
+    # Clone the repo into a temp dir so each reviewer has a fully isolated .git
+    clone_dir = tempfile.mkdtemp(prefix="opencode-clone-")
+    try:
+        clone_rc = subprocess.run(
+            ["git", "clone", "--no-local", ".", clone_dir],
+            capture_output=True, check=False,
+        )
+        if clone_rc.returncode != 0:
+            print(f"[git clone] failed (rc={clone_rc.returncode}): {clone_rc.stderr.decode(errors='replace')[:300]}", file=sys.stderr)
+            shutil.rmtree(clone_dir, ignore_errors=True)
+            # Fallback: run in current directory without isolation
+            return _run_opencode_raw(env, timeout)
+        return _run_opencode_in_dir(clone_dir, env, timeout)
+    finally:
+        shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+def _run_opencode_raw(env: dict[str, str], timeout: int) -> tuple[int, str]:
+    """Execute opencode CLI in the current working directory."""
     opencode_bin = env.get("OPENCODE_BIN_PATH", "opencode")
     cmd = [opencode_bin, "github", "run", "--print-logs", "--log-level", "ERROR"]
 
@@ -209,6 +232,24 @@ def _run_opencode(prompt: str, model: str, timeout: int, cache_dir: str | None =
         sub_timeout = None
 
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
+    stderr_output = result.stderr.decode("utf-8", errors="replace")
+    if stderr_output.strip():
+        print(f"[opencode stderr] {stderr_output[:500]}", file=sys.stderr)
+    return result.returncode, result.stdout.decode("utf-8", errors="replace")
+
+
+def _run_opencode_in_dir(work_dir: str, env: dict[str, str], timeout: int) -> tuple[int, str]:
+    """Execute opencode CLI in the given directory."""
+    opencode_bin = env.get("OPENCODE_BIN_PATH", "opencode")
+    cmd = [opencode_bin, "github", "run", "--print-logs", "--log-level", "ERROR"]
+
+    if timeout > 0:
+        cmd = ["timeout", "--foreground", f"{timeout}s"] + cmd
+        sub_timeout = timeout + 30
+    else:
+        sub_timeout = None
+
+    result = subprocess.run(cmd, cwd=work_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=sub_timeout)
     stderr_output = result.stderr.decode("utf-8", errors="replace")
     if stderr_output.strip():
         print(f"[opencode stderr] {stderr_output[:500]}", file=sys.stderr)
