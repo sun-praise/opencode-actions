@@ -27,12 +27,6 @@
 - **输出语言**: 中文，首行给出判定（架构合理 / 架构有疑虑 / 架构有问题）
 - **特有输入**: `architecture-context`（逗号分隔的架构文档路径）
 
-### multi-review — 多 agent 并行代码审查
-- **用途**: 并行运行多个 reviewer persona（quality、security、performance 等），再用 coordinator agent 综合报告
-- **触发**: `pull_request` (opened, synchronize, reopened, ready_for_review)
-- **输出语言**: 中文，每个 reviewer 独立输出，coordinator 综合汇总
-- **特有输入**: `reviewer-config`、`default-team`、`coordinator-timeout-seconds`、`coordinator-prompt`
-
 ### setup-opencode — 安装 OpenCode CLI
 - **用途**: 在 runner 上安装、缓存 opencode 二进制，导出路径供后续步骤使用
 - **输出**: `opencode-path`、`install-dir`、`xdg-cache-home`、`cache-hit`、`version`
@@ -187,35 +181,6 @@ Outputs:
 | `extra-env` | empty | 额外环境变量 |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
-### multi-review
-
-包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `attempts` | `3` | 每个 reviewer 的重试次数 |
-| `retry-profile` | `github-network` | 内置重试预设 |
-| `retry-delay-seconds` | `15` | 重试间隔（秒） |
-| `timeout-seconds` | `900` | 全局超时（秒），`0` 禁用 |
-| `coordinator-timeout-seconds` | `300` | coordinator agent 超时（秒） |
-| `working-directory` | empty | 工作目录 |
-| `model` | auto | 默认模型（所有 reviewer 和 coordinator 共用） |
-| `fallback-models` | empty | 备选模型列表 |
-| `model-timeout-seconds` | `300` | 单模型超时（秒） |
-| `fallback-on-regex` | timeout regex | 切换备选模型正则 |
-| `reviewer-config` | empty | YAML 文件路径，定义自定义 reviewer persona 和团队配置 |
-| `default-team` | empty | 逗号分隔的团队定义（如 "quality:1,security:1"），`reviewer-config` 存在时忽略 |
-| `coordinator-prompt` | empty | 自定义 coordinator prompt 模板，用 `{{REVIEWS}}` 作占位符 |
-| `reasoning-effort` | `max` | 推理强度 |
-| `enable-thinking` | `true` | 启用 thinking 模式 |
-| `use-github-token` | `true` | 是否导出 `USE_GITHUB_TOKEN` |
-| `github-token` | empty | GitHub token |
-| `zhipu-api-key` | empty | 智谱 API key |
-| `opencode-go-api-key` | empty | OpenCode Go API key |
-| `deepseek-api-key` | empty | DeepSeek API key |
-| `extra-env` | empty | 额外环境变量 |
-| `cleanup-error-comments` | `true` | 自动删除失败评论 |
-
 ### github-run-opencode
 
 包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
@@ -249,7 +214,6 @@ Outputs:
 # Per-job permissions — use the minimum required for each action:
 #
 # review:            contents: read, pull-requests: write, issues: write
-# multi-review:      contents: read, pull-requests: write, issues: write
 # architect-review:  contents: read, pull-requests: write, issues: write
 # feature-missing:   contents: read, pull-requests: write, issues: read
 # spec-coverage:     contents: read, pull-requests: write

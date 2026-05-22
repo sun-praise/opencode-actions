@@ -19,7 +19,6 @@ Configure `Svtter/opencode-actions` GitHub Actions for a user's repository.
 | Need | Action | One-liner |
 | --- | --- | --- |
 | PR code review | `review` | Quality, bugs, security — Chinese output |
-| Multi-agent review | `multi-review` | Parallel reviewers (quality, security, etc.) + coordinator synthesis |
 | Architecture review | `architect-review` | Coupling, layering, structural concerns |
 | PR scope audit | `feature-missing` | Missing features vs linked issue spec |
 | Spec coverage | `spec-coverage` | Missing features vs project spec files |
@@ -27,40 +26,6 @@ Configure `Svtter/opencode-actions` GitHub Actions for a user's repository.
 | Manual setup | `setup-opencode` + `run-opencode` | Full control over install and run |
 
 Users typically combine `review` + `feature-missing` + `spec-coverage` for full coverage.
-
-## Multi-Review Setup (Recommended)
-
-Generate this in `.github/workflows/opencode-multi-review.yml`:
-
-```yaml
-name: OpenCode Multi-Review
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  multi-review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run multi-agent review
-        uses: Svtter/opencode-actions/multi-review@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-```
 
 ## Architect Review Setup
 
