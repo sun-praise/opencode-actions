@@ -84,8 +84,7 @@ function resolveModel() {
   const raw = env("MULTI_REVIEW_MODEL") || env("MODEL_NAME") || "zhipuai-coding-plan/glm-5.1";
   const idx = raw.indexOf("/");
   if (idx === -1) {
-    console.error(`Model "${raw}" missing provider (expected format: provider/model)`);
-    return { providerID: "", modelID: raw };
+    throw new Error(`Model "${raw}" missing provider (expected format: provider/model)`);
   }
   return { providerID: raw.slice(0, idx), modelID: raw.slice(idx + 1) };
 }
@@ -121,17 +120,19 @@ function withTimeout(promise, ms, label) {
     new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     })
-  ]).finally(() => clearTimeout(timer));
+  ]).finally(() => {
+    if (timer !== void 0) clearTimeout(timer);
+  });
 }
 async function runParallelReviewers(client, reviewers, prDiff, opts) {
   const deadline = Date.now() + opts.globalTimeoutMs;
   const promises = reviewers.map(async (reviewer) => {
-    const remainingMs = Math.max(3e4, deadline - Date.now());
     try {
-      console.log(`[${reviewer.name}] Starting review (timeout: ${remainingMs}ms)...`);
+      const remaining = () => Math.max(3e4, deadline - Date.now());
+      console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
       const sessionResult = await withTimeout(
         client.session.create({ throwOnError: true }),
-        remainingMs,
+        remaining(),
         reviewer.name
       );
       const sessionId = sessionResult.data.id;
@@ -143,12 +144,12 @@ async function runParallelReviewers(client, reviewers, prDiff, opts) {
           },
           throwOnError: true
         }),
-        remainingMs,
+        remaining(),
         reviewer.name
       );
       const messagesResult = await withTimeout(
         client.session.messages({ path: { id: sessionId }, throwOnError: true }),
-        remainingMs,
+        remaining(),
         reviewer.name
       );
       const content = extractText(messagesResult.data);

@@ -31,13 +31,13 @@ function extractText(messages: Array<{ info: { role: string }; parts: Array<{ ty
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise,
     new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
-  ]).finally(() => clearTimeout(timer));
+  ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
 }
 
 export async function runParallelReviewers(
@@ -49,14 +49,13 @@ export async function runParallelReviewers(
   const deadline = Date.now() + opts.globalTimeoutMs;
 
   const promises = reviewers.map(async (reviewer) => {
-    const remainingMs = Math.max(30_000, deadline - Date.now());
-
     try {
-      console.log(`[${reviewer.name}] Starting review (timeout: ${remainingMs}ms)...`);
+      const remaining = () => Math.max(30_000, deadline - Date.now());
+      console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
 
       const sessionResult = await withTimeout(
         client.session.create({ throwOnError: true }),
-        remainingMs,
+        remaining(),
         reviewer.name,
       );
       const sessionId = sessionResult.data.id;
@@ -69,13 +68,13 @@ export async function runParallelReviewers(
           },
           throwOnError: true,
         }),
-        remainingMs,
+        remaining(),
         reviewer.name,
       );
 
       const messagesResult = await withTimeout(
         client.session.messages({ path: { id: sessionId }, throwOnError: true }),
-        remainingMs,
+        remaining(),
         reviewer.name,
       );
       const content = extractText(messagesResult.data);
