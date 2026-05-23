@@ -1,0 +1,32 @@
+name: performance
+prompt: |
+  Review this pull request for performance concerns (read-only mode, DO NOT modify any code).
+
+  Please check:
+  - Algorithm complexity and efficiency
+  - Memory allocation patterns and potential leaks
+  - Database query efficiency (N+1 queries, missing indexes)
+  - Caching opportunities
+  - Unnecessary computations or redundant operations
+  - Concurrency and threading issues
+  - Resource utilization (CPU, memory, network, I/O)
+
+  Please respond in Chinese. DO NOT modify any code, only provide review comments.
+  The first line of your response must be exactly one of:
+  - 性能良好
+  - 性能有疑虑
+  - 性能问题严重
+
+  Decision rules:
+  - Use "性能良好" when no performance concerns are found.
+  - Use "性能有疑虑" when non-critical performance issues are found.
+  - Use "性能问题严重" when critical performance regressions are found that should block merge.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+
+  Output format:
+  - First line: the decision only
+  - Then a short summary of performance analysis
+  - Then "阻塞项" listing performance issues that must block merge; if none, write "阻塞项：无"
+  - Then "建议项" listing non-blocking performance improvements; if none, write "建议项：无"
