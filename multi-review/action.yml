@@ -1,0 +1,264 @@
+name: OpenCode Multi-Review
+description: Multi-agent parallel code review using OpenCode SDK with coordinator synthesis.
+
+inputs:
+  install-url:
+    description: Installer URL used to bootstrap OpenCode.
+    required: false
+    default: https://opencode.ai/install
+  install-dir:
+    description: Directory where the opencode binary should be installed.
+    required: false
+    default: ""
+  xdg-cache-home:
+    description: Dedicated XDG cache directory for OpenCode.
+    required: false
+    default: ""
+  cache:
+    description: Cache the install and XDG cache directories with actions/cache.
+    required: false
+    default: "true"
+  cache-key:
+    description: Cache key suffix used to invalidate installer-based caches.
+    required: false
+    default: v1
+  install-attempts:
+    description: Number of installer retry attempts.
+    required: false
+    default: "3"
+  allow-preinstalled:
+    description: Reuse an existing opencode found on PATH instead of forcing installer bootstrap.
+    required: false
+    default: "false"
+  version:
+    description: Minimum required OpenCode version (semver). Use "none" to disable version checking.
+    required: false
+    default: ""
+  working-directory:
+    description: Optional working directory before running review.
+    required: false
+    default: ""
+  timeout-seconds:
+    description: Global timeout for all reviewers in seconds. Set 0 to disable.
+    required: false
+    default: "900"
+  model:
+    description: Model to use for all reviewers and coordinator (format: provider/model).
+    required: false
+    default: ""
+  default-team:
+    description: Comma-separated team definition (e.g. "quality:1,security:1,performance:1").
+    required: false
+    default: ""
+  coordinator-timeout-seconds:
+    description: Timeout in seconds for the coordinator synthesis step.
+    required: false
+    default: "300"
+  coordinator-prompt:
+    description: Custom coordinator prompt template. Use {{REVIEWS}} as placeholder for reviewer outputs.
+    required: false
+    default: ""
+  reasoning-effort:
+    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
+    required: false
+    default: "max"
+  enable-thinking:
+    description: Enable thinking mode for the model agent.
+    required: false
+    default: "true"
+  github-token:
+    description: GitHub token for posting PR comments.
+    required: false
+    default: ""
+  zhipu-api-key:
+    description: Zhipu AI API key.
+    required: false
+    default: ""
+  opencode-go-api-key:
+    description: OpenCode Go API key.
+    required: false
+    default: ""
+  deepseek-api-key:
+    description: DeepSeek API key.
+    required: false
+    default: ""
+  extra-env:
+    description: >-
+      Extra environment variables. Multi-line KEY=VALUE pairs, one per line.
+      Empty lines and lines starting with '#' are ignored.
+    required: false
+    default: ""
+  cleanup-error-comments:
+    description: Automatically delete error comments after a failed run.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'multi-review currently supports Linux runners only\n' >&2
+        exit 1
+
+    - id: version
+      shell: bash
+      run: |
+        set -euo pipefail
+        effective="${{ inputs.version }}"
+        if [[ "$effective" == "none" ]]; then
+          effective=""
+        elif [[ -z "$effective" ]]; then
+          default_file="${{ github.action_path }}/../setup-opencode/default-version"
+          if [[ ! -f "$default_file" ]]; then
+            printf 'error: default-version file not found at %s\n' "$default_file" >&2
+            exit 1
+          fi
+          effective="$(tr -d '[:space:]' < "$default_file")"
+          if [[ ! "$effective" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'error: invalid version in %s: %s\n' "$default_file" "$(cat "$default_file")" >&2
+            exit 1
+          fi
+        fi
+        printf 'version=%s\n' "$effective" >>"$GITHUB_OUTPUT"
+
+    - id: paths
+      shell: bash
+      env:
+        INPUT_INSTALL_DIR: ${{ inputs.install-dir }}
+        INPUT_XDG_CACHE_HOME: ${{ inputs.xdg-cache-home }}
+      run: |
+        set -euo pipefail
+        install_dir="$INPUT_INSTALL_DIR"
+        xdg_cache_home="$INPUT_XDG_CACHE_HOME"
+        if [[ -z "$install_dir" ]]; then
+          install_dir="${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/bin"
+        fi
+        if [[ -z "$xdg_cache_home" ]]; then
+          xdg_cache_home="${RUNNER_TOOL_CACHE:-$HOME/.cache}/opencode/cache"
+        fi
+        printf 'install_dir=%s\n' "$install_dir" >>"$GITHUB_OUTPUT"
+        printf 'xdg_cache_home=%s\n' "$xdg_cache_home" >>"$GITHUB_OUTPUT"
+
+    - id: key
+      shell: bash
+      env:
+        INPUT_INSTALL_URL: ${{ inputs.install-url }}
+      run: |
+        set -euo pipefail
+        install_url_hash="$(printf '%s' "$INPUT_INSTALL_URL" | sha256sum | cut -d' ' -f1)"
+        printf 'install_url_hash=%s\n' "$install_url_hash" >>"$GITHUB_OUTPUT"
+
+    - id: cache
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ steps.paths.outputs.install_dir }}
+          ${{ steps.paths.outputs.xdg_cache_home }}
+        key: multi-review-opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.install_url_hash }}-${{ steps.version.outputs.version }}-${{ inputs.cache-key }}
+
+    - shell: bash
+      env:
+        OPENCODE_INSTALL_DIR: ${{ steps.paths.outputs.install_dir }}
+        XDG_CACHE_HOME: ${{ steps.paths.outputs.xdg_cache_home }}
+        OPENCODE_INSTALL_URL: ${{ inputs.install-url }}
+        OPENCODE_INSTALL_ATTEMPTS: ${{ inputs.install-attempts }}
+        OPENCODE_ALLOW_PREINSTALLED: ${{ inputs.allow-preinstalled }}
+        OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
+      run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
+
+    - id: pr-context
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        ref="${GITHUB_REF:-}"
+        if [[ "$ref" =~ refs/pull/([0-9]+)/merge ]]; then
+          pr="${BASH_REMATCH[1]}"
+          gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          gh pr view "$pr" --json title,body > "${RUNNER_TEMP}/.pr-meta.json" 2>/dev/null || echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
+          echo "pr_number=$pr" >> "$GITHUB_OUTPUT"
+          echo "Found PR #$pr"
+        else
+          echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
+          echo "pr_number=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - shell: bash
+      env:
+        OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+      run: |
+        set -euo pipefail
+        effort="${OPENCODE_REASONING_EFFORT:-max}"
+        thinking="${OPENCODE_ENABLE_THINKING:-true}"
+        thinking_json="null"
+        if [[ "$thinking" == "true" ]]; then
+          thinking_json='{"type":"enabled"}'
+        fi
+        cat > opencode.json <<EOJSON
+        {
+          "model": "",
+          "reasoning": "$effort",
+          "thinking": $thinking_json,
+          "permission": {
+            "edit": "deny",
+            "bash": {
+              "git commit": "deny",
+              "git commit *": "deny",
+              "git push": "deny",
+              "git push *": "deny",
+              "git add": "deny",
+              "git add *": "deny",
+              "git stash": "deny",
+              "git stash *": "deny",
+              "git reset": "deny",
+              "git reset *": "deny",
+              "git checkout": "deny",
+              "git checkout *": "deny"
+            }
+          }
+        }
+        EOJSON
+        echo "Wrote opencode.json with reasoning=$effort thinking=$thinking"
+
+    - shell: bash
+      env:
+        MULTI_REVIEW_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        MULTI_REVIEW_MODEL: ${{ inputs.model }}
+        MULTI_REVIEW_DEFAULT_TEAM: ${{ inputs.default-team }}
+        MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS: ${{ inputs.coordinator-timeout-seconds }}
+        MULTI_REVIEW_COORDINATOR_PROMPT: ${{ inputs.coordinator-prompt }}
+        MULTI_REVIEW_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        MULTI_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
+        MULTI_REVIEW_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
+        MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
+        MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
+        MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
+        OPENCODE_API_KEY: ${{ inputs.opencode-go-api-key }}
+        DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        RUNNER_TEMP: ${{ runner.temp }}
+      run: |
+        set -euo pipefail
+        if ! command -v node >/dev/null 2>&1; then
+          printf 'node is required but not installed on this runner\n' >&2
+          exit 1
+        fi
+        if [[ -n "$MULTI_REVIEW_WORKING_DIRECTORY" ]]; then
+          cd "$MULTI_REVIEW_WORKING_DIRECTORY"
+        fi
+        node "${{ github.action_path }}/dist/index.js"
