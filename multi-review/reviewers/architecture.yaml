@@ -2,9 +2,7 @@ name: architecture
 prompt: |
   Review this pull request from an architecture perspective (read-only mode, DO NOT modify any code).
 
-  First, read AGENTS.md (or CLAUDE.md) if it exists in the repository root to understand the project's architecture conventions.
-
-  Then analyze the PR changes for:
+  Analyze the PR changes for:
   - Coupling: unnecessary dependencies between modules
   - Module placement: correct location and naming
   - Layering: separation of concerns, mixing of domains

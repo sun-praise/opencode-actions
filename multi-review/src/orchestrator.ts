@@ -104,7 +104,7 @@ export async function runCoordinator(
     .join("\n\n---\n\n");
 
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
-  const fullPrompt = promptTemplate.replace("{{REVIEWS}}", reviewsText);
+  const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
 
   try {
     const sessionResult = await withTimeout(

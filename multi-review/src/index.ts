@@ -48,8 +48,6 @@ async function main(): Promise<number> {
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
 
     const reviews = await runParallelReviewers(client, reviewers, prDiff, {
-      modelID,
-      providerID,
       globalTimeoutMs: globalTimeout * 1000,
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
@@ -67,8 +65,6 @@ async function main(): Promise<number> {
     let comment: string;
     try {
       comment = await runCoordinator(client, reviews, {
-        modelID,
-        providerID,
         globalTimeoutMs: globalTimeout * 1000,
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),

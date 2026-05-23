@@ -60,7 +60,7 @@ export function cleanupErrorComments(): void {
   }
 
   for (const comment of comments) {
-    if (!comment.body || !runLinkPattern) continue;
+    if (!comment.body) continue;
     if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
     try {
       execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {

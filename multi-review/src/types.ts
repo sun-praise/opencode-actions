@@ -11,8 +11,6 @@ export interface ReviewResult {
 }
 
 export interface OrchestratorOptions {
-  modelID: string;
-  providerID: string;
   globalTimeoutMs: number;
   coordinatorTimeoutMs: number;
   coordinatorPrompt: string;

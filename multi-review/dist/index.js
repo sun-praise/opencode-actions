@@ -83,7 +83,10 @@ function intEnv(key, fallback) {
 function resolveModel() {
   const raw = env("MULTI_REVIEW_MODEL") || env("MODEL_NAME") || "zhipuai-coding-plan/glm-5.1";
   const idx = raw.indexOf("/");
-  if (idx === -1) return { providerID: "", modelID: raw };
+  if (idx === -1) {
+    console.error(`Model "${raw}" missing provider (expected format: provider/model)`);
+    return { providerID: "", modelID: raw };
+  }
   return { providerID: raw.slice(0, idx), modelID: raw.slice(idx + 1) };
 }
 
@@ -167,7 +170,7 @@ async function runCoordinator(client, reviews, opts) {
   const reviewsText = reviews.map((r) => `## ${r.reviewer}
 ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n---\n\n");
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
-  const fullPrompt = promptTemplate.replace("{{REVIEWS}}", reviewsText);
+  const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
   try {
     const sessionResult = await withTimeout(
       client.session.create({ throwOnError: true }),
@@ -264,7 +267,7 @@ function cleanupErrorComments() {
     return;
   }
   for (const comment of comments) {
-    if (!comment.body || !runLinkPattern) continue;
+    if (!comment.body) continue;
     if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
     try {
       execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
@@ -322,8 +325,6 @@ async function main() {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
     const reviews = await runParallelReviewers(client, reviewers, prDiff, {
-      modelID,
-      providerID,
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
@@ -337,8 +338,6 @@ async function main() {
     let comment;
     try {
       comment = await runCoordinator(client, reviews, {
-        modelID,
-        providerID,
         globalTimeoutMs: globalTimeout * 1e3,
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")

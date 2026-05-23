@@ -97,6 +97,9 @@ export function intEnv(key: string, fallback: number): number {
 export function resolveModel(): { providerID: string; modelID: string } {
   const raw = env("MULTI_REVIEW_MODEL") || env("MODEL_NAME") || "zhipuai-coding-plan/glm-5.1";
   const idx = raw.indexOf("/");
-  if (idx === -1) return { providerID: "", modelID: raw };
+  if (idx === -1) {
+    console.error(`Model "${raw}" missing provider (expected format: provider/model)`);
+    return { providerID: "", modelID: raw };
+  }
   return { providerID: raw.slice(0, idx), modelID: raw.slice(idx + 1) };
 }
