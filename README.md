@@ -34,6 +34,7 @@ npx skills add sun-praise/opencode-actions
 - `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
 - `feature-missing`: audits PR implementation against linked issue spec to find missing features
 - `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
+- `pi-multi-review`: multi-agent parallel PR review using pi-coding-agent-action with pi-parallel-agents team mode
 - `github-run-opencode`: one-step wrapper for the common `opencode github run` workflow
 - `setup-opencode`: installs OpenCode, restores a dedicated cache, and exports the binary path
 - `run-opencode`: runs `opencode` with optional retry logic for flaky GitHub network failures
@@ -150,6 +151,7 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
 | `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
+| `pi-multi-review` | PR diff (via pi-agent) | Multi-reviewer parallel review: quality, security, performance, architecture |
 
 ## setup-opencode
 
@@ -205,6 +207,7 @@ uses: sun-praise/opencode-actions/review@v2
 uses: sun-praise/opencode-actions/architect-review@v2
 uses: sun-praise/opencode-actions/feature-missing@v2
 uses: sun-praise/opencode-actions/spec-coverage@v2
+uses: sun-praise/opencode-actions/pi-multi-review@v2
 uses: sun-praise/opencode-actions/github-run-opencode@v2
 uses: sun-praise/opencode-actions/setup-opencode@v2
 uses: sun-praise/opencode-actions/run-opencode@v2
