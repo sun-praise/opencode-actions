@@ -27,10 +27,6 @@ inputs:
     description: Maximum tokens per reviewer response.
     required: false
     default: "4096"
-  pi-action-version:
-    description: Version of shaftoe/pi-coding-agent-action to use.
-    required: false
-    default: "v2"
   diff-max-lines:
     description: Maximum number of diff lines to include in PR diff.
     required: false
@@ -51,14 +47,17 @@ inputs:
     description: Language for review output (e.g. Chinese, English).
     required: false
     default: "Chinese"
-  trigger-phrase:
-    description: Trigger phrase for issue_comment mode (default /multi-review).
-    required: false
-    default: "/multi-review"
 
 runs:
   using: composite
   steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'pi-multi-review currently supports Linux runners only\n' >&2
+        exit 1
+
     - name: Build multi-review prompt
       id: build-prompt
       shell: bash
@@ -70,7 +69,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        python3 "$ACTION_PATH/../pi-multi-review/scripts/build-prompt.py" \
+        python3 "$ACTION_PATH/scripts/build-prompt.py" \
           --reviewers-config "$INPUT_REVIEWERS_CONFIG" \
           --default-model "$INPUT_MODEL" \
           --language "$INPUT_LANGUAGE" \
@@ -79,25 +78,14 @@ runs:
           --output "$RUNNER_TEMP/pi-multi-review-prompt.txt"
         echo "prompt-file=$RUNNER_TEMP/pi-multi-review-prompt.txt" >> "$GITHUB_OUTPUT"
 
-    - name: Read prompt
-      id: read-prompt
-      shell: bash
-      run: |
-        set -euo pipefail
-        prompt_content="$(cat '${{ steps.build-prompt.outputs.prompt-file }}')"
-        # Use heredoc to safely preserve multiline content
-        echo "prompt<<EOF_PROMPT" >> "$GITHUB_OUTPUT"
-        echo "$prompt_content" >> "$GITHUB_OUTPUT"
-        echo "EOF_PROMPT" >> "$GITHUB_OUTPUT"
-
     - name: Run pi multi-review
-      uses: shaftoe/pi-coding-agent-action@${{ inputs.pi-action-version }}
+      uses: shaftoe/pi-coding-agent-action@v2
       with:
         github_token: ${{ inputs.github-token }}
         provider: ${{ inputs.provider }}
         model: ${{ inputs.model }}
         token: ${{ inputs.api-key }}
-        prompt: ${{ steps.read-prompt.outputs.prompt }}
+        prompt: ${{ steps.build-prompt.outputs.prompt-file }}
         extensions: "npm:pi-parallel-agents"
         thinking_level: ${{ inputs.thinking-level }}
         diff_max_lines: ${{ inputs.diff-max-lines }}

@@ -29,7 +29,7 @@ def load_custom_reviewers(config_str: str) -> dict:
     return yaml.safe_load(config_str)
 
 
-def build_team_dag(config: dict, default_model: str, language: str) -> dict:
+def build_team_dag(config: dict, default_model: str, language: str, max_tokens: int = 4096) -> dict:
     """Build the pi-parallel-agents team-mode DAG from reviewer config."""
     reviewers = config.get("reviewers", [])
     synthesizer_cfg = config.get("synthesizer", None)
@@ -44,6 +44,7 @@ def build_team_dag(config: dict, default_model: str, language: str) -> dict:
         member = {
             "role": r["name"],
             "model": r.get("model", default_model),
+            "maxTokens": r.get("maxTokens", max_tokens),
         }
         members.append(member)
 
@@ -52,6 +53,7 @@ def build_team_dag(config: dict, default_model: str, language: str) -> dict:
         members.append({
             "role": synthesizer_cfg["name"],
             "model": synthesizer_cfg.get("model", default_model),
+            "maxTokens": max_tokens,
         })
 
     # Build tasks: all reviewers run in parallel
@@ -103,7 +105,7 @@ def main():
         config = load_default_reviewers(args.action_path)
 
     # Build DAG
-    dag = build_team_dag(config, args.default_model, args.language)
+    dag = build_team_dag(config, args.default_model, args.language, int(args.max_tokens))
 
     # Write prompt as JSON string for pi-parallel-agents team mode
     prompt = json.dumps(dag, ensure_ascii=False, indent=2)

@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: Svtter/opencode-actions/pi-multi-review@v2
+      - uses: sun-praise/opencode-actions/pi-multi-review@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           provider: anthropic
@@ -47,13 +47,11 @@ jobs:
 | `api-key` | No | - | LLM provider API key |
 | `reviewers-config` | No | `""` | Inline YAML to override default reviewer personas |
 | `max-tokens` | No | `4096` | Max tokens per reviewer response |
-| `pi-action-version` | No | `v2` | Version of shaftoe/pi-coding-agent-action |
 | `diff-max-lines` | No | `2000` | Max diff lines included in review |
 | `diff-ignore-patterns` | No | `""` | File patterns to exclude from diffs |
 | `base-url` | No | `""` | Provider base URL override (for proxies) |
 | `thinking-level` | No | `medium` | Model thinking level (off, low, medium, high) |
 | `language` | No | `Chinese` | Output language for reviews |
-| `trigger-phrase` | No | `/multi-review` | Trigger phrase for comment mode |
 
 ## Default Reviewers
 
@@ -76,7 +74,7 @@ A **synthesizer** agent merges all findings into one structured PR comment with:
 Provide your own reviewers via `reviewers-config`:
 
 ```yaml
-- uses: Svtter/opencode-actions/pi-multi-review@v2
+- uses: sun-praise/opencode-actions/pi-multi-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     provider: anthropic
@@ -123,5 +121,10 @@ Synthesizer prompts can reference reviewer outputs with `{task:<name>-review}`.
 
 ## Requirements
 
-- GitHub Actions runner with Python 3 (available on `ubuntu-latest`)
+- Linux runner (GitHub Actions `ubuntu-latest`)
+- Python 3 with PyYAML (pre-installed on GitHub-hosted runners)
 - A valid LLM API key for the configured provider
+
+## Security Note
+
+This action delegates to `shaftoe/pi-coding-agent-action@v2`. For production use, consider pinning to a specific commit SHA instead of the `v2` tag to protect against supply-chain attacks. See the [GitHub Actions security guide](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
