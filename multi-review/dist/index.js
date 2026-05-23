@@ -111,28 +111,43 @@ var DEFAULT_COORDINATOR_PROMPT = `\u4F60\u662F\u4E00\u4E2A\u4EE3\u7801\u5BA1\u67
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
 }
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
 async function runParallelReviewers(client, reviewers, prDiff, opts) {
   const deadline = Date.now() + opts.globalTimeoutMs;
   const promises = reviewers.map(async (reviewer) => {
     const remainingMs = Math.max(3e4, deadline - Date.now());
-    const timeout = setTimeout(() => {
-      console.warn(`[${reviewer.name}] Exceeded ${remainingMs}ms, still waiting...`);
-    }, remainingMs);
     try {
-      const sessionResult = await client.session.create({ throwOnError: true });
+      console.log(`[${reviewer.name}] Starting review (timeout: ${remainingMs}ms)...`);
+      const sessionResult = await withTimeout(
+        client.session.create({ throwOnError: true }),
+        remainingMs,
+        reviewer.name
+      );
       const sessionId = sessionResult.data.id;
-      console.log(`[${reviewer.name}] Starting review...`);
-      await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }]
-        },
-        throwOnError: true
-      });
-      const messagesResult = await client.session.messages({
-        path: { id: sessionId },
-        throwOnError: true
-      });
+      const promptResult = await withTimeout(
+        client.session.prompt({
+          path: { id: sessionId },
+          body: {
+            parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }]
+          },
+          throwOnError: true
+        }),
+        remainingMs,
+        reviewer.name
+      );
+      const messagesResult = await withTimeout(
+        client.session.messages({ path: { id: sessionId }, throwOnError: true }),
+        remainingMs,
+        reviewer.name
+      );
       const content = extractText(messagesResult.data);
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
       try {
@@ -144,8 +159,6 @@ async function runParallelReviewers(client, reviewers, prDiff, opts) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
-    } finally {
-      clearTimeout(timeout);
     }
   });
   return Promise.all(promises);
@@ -155,22 +168,28 @@ async function runCoordinator(client, reviews, opts) {
 ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n---\n\n");
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
   const fullPrompt = promptTemplate.replace("{{REVIEWS}}", reviewsText);
-  const timeout = setTimeout(() => {
-    console.warn("[coordinator] Exceeded timeout, still waiting...");
-  }, opts.coordinatorTimeoutMs);
   try {
-    const sessionResult = await client.session.create({ throwOnError: true });
+    const sessionResult = await withTimeout(
+      client.session.create({ throwOnError: true }),
+      opts.coordinatorTimeoutMs,
+      "coordinator"
+    );
     const sessionId = sessionResult.data.id;
     console.log("[coordinator] Starting synthesis...");
-    await client.session.prompt({
-      path: { id: sessionId },
-      body: { parts: [{ type: "text", text: fullPrompt }] },
-      throwOnError: true
-    });
-    const messagesResult = await client.session.messages({
-      path: { id: sessionId },
-      throwOnError: true
-    });
+    await withTimeout(
+      client.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: "text", text: fullPrompt }] },
+        throwOnError: true
+      }),
+      opts.coordinatorTimeoutMs,
+      "coordinator"
+    );
+    const messagesResult = await withTimeout(
+      client.session.messages({ path: { id: sessionId }, throwOnError: true }),
+      opts.coordinatorTimeoutMs,
+      "coordinator"
+    );
     const content = extractText(messagesResult.data);
     console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
     try {
@@ -178,8 +197,8 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     } catch {
     }
     return content;
-  } finally {
-    clearTimeout(timeout);
+  } catch (err) {
+    throw err;
   }
 }
 function buildFallbackComment(reviews) {
@@ -199,7 +218,7 @@ function resolvePRNumber() {
   const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
   return match ? match[1] : null;
 }
-async function postPRComment(body) {
+function postPRComment(body) {
   const prNumber = resolvePRNumber();
   if (!prNumber) {
     console.log("Not in PR context, printing review to stdout:");
@@ -221,9 +240,60 @@ async function postPRComment(body) {
     console.log(body);
   }
 }
+function cleanupErrorComments() {
+  const enabled = process.env.MULTI_REVIEW_CLEANUP_ERROR_COMMENTS || "true";
+  if (enabled.toLowerCase() !== "true") return;
+  const prNumber = resolvePRNumber();
+  if (!prNumber) return;
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  const runId = process.env.GITHUB_RUN_ID || "";
+  if (!repo || !runId) return;
+  const runLinkPattern = `/${repo}/actions/runs/${runId}`;
+  const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+  let comments;
+  try {
+    const raw = execFileSync("gh", ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`], {
+      env: { ...process.env },
+      timeout: 3e4,
+      stdio: "pipe",
+      maxBuffer: 5 * 1024 * 1024
+    });
+    comments = JSON.parse(raw.toString());
+  } catch {
+    console.error("cleanup-error-comments: failed to list comments");
+    return;
+  }
+  for (const comment of comments) {
+    if (!comment.body || !runLinkPattern) continue;
+    if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
+    try {
+      execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
+        env: { ...process.env },
+        timeout: 1e4,
+        stdio: "pipe"
+      });
+      console.log(`Deleted error comment ${comment.id}`);
+    } catch {
+    }
+  }
+}
+function parseExtraEnv() {
+  const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
+  if (!raw) return;
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim();
+    if (key) process.env[key] = value;
+  }
+}
 
 // src/index.ts
 async function main() {
+  parseExtraEnv();
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   const diffPath = join2(runnerTemp, ".pr-diff.txt");
@@ -277,7 +347,8 @@ async function main() {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);
     }
-    await postPRComment(comment);
+    postPRComment(comment);
+    cleanupErrorComments();
     return 0;
   } finally {
     server.close();

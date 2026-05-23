@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment } from "./orchestrator.js";
-import { postPRComment } from "./comment.js";
+import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
 
 async function main(): Promise<number> {
+  // 0. Parse extra env vars into process.env
+  parseExtraEnv();
+
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
 
@@ -76,7 +79,10 @@ async function main(): Promise<number> {
     }
 
     // 7. Post comment
-    await postPRComment(comment);
+    postPRComment(comment);
+
+    // 8. Cleanup error comments from previous runs
+    cleanupErrorComments();
 
     return 0;
   } finally {

@@ -30,6 +30,16 @@ function extractText(messages: Array<{ info: { role: string }; parts: Array<{ ty
     .join("\n");
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function runParallelReviewers(
   client: OpencodeClient,
   reviewers: Reviewer[],
@@ -40,28 +50,34 @@ export async function runParallelReviewers(
 
   const promises = reviewers.map(async (reviewer) => {
     const remainingMs = Math.max(30_000, deadline - Date.now());
-    const timeout = setTimeout(() => {
-      console.warn(`[${reviewer.name}] Exceeded ${remainingMs}ms, still waiting...`);
-    }, remainingMs);
 
     try {
-      const sessionResult = await client.session.create({ throwOnError: true });
+      console.log(`[${reviewer.name}] Starting review (timeout: ${remainingMs}ms)...`);
+
+      const sessionResult = await withTimeout(
+        client.session.create({ throwOnError: true }),
+        remainingMs,
+        reviewer.name,
+      );
       const sessionId = sessionResult.data.id;
 
-      console.log(`[${reviewer.name}] Starting review...`);
+      const promptResult = await withTimeout(
+        client.session.prompt({
+          path: { id: sessionId },
+          body: {
+            parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }],
+          },
+          throwOnError: true,
+        }),
+        remainingMs,
+        reviewer.name,
+      );
 
-      await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }],
-        },
-        throwOnError: true,
-      });
-
-      const messagesResult = await client.session.messages({
-        path: { id: sessionId },
-        throwOnError: true,
-      });
+      const messagesResult = await withTimeout(
+        client.session.messages({ path: { id: sessionId }, throwOnError: true }),
+        remainingMs,
+        reviewer.name,
+      );
       const content = extractText(messagesResult.data);
 
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
@@ -72,8 +88,6 @@ export async function runParallelReviewers(
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
-    } finally {
-      clearTimeout(timeout);
     }
   });
 
@@ -92,34 +106,39 @@ export async function runCoordinator(
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
   const fullPrompt = promptTemplate.replace("{{REVIEWS}}", reviewsText);
 
-  const timeout = setTimeout(() => {
-    console.warn("[coordinator] Exceeded timeout, still waiting...");
-  }, opts.coordinatorTimeoutMs);
-
   try {
-    const sessionResult = await client.session.create({ throwOnError: true });
+    const sessionResult = await withTimeout(
+      client.session.create({ throwOnError: true }),
+      opts.coordinatorTimeoutMs,
+      "coordinator",
+    );
     const sessionId = sessionResult.data.id;
 
     console.log("[coordinator] Starting synthesis...");
 
-    await client.session.prompt({
-      path: { id: sessionId },
-      body: { parts: [{ type: "text", text: fullPrompt }] },
-      throwOnError: true,
-    });
+    await withTimeout(
+      client.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: "text", text: fullPrompt }] },
+        throwOnError: true,
+      }),
+      opts.coordinatorTimeoutMs,
+      "coordinator",
+    );
 
-    const messagesResult = await client.session.messages({
-      path: { id: sessionId },
-      throwOnError: true,
-    });
+    const messagesResult = await withTimeout(
+      client.session.messages({ path: { id: sessionId }, throwOnError: true }),
+      opts.coordinatorTimeoutMs,
+      "coordinator",
+    );
     const content = extractText(messagesResult.data);
 
     console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
 
     try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
     return content;
-  } finally {
-    clearTimeout(timeout);
+  } catch (err) {
+    throw err;
   }
 }
 
