@@ -40,8 +40,9 @@ export async function runParallelReviewers(
 
   const promises = reviewers.map(async (reviewer) => {
     const remainingMs = Math.max(30_000, deadline - Date.now());
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), remainingMs);
+    const timeout = setTimeout(() => {
+      console.warn(`[${reviewer.name}] Exceeded ${remainingMs}ms, still waiting...`);
+    }, remainingMs);
 
     try {
       const sessionResult = await client.session.create({ throwOnError: true });
@@ -91,8 +92,9 @@ export async function runCoordinator(
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
   const fullPrompt = promptTemplate.replace("{{REVIEWS}}", reviewsText);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), opts.coordinatorTimeoutMs);
+  const timeout = setTimeout(() => {
+    console.warn("[coordinator] Exceeded timeout, still waiting...");
+  }, opts.coordinatorTimeoutMs);
 
   try {
     const sessionResult = await client.session.create({ throwOnError: true });

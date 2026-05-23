@@ -177,7 +177,7 @@ runs:
       run: |
         set -euo pipefail
         ref="${GITHUB_REF:-}"
-        if [[ "$ref" =~ refs/pull/([0-]+)/merge ]]; then
+        if [[ "$ref" =~ refs/pull/([0-9]+)/merge ]]; then
           pr="${BASH_REMATCH[1]}"
           gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
           gh pr view "$pr" --json title,body > "${RUNNER_TEMP}/.pr-meta.json" 2>/dev/null || echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
@@ -188,6 +188,44 @@ runs:
           echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
           echo "pr_number=" >> "$GITHUB_OUTPUT"
         fi
+
+    - shell: bash
+      env:
+        OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+      run: |
+        set -euo pipefail
+        effort="${OPENCODE_REASONING_EFFORT:-max}"
+        thinking="${OPENCODE_ENABLE_THINKING:-true}"
+        thinking_json="null"
+        if [[ "$thinking" == "true" ]]; then
+          thinking_json='{"type":"enabled"}'
+        fi
+        cat > opencode.json <<EOJSON
+        {
+          "model": "",
+          "reasoning": "$effort",
+          "thinking": $thinking_json,
+          "permission": {
+            "edit": "deny",
+            "bash": {
+              "git commit": "deny",
+              "git commit *": "deny",
+              "git push": "deny",
+              "git push *": "deny",
+              "git add": "deny",
+              "git add *": "deny",
+              "git stash": "deny",
+              "git stash *": "deny",
+              "git reset": "deny",
+              "git reset *": "deny",
+              "git checkout": "deny",
+              "git checkout *": "deny"
+            }
+          }
+        }
+        EOJSON
+        echo "Wrote opencode.json with reasoning=$effort thinking=$thinking"
 
     - shell: bash
       env:
