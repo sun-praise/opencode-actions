@@ -261,4 +261,4 @@ runs:
         if [[ -n "$MULTI_REVIEW_WORKING_DIRECTORY" ]]; then
           cd "$MULTI_REVIEW_WORKING_DIRECTORY"
         fi
-        node "${{ github.action_path }}/dist/index.js"
+        node "${{ github.action_path }}/dist/index.cjs"

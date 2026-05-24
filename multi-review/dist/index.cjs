@@ -1,16 +1,11 @@
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-var __commonJS = (cb, mod) => function __require2() {
+var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __copyProps = (to, from, except, desc) => {
@@ -32,11 +27,11 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // node_modules/isexe/windows.js
 var require_windows = __commonJS({
-  "node_modules/isexe/windows.js"(exports, module) {
+  "node_modules/isexe/windows.js"(exports2, module2) {
     "use strict";
-    module.exports = isexe;
+    module2.exports = isexe;
     isexe.sync = sync;
-    var fs = __require("fs");
+    var fs = require("fs");
     function checkPathExt(path, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
@@ -73,11 +68,11 @@ var require_windows = __commonJS({
 
 // node_modules/isexe/mode.js
 var require_mode = __commonJS({
-  "node_modules/isexe/mode.js"(exports, module) {
+  "node_modules/isexe/mode.js"(exports2, module2) {
     "use strict";
-    module.exports = isexe;
+    module2.exports = isexe;
     isexe.sync = sync;
-    var fs = __require("fs");
+    var fs = require("fs");
     function isexe(path, options, cb) {
       fs.stat(path, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
@@ -107,16 +102,16 @@ var require_mode = __commonJS({
 
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
-  "node_modules/isexe/index.js"(exports, module) {
+  "node_modules/isexe/index.js"(exports2, module2) {
     "use strict";
-    var fs = __require("fs");
+    var fs = require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
     } else {
       core = require_mode();
     }
-    module.exports = isexe;
+    module2.exports = isexe;
     isexe.sync = sync;
     function isexe(path, options, cb) {
       if (typeof options === "function") {
@@ -163,10 +158,10 @@ var require_isexe = __commonJS({
 
 // node_modules/which/which.js
 var require_which = __commonJS({
-  "node_modules/which/which.js"(exports, module) {
+  "node_modules/which/which.js"(exports2, module2) {
     "use strict";
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path = __require("path");
+    var path = require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -253,14 +248,14 @@ var require_which = __commonJS({
         return null;
       throw getNotFoundError(cmd);
     };
-    module.exports = which;
+    module2.exports = which;
     which.sync = whichSync;
   }
 });
 
 // node_modules/path-key/index.js
 var require_path_key = __commonJS({
-  "node_modules/path-key/index.js"(exports, module) {
+  "node_modules/path-key/index.js"(exports2, module2) {
     "use strict";
     var pathKey = (options = {}) => {
       const environment = options.env || process.env;
@@ -270,16 +265,16 @@ var require_path_key = __commonJS({
       }
       return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
     };
-    module.exports = pathKey;
-    module.exports.default = pathKey;
+    module2.exports = pathKey;
+    module2.exports.default = pathKey;
   }
 });
 
 // node_modules/cross-spawn/lib/util/resolveCommand.js
 var require_resolveCommand = __commonJS({
-  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
+  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports2, module2) {
     "use strict";
-    var path = __require("path");
+    var path = require("path");
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -313,13 +308,13 @@ var require_resolveCommand = __commonJS({
     function resolveCommand(parsed) {
       return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
     }
-    module.exports = resolveCommand;
+    module2.exports = resolveCommand;
   }
 });
 
 // node_modules/cross-spawn/lib/util/escape.js
 var require_escape = __commonJS({
-  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
+  "node_modules/cross-spawn/lib/util/escape.js"(exports2, module2) {
     "use strict";
     var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
     function escapeCommand(arg) {
@@ -337,25 +332,25 @@ var require_escape = __commonJS({
       }
       return arg;
     }
-    module.exports.command = escapeCommand;
-    module.exports.argument = escapeArgument;
+    module2.exports.command = escapeCommand;
+    module2.exports.argument = escapeArgument;
   }
 });
 
 // node_modules/shebang-regex/index.js
 var require_shebang_regex = __commonJS({
-  "node_modules/shebang-regex/index.js"(exports, module) {
+  "node_modules/shebang-regex/index.js"(exports2, module2) {
     "use strict";
-    module.exports = /^#!(.*)/;
+    module2.exports = /^#!(.*)/;
   }
 });
 
 // node_modules/shebang-command/index.js
 var require_shebang_command = __commonJS({
-  "node_modules/shebang-command/index.js"(exports, module) {
+  "node_modules/shebang-command/index.js"(exports2, module2) {
     "use strict";
     var shebangRegex = require_shebang_regex();
-    module.exports = (string = "") => {
+    module2.exports = (string = "") => {
       const match = string.match(shebangRegex);
       if (!match) {
         return null;
@@ -372,9 +367,9 @@ var require_shebang_command = __commonJS({
 
 // node_modules/cross-spawn/lib/util/readShebang.js
 var require_readShebang = __commonJS({
-  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
+  "node_modules/cross-spawn/lib/util/readShebang.js"(exports2, module2) {
     "use strict";
-    var fs = __require("fs");
+    var fs = require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
@@ -388,15 +383,15 @@ var require_readShebang = __commonJS({
       }
       return shebangCommand(buffer.toString());
     }
-    module.exports = readShebang;
+    module2.exports = readShebang;
   }
 });
 
 // node_modules/cross-spawn/lib/parse.js
 var require_parse = __commonJS({
-  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
+  "node_modules/cross-spawn/lib/parse.js"(exports2, module2) {
     "use strict";
-    var path = __require("path");
+    var path = require("path");
     var resolveCommand = require_resolveCommand();
     var escape = require_escape();
     var readShebang = require_readShebang();
@@ -450,13 +445,13 @@ var require_parse = __commonJS({
       };
       return options.shell ? parsed : parseNonShell(parsed);
     }
-    module.exports = parse;
+    module2.exports = parse;
   }
 });
 
 // node_modules/cross-spawn/lib/enoent.js
 var require_enoent = __commonJS({
-  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
+  "node_modules/cross-spawn/lib/enoent.js"(exports2, module2) {
     "use strict";
     var isWin = process.platform === "win32";
     function notFoundError(original, syscall) {
@@ -495,7 +490,7 @@ var require_enoent = __commonJS({
       }
       return null;
     }
-    module.exports = {
+    module2.exports = {
       hookChildProcess,
       verifyENOENT,
       verifyENOENTSync,
@@ -506,9 +501,9 @@ var require_enoent = __commonJS({
 
 // node_modules/cross-spawn/index.js
 var require_cross_spawn = __commonJS({
-  "node_modules/cross-spawn/index.js"(exports, module) {
+  "node_modules/cross-spawn/index.js"(exports2, module2) {
     "use strict";
-    var cp = __require("child_process");
+    var cp = require("child_process");
     var parse = require_parse();
     var enoent = require_enoent();
     function spawn(command, args, options) {
@@ -523,11 +518,11 @@ var require_cross_spawn = __commonJS({
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
       return result;
     }
-    module.exports = spawn;
-    module.exports.spawn = spawn;
-    module.exports.sync = spawnSync2;
-    module.exports._parse = parse;
-    module.exports._enoent = enoent;
+    module2.exports = spawn;
+    module2.exports.spawn = spawn;
+    module2.exports.sync = spawnSync2;
+    module2.exports._parse = parse;
+    module2.exports._enoent = enoent;
   }
 });
 
@@ -2159,12 +2154,12 @@ function createOpencodeClient(config) {
 var import_cross_spawn = __toESM(require_cross_spawn(), 1);
 
 // node_modules/@opencode-ai/sdk/dist/process.js
-import { spawnSync } from "child_process";
+var import_node_child_process = require("child_process");
 function stop(proc) {
   if (proc.exitCode !== null || proc.signalCode !== null)
     return;
   if (process.platform === "win32" && proc.pid) {
-    const out = spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true });
+    const out = (0, import_node_child_process.spawnSync)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true });
     if (!out.error && out.status === 0)
       return;
   }
@@ -2285,12 +2280,12 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-import { readFileSync as readFileSync2 } from "fs";
-import { join as join2 } from "path";
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
 
 // src/reviewers.ts
-import { readFileSync } from "fs";
-import { join } from "path";
+var import_node_fs = require("fs");
+var import_node_path = require("path");
 var DEFAULT_TEAM = "quality:1,security:1,performance:1,architecture:1";
 function parseTeam(teamStr) {
   const result = /* @__PURE__ */ new Map();
@@ -2304,7 +2299,7 @@ function loadBuiltInReviewers(reviewersDir) {
   const map = /* @__PURE__ */ new Map();
   for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml"]) {
     try {
-      const raw = readFileSync(join(reviewersDir, file), "utf-8");
+      const raw = (0, import_node_fs.readFileSync)((0, import_node_path.join)(reviewersDir, file), "utf-8");
       const parsed = parseYAML(raw);
       if (parsed.name && parsed.prompt) map.set(parsed.name, { name: parsed.name, prompt: parsed.prompt });
     } catch {
@@ -2338,7 +2333,7 @@ function parseYAML(raw) {
   return result;
 }
 function loadReviewers(opts) {
-  const builtInDir = join(opts.actionPath, "reviewers");
+  const builtInDir = (0, import_node_path.join)(opts.actionPath, "reviewers");
   const personas = loadBuiltInReviewers(builtInDir);
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
@@ -2501,7 +2496,7 @@ ${r.content}`;
 }
 
 // src/comment.ts
-import { execFileSync } from "child_process";
+var import_node_child_process2 = require("child_process");
 function resolvePRNumber() {
   const ref = process.env.GITHUB_REF || "";
   const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
@@ -2517,7 +2512,7 @@ function postPRComment(body) {
   }
   const repo = process.env.GITHUB_REPOSITORY || "";
   try {
-    execFileSync("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
+    (0, import_node_child_process2.execFileSync)("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
       env: { ...process.env },
       timeout: 3e4,
       stdio: "pipe"
@@ -2541,7 +2536,7 @@ function cleanupErrorComments() {
   const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
   let comments;
   try {
-    const raw = execFileSync("gh", ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`], {
+    const raw = (0, import_node_child_process2.execFileSync)("gh", ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`], {
       env: { ...process.env },
       timeout: 3e4,
       stdio: "pipe",
@@ -2556,7 +2551,7 @@ function cleanupErrorComments() {
     if (!comment.body) continue;
     if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
     try {
-      execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
+      (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
         env: { ...process.env },
         timeout: 1e4,
         stdio: "pipe"
@@ -2585,10 +2580,10 @@ async function main() {
   parseExtraEnv();
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
-  const diffPath = join2(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path2.join)(runnerTemp, ".pr-diff.txt");
   let prDiff = "";
   try {
-    prDiff = readFileSync2(diffPath, "utf-8");
+    prDiff = (0, import_node_fs2.readFileSync)(diffPath, "utf-8");
   } catch {
     console.error("No PR diff found at", diffPath);
     return 1;
