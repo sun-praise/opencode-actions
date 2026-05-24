@@ -43,7 +43,7 @@ inputs:
     required: false
     default: "900"
   model:
-    description: Model to use for all reviewers and coordinator (format: provider/model).
+    description: "Model to use for all reviewers and coordinator (format: provider/model)."
     required: false
     default: ""
   default-team:
@@ -55,7 +55,7 @@ inputs:
     required: false
     default: "300"
   coordinator-prompt:
-    description: Custom coordinator prompt template. Use {{REVIEWS}} as placeholder for reviewer outputs.
+    description: "Custom coordinator prompt template. Use {{REVIEWS}} as placeholder for reviewer outputs."
     required: false
     default: ""
   reasoning-effort:
