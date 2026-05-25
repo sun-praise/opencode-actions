@@ -34,7 +34,6 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
 export function loadReviewers(opts: {
   actionPath: string;
   team?: string;
-  configPath?: string;
 }): Reviewer[] {
   const builtInDir = join(opts.actionPath, "reviewers");
   const personas = loadBuiltInReviewers(builtInDir);
