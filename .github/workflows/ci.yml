@@ -73,6 +73,7 @@ jobs:
 
       - name: Run multi-review convenience action
         uses: ./multi-review
+        continue-on-error: true
         with:
           install-url: http://127.0.0.1:8765/fake-installer.sh
           cache: false

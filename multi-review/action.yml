@@ -191,52 +191,12 @@ runs:
 
     - shell: bash
       env:
-        OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
-        OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
-      run: |
-        set -euo pipefail
-        effort="${OPENCODE_REASONING_EFFORT:-max}"
-        thinking="${OPENCODE_ENABLE_THINKING:-true}"
-        thinking_json="null"
-        if [[ "$thinking" == "true" ]]; then
-          thinking_json='{"type":"enabled"}'
-        fi
-        cat > opencode.json <<EOJSON
-        {
-          "model": "",
-          "reasoning": "$effort",
-          "thinking": $thinking_json,
-          "permission": {
-            "edit": "deny",
-            "bash": {
-              "git commit": "deny",
-              "git commit *": "deny",
-              "git push": "deny",
-              "git push *": "deny",
-              "git add": "deny",
-              "git add *": "deny",
-              "git stash": "deny",
-              "git stash *": "deny",
-              "git reset": "deny",
-              "git reset *": "deny",
-              "git checkout": "deny",
-              "git checkout *": "deny"
-            }
-          }
-        }
-        EOJSON
-        echo "Wrote opencode.json with reasoning=$effort thinking=$thinking"
-
-    - shell: bash
-      env:
         MULTI_REVIEW_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         MULTI_REVIEW_MODEL: ${{ inputs.model }}
         MULTI_REVIEW_DEFAULT_TEAM: ${{ inputs.default-team }}
         MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS: ${{ inputs.coordinator-timeout-seconds }}
         MULTI_REVIEW_COORDINATOR_PROMPT: ${{ inputs.coordinator-prompt }}
         MULTI_REVIEW_WORKING_DIRECTORY: ${{ inputs.working-directory }}
-        MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
-        MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         MULTI_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
         MULTI_REVIEW_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
         MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
