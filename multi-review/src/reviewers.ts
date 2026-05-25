@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import yaml from "js-yaml";
 import type { Reviewer } from "./types.js";
 
 interface PersonaYAML {
@@ -23,37 +24,11 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml"]) {
     try {
       const raw = readFileSync(join(reviewersDir, file), "utf-8");
-      const parsed = parseYAML(raw);
+      const parsed = yaml.load(raw) as PersonaYAML;
       if (parsed.name && parsed.prompt) map.set(parsed.name, { name: parsed.name, prompt: parsed.prompt });
     } catch { /* skip missing files */ }
   }
   return map;
-}
-
-function parseYAML(raw: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  let currentKey = "";
-  let inPrompt = false;
-  for (const line of raw.split("\n")) {
-    if (!inPrompt && line.match(/^(\w+):\s*(.*)/)) {
-      const [, key, value] = line.match(/^(\w+):\s*(.*)/) || [];
-      if (key === "prompt" && value.trim().startsWith("|")) {
-        inPrompt = true;
-        currentKey = "prompt";
-        result.prompt = "";
-      } else if (key) {
-        result[key] = value?.trim() || "";
-      }
-    } else if (inPrompt) {
-      if (line && !line.startsWith(" ") && !line.startsWith("\t")) {
-        inPrompt = false;
-      } else {
-        result[currentKey] = (result[currentKey] || "") + line.trimStart() + "\n";
-      }
-    }
-  }
-  if (result.prompt) result.prompt = result.prompt.trim();
-  return result;
 }
 
 export function loadReviewers(opts: {
