@@ -1,11 +1,11 @@
-name: Review
+name: Multi-Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
-  review:
+  multi-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -19,11 +19,16 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - name: Run OpenCode review
-        uses: Svtter/opencode-actions/review@v2
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run multi-review
+        uses: ./multi-review
         with:
           model: ${{ vars.MODEL_NAME }}
-          
+          default-team: "quality:1,security:1,performance:1,architecture:1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}

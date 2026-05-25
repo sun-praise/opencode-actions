@@ -45,3 +45,11 @@ jobs:
           attempts: "1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+      - name: Test multi-review action loads
+        uses: ./multi-review
+        with:
+          model: test-model
+          timeout-seconds: "5"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
