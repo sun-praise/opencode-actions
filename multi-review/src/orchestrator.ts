@@ -148,3 +148,11 @@ export function buildFallbackComment(reviews: ReviewResult[]): string {
   });
   return "**Multi-Review (fallback — coordinator failed)**\n\n" + parts.join("\n\n---\n\n");
 }
+
+export function buildReviewerDetails(reviews: ReviewResult[]): string {
+  const details = reviews.map((r) => {
+    const body = r.success ? r.content : `（审查失败: ${r.error}）`;
+    return `<details>\n<summary>${r.reviewer}</summary>\n\n${body}\n\n</details>`;
+  });
+  return `<details>\n<summary>📋 各 Reviewer 详细审查结果</summary>\n\n${details.join("\n\n")}\n\n</details>`;
+}

@@ -2,7 +2,7 @@ import { createOpencode } from "@opencode-ai/sdk";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
-import { runParallelReviewers, runCoordinator, buildFallbackComment } from "./orchestrator.js";
+import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails } from "./orchestrator.js";
 import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
 
 async function main(): Promise<number> {
@@ -64,11 +64,12 @@ async function main(): Promise<number> {
     // 6. Run coordinator
     let comment: string;
     try {
-      comment = await runCoordinator(client, reviews, {
+      const synthesis = await runCoordinator(client, reviews, {
         globalTimeoutMs: globalTimeout * 1000,
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       });
+      comment = synthesis + "\n\n---\n\n" + buildReviewerDetails(reviews);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);

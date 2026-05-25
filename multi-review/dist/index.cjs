@@ -2494,6 +2494,23 @@ ${r.content}`;
   });
   return "**Multi-Review (fallback \u2014 coordinator failed)**\n\n" + parts.join("\n\n---\n\n");
 }
+function buildReviewerDetails(reviews) {
+  const details = reviews.map((r) => {
+    const body = r.success ? r.content : `\uFF08\u5BA1\u67E5\u5931\u8D25: ${r.error}\uFF09`;
+    return `<details>
+<summary>${r.reviewer}</summary>
+
+${body}
+
+</details>`;
+  });
+  return `<details>
+<summary>\u{1F4CB} \u5404 Reviewer \u8BE6\u7EC6\u5BA1\u67E5\u7ED3\u679C</summary>
+
+${details.join("\n\n")}
+
+</details>`;
+}
 
 // src/comment.ts
 var import_node_child_process2 = require("child_process");
@@ -2618,11 +2635,12 @@ async function main() {
     }
     let comment;
     try {
-      comment = await runCoordinator(client2, reviews, {
+      const synthesis = await runCoordinator(client2, reviews, {
         globalTimeoutMs: globalTimeout * 1e3,
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
       });
+      comment = synthesis + "\n\n---\n\n" + buildReviewerDetails(reviews);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);
