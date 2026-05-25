@@ -58,14 +58,6 @@ inputs:
     description: "Custom coordinator prompt template. Use {{REVIEWS}} as placeholder for reviewer outputs."
     required: false
     default: ""
-  reasoning-effort:
-    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
-    required: false
-    default: "max"
-  enable-thinking:
-    description: Enable thinking mode for the model agent.
-    required: false
-    default: "true"
   github-token:
     description: GitHub token for posting PR comments.
     required: false
