@@ -49,6 +49,7 @@ export async function runParallelReviewers(
   const deadline = Date.now() + opts.globalTimeoutMs;
 
   const promises = reviewers.map(async (reviewer) => {
+    let sessionId: string | undefined;
     try {
       const remaining = () => Math.max(30_000, deadline - Date.now());
       console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
@@ -58,7 +59,7 @@ export async function runParallelReviewers(
         remaining(),
         reviewer.name,
       );
-      const sessionId = sessionResult.data.id;
+      sessionId = sessionResult.data.id;
 
       const promptResult = await withTimeout(
         client.session.prompt({
@@ -81,12 +82,15 @@ export async function runParallelReviewers(
 
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
 
-      try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
       return { reviewer: reviewer.name, content, success: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
+    } finally {
+      if (sessionId) {
+        try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
+      }
     }
   });
 
@@ -105,13 +109,14 @@ export async function runCoordinator(
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
   const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
 
+  let sessionId: string | undefined;
   try {
     const sessionResult = await withTimeout(
       client.session.create({ throwOnError: true }),
       opts.coordinatorTimeoutMs,
       "coordinator",
     );
-    const sessionId = sessionResult.data.id;
+    sessionId = sessionResult.data.id;
 
     console.log("[coordinator] Starting synthesis...");
 
@@ -134,10 +139,11 @@ export async function runCoordinator(
 
     console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
 
-    try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
     return content;
-  } catch (err) {
-    throw err;
+  } finally {
+    if (sessionId) {
+      try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
+    }
   }
 }
 
