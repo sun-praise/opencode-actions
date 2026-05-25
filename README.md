@@ -100,7 +100,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
   uses: sun-praise/opencode-actions/multi-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    model: zhipuai/glm-5.1
+    model: zhipuai-coding-plan/glm-5.1
     default-team: "quality:1,security:1,performance:1"
     timeout-seconds: "900"
     coordinator-timeout-seconds: "300"
