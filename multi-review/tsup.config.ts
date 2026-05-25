@@ -6,6 +6,6 @@ export default defineConfig({
   platform: "node",
   target: "node20",
   clean: true,
-  noExternal: ["@opencode-ai/sdk"],
+  noExternal: ["@opencode-ai/sdk", "js-yaml"],
   external: ["child_process", "fs", "path"],
 });
