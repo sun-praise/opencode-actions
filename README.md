@@ -118,6 +118,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `coordinator-prompt` | empty | Custom coordinator prompt; use `{{REVIEWS}}` as placeholder |
 | `reasoning-effort` | `max` | Reasoning effort level (`low`, `medium`, `high`, `max`) |
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
+| `working-directory` | empty | Optional working directory before running review |
 | `github-token` | empty | GitHub token for posting PR comments |
 | `zhipu-api-key` | empty | Zhipu AI API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
@@ -125,7 +126,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
 
-`multi-review` also accepts the setup-related inputs from `setup-opencode` (`cache`, `cache-key`, `install-attempts`, `install-url`, `allow-preinstalled`, `version`).
+`multi-review` also accepts all setup-related inputs from `setup-opencode` (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`).
 
 ## architect-review
 
