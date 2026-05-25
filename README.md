@@ -31,6 +31,7 @@ npx skills add sun-praise/opencode-actions
 ## What it includes
 
 - `review`: opinionated PR review wrapper with built-in prompt and model defaults
+- `multi-review`: multi-agent parallel review using OpenCode SDK — multiple reviewers run concurrently, a coordinator synthesizes findings into one PR comment
 - `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
 - `feature-missing`: audits PR implementation against linked issue spec to find missing features
 - `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
@@ -83,6 +84,47 @@ Use this when you want the simplest PR review setup.
 - still allows overriding any input when needed
 
 When `fallback-models` is set, the wrapper keeps `model` as the first choice and only rotates to the next candidate when the current model times out or emits a timeout-like error. Candidates whose provider key is unavailable are skipped automatically.
+
+## multi-review
+
+Use this when you want multiple AI reviewers to analyze a PR in parallel, with a coordinator that synthesizes all findings into a single comment.
+
+- spawns N reviewer sessions in parallel via the OpenCode SDK (`@opencode-ai/sdk`)
+- built-in reviewer personas: quality, security, performance, architecture
+- a coordinator session reads all reviewer outputs and produces a deduplicated synthesis
+- each reviewer's detailed output is included in a collapsible `<details>` section
+- single `opencode serve` instance shared across all sessions (one MCP cold start)
+
+```yaml
+- name: Run OpenCode multi-review
+  uses: sun-praise/opencode-actions/multi-review@v2
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    model: zhipuai/glm-5.1
+    default-team: "quality:1,security:1,performance:1"
+    timeout-seconds: "900"
+    coordinator-timeout-seconds: "300"
+    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+```
+
+### Inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `model` | empty | Model for all reviewers and coordinator (format: `provider/model`) |
+| `default-team` | empty | Comma-separated team definition (e.g. `"quality:1,security:1,performance:1"`) |
+| `timeout-seconds` | `900` | Global timeout for all reviewers in seconds |
+| `coordinator-timeout-seconds` | `300` | Timeout for the coordinator synthesis step |
+| `coordinator-prompt` | empty | Custom coordinator prompt; use `{{REVIEWS}}` as placeholder |
+| `working-directory` | empty | Optional working directory before running review |
+| `github-token` | empty | GitHub token for posting PR comments |
+| `zhipu-api-key` | empty | Zhipu AI API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
+| `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
+
+`multi-review` also accepts all setup-related inputs from `setup-opencode` (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`).
 
 ## architect-review
 
@@ -147,6 +189,7 @@ Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage`
 | Action | Scope source | What it catches |
 | --- | --- | --- |
 | `review` | PR diff | Code quality, security, bugs |
+| `multi-review` | PR diff (multiple parallel reviewers) | Quality, security, performance, architecture — coordinator synthesizes |
 | `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
@@ -202,6 +245,7 @@ Public consumers should reference the subdirectory action path:
 
 ```yaml
 uses: sun-praise/opencode-actions/review@v2
+uses: sun-praise/opencode-actions/multi-review@v2
 uses: sun-praise/opencode-actions/architect-review@v2
 uses: sun-praise/opencode-actions/feature-missing@v2
 uses: sun-praise/opencode-actions/spec-coverage@v2
@@ -239,7 +283,7 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./architect-review`
+- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./multi-review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, and `uses: ./architect-review`
 
 ## Release Policy
 
@@ -254,7 +298,7 @@ This repository includes a CI workflow that:
 2. Verify `CI` passes on `main`.
 3. Create a GitHub release with a semver tag such as `v1.0.0`.
 4. Confirm the `Update Major Tag` workflow moved `v1` to that release.
-5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/architect-review@v2` for architecture review, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
+5. Use `owner/repo/review@v2` for the simplest review setup, `owner/repo/multi-review@v2` for multi-agent parallel review, `owner/repo/architect-review@v2` for architecture review, `owner/repo/feature-missing@v2` for PR scope audit, `owner/repo/spec-coverage@v2` for spec coverage audit, `owner/repo/github-run-opencode@v2` for generic `github run`, or `owner/repo/setup-opencode@v2` plus `owner/repo/run-opencode@v2` for more control.
 
 The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 
