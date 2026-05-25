@@ -116,8 +116,6 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `timeout-seconds` | `900` | Global timeout for all reviewers in seconds |
 | `coordinator-timeout-seconds` | `300` | Timeout for the coordinator synthesis step |
 | `coordinator-prompt` | empty | Custom coordinator prompt; use `{{REVIEWS}}` as placeholder |
-| `reasoning-effort` | `max` | Reasoning effort level (`low`, `medium`, `high`, `max`) |
-| `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `working-directory` | empty | Optional working directory before running review |
 | `github-token` | empty | GitHub token for posting PR comments |
 | `zhipu-api-key` | empty | Zhipu AI API key |
