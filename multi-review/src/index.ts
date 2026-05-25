@@ -2,7 +2,7 @@ import { createOpencode } from "@opencode-ai/sdk";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
-import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails } from "./orchestrator.js";
+import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
 
 async function main(): Promise<number> {
@@ -41,6 +41,19 @@ async function main(): Promise<number> {
     config: { model: `${providerID}/${modelID}` },
   });
   console.log("Server ready");
+
+  // Register signal handlers for graceful cleanup (best-effort)
+  const shutdown = (signal: string) => {
+    console.log(`Received ${signal}, cleaning up sessions...`);
+    cleanupAllSessions(client)
+      .catch(() => { /* ignore */ })
+      .finally(() => {
+        server.close();
+        process.exit(signal === "SIGTERM" ? 143 : 130);
+      });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
 
   try {
     // 5. Run reviewers in parallel
@@ -83,6 +96,7 @@ async function main(): Promise<number> {
 
     return 0;
   } finally {
+    await cleanupAllSessions(client);
     server.close();
   }
 }
