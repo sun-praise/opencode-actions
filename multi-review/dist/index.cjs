@@ -5121,8 +5121,6 @@ ${details.join("\n\n")}
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
-var https = __toESM(require("https"), 1);
-var http = __toESM(require("http"), 1);
 function detectPlatform() {
   if (process.env.GITEA_API_URL) return "gitea";
   return "github";
@@ -5132,23 +5130,59 @@ function resolvePRNumber() {
   const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
   return match ? match[1] : null;
 }
+var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 function getRepo() {
-  return process.env.GITHUB_REPOSITORY || "";
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  if (repo && !REPO_RE.test(repo)) {
+    throw new Error(`Invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+  }
+  return repo;
 }
 function getGiteaToken() {
   return process.env.GITEA_TOKEN || "";
 }
 function getGiteaApiBase() {
   const url = process.env.GITEA_API_URL || "";
+  if (url && url.startsWith("http://")) {
+    console.warn(
+      `Warning: GITEA_API_URL uses plain HTTP \u2014 API token will be transmitted in cleartext: ${url}`
+    );
+  }
   return url.replace(/\/+$/, "");
 }
+var _teaAvailable;
 function hasTea() {
+  if (_teaAvailable !== void 0) return _teaAvailable;
   try {
     (0, import_node_child_process2.execFileSync)("which", ["tea"], { stdio: "pipe", timeout: 5e3 });
-    return true;
+    _teaAvailable = true;
   } catch {
-    return false;
+    _teaAvailable = false;
   }
+  return _teaAvailable;
+}
+function fetchAllGiteaComments(baseUrl, token) {
+  const allComments = [];
+  let page = 1;
+  const limit = 50;
+  while (true) {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
+    const curlArgs = ["-sSf", "-H", "Accept: application/json"];
+    if (token) curlArgs.push("-H", `Authorization: token ${token}`);
+    curlArgs.push(url);
+    const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+      timeout: 3e4,
+      stdio: "pipe",
+      maxBuffer: 5 * 1024 * 1024
+    });
+    const batch = JSON.parse(raw.toString());
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    allComments.push(...batch);
+    if (batch.length < limit) break;
+    page++;
+  }
+  return allComments;
 }
 function fetchPRDiff(prNumber) {
   const platform = detectPlatform();
@@ -5188,8 +5222,6 @@ function fetchDiffGitea(prNumber) {
     );
   }
   const url = `${base}/repos/${repo}/pulls/${prNumber}.diff`;
-  const headers = { Accept: "text/plain" };
-  if (token) headers["Authorization"] = `token ${token}`;
   const curlArgs = ["-sSf", "-H", "Accept: text/plain"];
   if (token) {
     curlArgs.push("-H", `Authorization: token ${token}`);
@@ -5321,18 +5353,10 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
   if (!base) return;
   const runLinkPattern = `/${repo}/actions/runs/${runId}`;
   const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+  const listUrl = `${base}/repos/${repo}/issues/${prNumber}/comments`;
   let comments;
   try {
-    const url = `${base}/repos/${repo}/issues/${prNumber}/comments`;
-    const curlArgs = ["-sSf", "-H", "Accept: application/json"];
-    if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-    curlArgs.push(url);
-    const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-      timeout: 3e4,
-      stdio: "pipe",
-      maxBuffer: 5 * 1024 * 1024
-    });
-    comments = JSON.parse(raw.toString());
+    comments = fetchAllGiteaComments(listUrl, token);
   } catch (err) {
     console.error(`cleanup-error-comments: failed to list Gitea comments: ${err}`);
     return;
@@ -5341,10 +5365,10 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
     if (!comment.body) continue;
     if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
     try {
-      const url = `${base}/repos/${repo}/issues/comments/${comment.id}`;
+      const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
       const curlArgs = ["-sSf", "-X", "DELETE"];
       if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-      curlArgs.push(url);
+      curlArgs.push(delUrl);
       (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
         timeout: 1e4,
         stdio: "pipe"
@@ -5389,27 +5413,27 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const prNumber = resolvePRNumber();
-  if (prNumber) {
-    try {
-      prDiff = fetchPRDiff(prNumber);
-      console.log(`PR diff fetched via platform adapter: ${prDiff.length} chars`);
-    } catch (err) {
-      console.error(`Platform diff fetch failed, trying pre-fetched file: ${err}`);
-    }
-  }
-  if (!prDiff) {
-    const diffPath = (0, import_node_path2.join)(runnerTemp, ".pr-diff.txt");
-    try {
-      prDiff = (0, import_node_fs2.readFileSync)(diffPath, "utf-8");
+  const diffPath = (0, import_node_path2.join)(runnerTemp, ".pr-diff.txt");
+  try {
+    prDiff = (0, import_node_fs2.readFileSync)(diffPath, "utf-8");
+    if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
-    } catch {
-      console.error("No PR diff available: platform fetch failed and no pre-fetched file at", diffPath);
-      return 1;
+    }
+  } catch {
+  }
+  if (!prDiff.trim()) {
+    const prNumber = resolvePRNumber();
+    if (prNumber) {
+      try {
+        prDiff = fetchPRDiff(prNumber);
+        console.log(`PR diff fetched via platform adapter: ${prDiff.length} chars`);
+      } catch (err) {
+        console.error(`Platform diff fetch failed: ${err}`);
+      }
     }
   }
   if (!prDiff.trim()) {
-    console.error("PR diff is empty");
+    console.error("PR diff is empty or unavailable");
     return 1;
   }
   const reviewers = loadReviewers({ actionPath });

@@ -7,5 +7,5 @@ export default defineConfig({
   target: "node20",
   clean: true,
   noExternal: ["@opencode-ai/sdk", "js-yaml"],
-  external: ["child_process", "fs", "path", "https", "http"],
+  external: ["child_process", "fs", "path"],
 });

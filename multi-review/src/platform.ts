@@ -1,6 +1,4 @@
 import { execFileSync } from "node:child_process";
-import * as https from "node:https";
-import * as http from "node:http";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -26,9 +24,15 @@ export function resolvePRNumber(): string | null {
   return match ? match[1] : null;
 }
 
-/** Get repo in `owner/repo` format from GITHUB_REPOSITORY. */
+const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+
+/** Get repo in `owner/repo` format from GITHUB_REPOSITORY. Validates format. */
 function getRepo(): string {
-  return process.env.GITHUB_REPOSITORY || "";
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  if (repo && !REPO_RE.test(repo)) {
+    throw new Error(`Invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+  }
+  return repo;
 }
 
 /** Resolve the effective Gitea API token. Priority: env override > GITEA_TOKEN env. */
@@ -36,54 +40,57 @@ function getGiteaToken(): string {
   return process.env.GITEA_TOKEN || "";
 }
 
-/** Get the Gitea API base URL (e.g. `https://gitea.example.com/api/v1`). */
+/** Get the Gitea API base URL. Warns if non-HTTPS (token transmitted in cleartext). */
 function getGiteaApiBase(): string {
   const url = process.env.GITEA_API_URL || "";
+  if (url && url.startsWith("http://")) {
+    console.warn(
+      `Warning: GITEA_API_URL uses plain HTTP — API token will be transmitted in cleartext: ${url}`,
+    );
+  }
   return url.replace(/\/+$/, "");
 }
 
-/** Check if `tea` CLI is available on PATH. */
+/** Lazily cached check whether `tea` CLI is available on PATH. */
+let _teaAvailable: boolean | undefined;
 function hasTea(): boolean {
+  if (_teaAvailable !== undefined) return _teaAvailable;
   try {
     execFileSync("which", ["tea"], { stdio: "pipe", timeout: 5_000 });
-    return true;
+    _teaAvailable = true;
   } catch {
-    return false;
+    _teaAvailable = false;
   }
+  return _teaAvailable;
 }
 
-/** Simple HTTP/HTTPS request helper (no external deps). */
-function httpRequest(
-  url: string,
-  options: http.RequestOptions & { body?: string },
-): Promise<{ status: number; data: string }> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const mod = parsed.protocol === "https:" ? https : http;
-    const reqOptions: http.RequestOptions = {
-      hostname: parsed.hostname,
-      port: parsed.port,
-      path: parsed.pathname + parsed.search,
-      method: options.method || "GET",
-      headers: options.headers || {},
-    };
-    const req = mod.request(reqOptions, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => {
-        resolve({
-          status: res.statusCode || 0,
-          data: Buffer.concat(chunks).toString("utf-8"),
-        });
-      });
+/** Fetch all pages of Gitea API comments (handles pagination). */
+function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: number; body: string }> {
+  const allComments: Array<{ id: number; body: string }> = [];
+  let page = 1;
+  const limit = 50;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
+    const curlArgs = ["-sSf", "-H", "Accept: application/json"];
+    if (token) curlArgs.push("-H", `Authorization: token ${token}`);
+    curlArgs.push(url);
+
+    const raw = execFileSync("curl", curlArgs, {
+      timeout: 30_000,
+      stdio: "pipe",
+      maxBuffer: 5 * 1024 * 1024,
     });
-    req.on("error", reject);
-    req.setTimeout(30_000, () => {
-      req.destroy(new Error("request timed out"));
-    });
-    if (options.body) req.write(options.body);
-    req.end();
-  });
+    const batch: Array<{ id: number; body: string }> = JSON.parse(raw.toString());
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    allComments.push(...batch);
+    if (batch.length < limit) break;
+    page++;
+  }
+
+  return allComments;
 }
 
 // ── Fetch PR diff ──────────────────────────────────────────────────────
@@ -134,11 +141,6 @@ function fetchDiffGitea(prNumber: string): string {
   }
 
   const url = `${base}/repos/${repo}/pulls/${prNumber}.diff`;
-  const headers: Record<string, string> = { Accept: "text/plain" };
-  if (token) headers["Authorization"] = `token ${token}`;
-
-  // Synchronous wrapper: we're in a sync call chain from index.ts.
-  // Use execFileSync with curl for simplicity (available on all Linux runners).
   const curlArgs = ["-sSf", "-H", "Accept: text/plain"];
   if (token) {
     curlArgs.push("-H", `Authorization: token ${token}`);
@@ -162,7 +164,6 @@ export function postPRComment(prNumber: string, body: string): void {
     return;
   }
 
-  // Gitea
   postCommentGitea(prNumber, body);
 }
 
@@ -298,23 +299,15 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
   const token = getGiteaToken();
   if (!base) return;
 
-  // Gitea run link pattern differs: /<repo>/actions/runs/<id> still works on Gitea
+  // Note: variable prefixed github_* for compatibility — Gitea Actions injects
+  // the same GITHUB_REF/GITHUB_REPOSITORY/GITHUB_RUN_ID variables.
   const runLinkPattern = `/${repo}/actions/runs/${runId}`;
   const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
 
+  const listUrl = `${base}/repos/${repo}/issues/${prNumber}/comments`;
   let comments: Array<{ id: number; body: string }>;
   try {
-    const url = `${base}/repos/${repo}/issues/${prNumber}/comments`;
-    const curlArgs = ["-sSf", "-H", "Accept: application/json"];
-    if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-    curlArgs.push(url);
-
-    const raw = execFileSync("curl", curlArgs, {
-      timeout: 30_000,
-      stdio: "pipe",
-      maxBuffer: 5 * 1024 * 1024,
-    });
-    comments = JSON.parse(raw.toString());
+    comments = fetchAllGiteaComments(listUrl, token);
   } catch (err) {
     console.error(`cleanup-error-comments: failed to list Gitea comments: ${err}`);
     return;
@@ -324,10 +317,10 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
     if (!comment.body) continue;
     if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
     try {
-      const url = `${base}/repos/${repo}/issues/comments/${comment.id}`;
+      const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
       const curlArgs = ["-sSf", "-X", "DELETE"];
       if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-      curlArgs.push(url);
+      curlArgs.push(delUrl);
 
       execFileSync("curl", curlArgs, {
         timeout: 10_000,

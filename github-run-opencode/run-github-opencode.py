@@ -14,14 +14,15 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 
 
-def detect_platform() -> str:
-    """Detect the current CI platform. Returns 'gitea' or 'github'."""
-    if os.environ.get("GITEA_API_URL"):
-        return "gitea"
-    return "github"
-
 def get_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
+
+
+def detect_platform() -> str:
+    """Detect the current CI platform. Returns 'gitea' or 'github'."""
+    if get_env("GITEA_API_URL"):
+        return "gitea"
+    return "github"
 
 
 def set_env(name: str, value: str) -> None:
@@ -228,7 +229,7 @@ def _cleanup_error_comments_github(pr_number: str, github_repository: str, githu
             print(f"cleanup-error-comments: failed to list comments: {result.stderr}", file=sys.stderr)
             return
         comments = json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         print(f"cleanup-error-comments: error listing comments: {e}", file=sys.stderr)
         return
 
@@ -286,7 +287,7 @@ def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github
             print(f"cleanup-error-comments: failed to list Gitea comments: {result.stderr}", file=sys.stderr)
             return
         comments = json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         print(f"cleanup-error-comments: error listing Gitea comments: {e}", file=sys.stderr)
         return
 

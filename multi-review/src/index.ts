@@ -13,31 +13,33 @@ async function main(): Promise<number> {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
 
-  // 1. Fetch PR diff — try platform-aware fetch first, then fallback to pre-fetched file
+  // 1. Fetch PR diff — prefer pre-fetched file (avoids duplicate API call),
+  //    then fallback to platform-aware fetch
   let prDiff = "";
-  const prNumber = resolvePRNumber();
-  if (prNumber) {
-    try {
-      prDiff = fetchPRDiff(prNumber);
-      console.log(`PR diff fetched via platform adapter: ${prDiff.length} chars`);
-    } catch (err) {
-      console.error(`Platform diff fetch failed, trying pre-fetched file: ${err}`);
+  const diffPath = join(runnerTemp, ".pr-diff.txt");
+  try {
+    prDiff = readFileSync(diffPath, "utf-8");
+    if (prDiff.trim()) {
+      console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
+  } catch {
+    // File doesn't exist or unreadable, try platform fetch below
   }
 
-  if (!prDiff) {
-    const diffPath = join(runnerTemp, ".pr-diff.txt");
-    try {
-      prDiff = readFileSync(diffPath, "utf-8");
-      console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
-    } catch {
-      console.error("No PR diff available: platform fetch failed and no pre-fetched file at", diffPath);
-      return 1;
+  if (!prDiff.trim()) {
+    const prNumber = resolvePRNumber();
+    if (prNumber) {
+      try {
+        prDiff = fetchPRDiff(prNumber);
+        console.log(`PR diff fetched via platform adapter: ${prDiff.length} chars`);
+      } catch (err) {
+        console.error(`Platform diff fetch failed: ${err}`);
+      }
     }
   }
 
   if (!prDiff.trim()) {
-    console.error("PR diff is empty");
+    console.error("PR diff is empty or unavailable");
     return 1;
   }
 
