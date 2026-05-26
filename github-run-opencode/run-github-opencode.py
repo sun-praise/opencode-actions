@@ -14,6 +14,12 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 
 
+def detect_platform() -> str:
+    """Detect the current CI platform. Returns 'gitea' or 'github'."""
+    if os.environ.get("GITEA_API_URL"):
+        return "gitea"
+    return "github"
+
 def get_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
@@ -184,6 +190,16 @@ def cleanup_error_comments() -> None:
         print("cleanup-error-comments: skipping, missing GITHUB_REPOSITORY or GITHUB_RUN_ID", file=sys.stderr)
         return
 
+    platform = detect_platform()
+
+    if platform == "gitea":
+        _cleanup_error_comments_gitea(pr_number, github_repository, github_run_id)
+    else:
+        _cleanup_error_comments_github(pr_number, github_repository, github_run_id)
+
+
+def _cleanup_error_comments_github(pr_number: str, github_repository: str, github_run_id: str) -> None:
+    """Cleanup error comments on GitHub using gh CLI."""
     gh_path = shutil.which("gh")
     if not gh_path:
         print("cleanup-error-comments: skipping, gh CLI not available", file=sys.stderr)
@@ -241,6 +257,59 @@ def cleanup_error_comments() -> None:
                 print(f"cleanup-error-comments: failed to delete comment {comment_id}: {del_result.stderr}", file=sys.stderr)
         except (subprocess.TimeoutExpired, Exception) as e:
             print(f"cleanup-error-comments: error deleting comment {comment_id}: {e}", file=sys.stderr)
+
+
+def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github_run_id: str) -> None:
+    """Cleanup error comments on Gitea using REST API (via curl)."""
+    api_base = get_env("GITEA_API_URL", "").rstrip("/")
+    token = get_env("GITHUB_RUN_OPENCODE_GITEA_TOKEN") or get_env("GITEA_TOKEN", "")
+
+    if not api_base:
+        print("cleanup-error-comments: skipping, GITEA_API_URL not set", file=sys.stderr)
+        return
+
+    run_link_pattern = f"/{github_repository}/actions/runs/{github_run_id}"
+    error_indicators = re.compile(
+        r"(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)",
+        re.IGNORECASE,
+    )
+
+    # List comments
+    try:
+        curl_args = ["curl", "-sSf", "-H", "Accept: application/json"]
+        if token:
+            curl_args += ["-H", f"Authorization: token {token}"]
+        curl_args.append(f"{api_base}/repos/{github_repository}/issues/{pr_number}/comments")
+
+        result = subprocess.run(curl_args, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            print(f"cleanup-error-comments: failed to list Gitea comments: {result.stderr}", file=sys.stderr)
+            return
+        comments = json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+        print(f"cleanup-error-comments: error listing Gitea comments: {e}", file=sys.stderr)
+        return
+
+    for comment in comments:
+        comment_id = comment.get("id")
+        body = comment.get("body", "")
+        if not comment_id or not body:
+            continue
+        if run_link_pattern not in body or not error_indicators.search(body):
+            continue
+        try:
+            del_args = ["curl", "-sSf", "-X", "DELETE"]
+            if token:
+                del_args += ["-H", f"Authorization: token {token}"]
+            del_args.append(f"{api_base}/repos/{github_repository}/issues/comments/{comment_id}")
+
+            del_result = subprocess.run(del_args, capture_output=True, text=True, timeout=10)
+            if del_result.returncode == 0:
+                print(f"cleanup-error-comments: deleted Gitea error comment {comment_id}")
+            else:
+                print(f"cleanup-error-comments: failed to delete Gitea comment {comment_id}: {del_result.stderr}", file=sys.stderr)
+        except (subprocess.TimeoutExpired, Exception) as e:
+            print(f"cleanup-error-comments: error deleting Gitea comment {comment_id}: {e}", file=sys.stderr)
 
 
 def main() -> int:

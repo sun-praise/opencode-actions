@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails } from "./orchestrator.js";
 import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
+import { fetchPRDiff, resolvePRNumber } from "./platform.js";
 
 async function main(): Promise<number> {
   // 0. Parse extra env vars into process.env
@@ -12,16 +13,33 @@ async function main(): Promise<number> {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
 
-  // 1. Read PR diff (pre-fetched by action.yml)
-  const diffPath = join(runnerTemp, ".pr-diff.txt");
+  // 1. Fetch PR diff — try platform-aware fetch first, then fallback to pre-fetched file
   let prDiff = "";
-  try {
-    prDiff = readFileSync(diffPath, "utf-8");
-  } catch {
-    console.error("No PR diff found at", diffPath);
+  const prNumber = resolvePRNumber();
+  if (prNumber) {
+    try {
+      prDiff = fetchPRDiff(prNumber);
+      console.log(`PR diff fetched via platform adapter: ${prDiff.length} chars`);
+    } catch (err) {
+      console.error(`Platform diff fetch failed, trying pre-fetched file: ${err}`);
+    }
+  }
+
+  if (!prDiff) {
+    const diffPath = join(runnerTemp, ".pr-diff.txt");
+    try {
+      prDiff = readFileSync(diffPath, "utf-8");
+      console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
+    } catch {
+      console.error("No PR diff available: platform fetch failed and no pre-fetched file at", diffPath);
+      return 1;
+    }
+  }
+
+  if (!prDiff.trim()) {
+    console.error("PR diff is empty");
     return 1;
   }
-  console.log(`PR diff loaded: ${prDiff.length} chars`);
 
   // 2. Load reviewers
   const reviewers = loadReviewers({ actionPath });

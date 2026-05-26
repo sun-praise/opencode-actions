@@ -58,6 +58,10 @@ inputs:
     description: "Custom coordinator prompt template. Use {{REVIEWS}} as placeholder for reviewer outputs."
     required: false
     default: ""
+  gitea-token:
+    description: Gitea API token for posting PR comments on Gitea instances. Falls back to GITEA_TOKEN env var if unset.
+    required: false
+    default: ""
   github-token:
     description: GitHub token for posting PR comments.
     required: false
@@ -171,13 +175,16 @@ runs:
         ref="${GITHUB_REF:-}"
         if [[ "$ref" =~ refs/pull/([0-9]+)/merge ]]; then
           pr="${BASH_REMATCH[1]}"
-          gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
-          gh pr view "$pr" --json title,body > "${RUNNER_TEMP}/.pr-meta.json" 2>/dev/null || echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
+          # Pre-fetch diff as fallback for platforms where TS-side fetch may fail
+          if command -v gh >/dev/null 2>&1; then
+            gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          else
+            echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          fi
           echo "pr_number=$pr" >> "$GITHUB_OUTPUT"
           echo "Found PR #$pr"
         else
           echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
-          echo "{}" > "${RUNNER_TEMP}/.pr-meta.json"
           echo "pr_number=" >> "$GITHUB_OUTPUT"
         fi
 
@@ -196,6 +203,7 @@ runs:
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}
+        GITEA_TOKEN: ${{ inputs.gitea-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
         OPENCODE_API_KEY: ${{ inputs.opencode-go-api-key }}
