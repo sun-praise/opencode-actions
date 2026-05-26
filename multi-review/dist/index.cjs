@@ -5008,6 +5008,7 @@ function withTimeout(promise, ms, label) {
 async function runParallelReviewers(client2, reviewers, prDiff, opts) {
   const deadline = Date.now() + opts.globalTimeoutMs;
   const promises = reviewers.map(async (reviewer) => {
+    let sessionId;
     try {
       const remaining = () => Math.max(3e4, deadline - Date.now());
       console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
@@ -5016,7 +5017,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         remaining(),
         reviewer.name
       );
-      const sessionId = sessionResult.data.id;
+      sessionId = sessionResult.data.id;
       const promptResult = await withTimeout(
         client2.session.prompt({
           path: { id: sessionId },
@@ -5035,15 +5036,18 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       );
       const content = extractText(messagesResult.data);
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
-      try {
-        await client2.session.delete({ path: { id: sessionId } });
-      } catch {
-      }
       return { reviewer: reviewer.name, content, success: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
+    } finally {
+      if (sessionId) {
+        try {
+          await client2.session.delete({ path: { id: sessionId } });
+        } catch {
+        }
+      }
     }
   });
   return Promise.all(promises);
@@ -5053,13 +5057,14 @@ async function runCoordinator(client2, reviews, opts) {
 ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n---\n\n");
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
   const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
+  let sessionId;
   try {
     const sessionResult = await withTimeout(
       client2.session.create({ throwOnError: true }),
       opts.coordinatorTimeoutMs,
       "coordinator"
     );
-    const sessionId = sessionResult.data.id;
+    sessionId = sessionResult.data.id;
     console.log("[coordinator] Starting synthesis...");
     await withTimeout(
       client2.session.prompt({
@@ -5077,13 +5082,14 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     );
     const content = extractText(messagesResult.data);
     console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
-    try {
-      await client2.session.delete({ path: { id: sessionId } });
-    } catch {
-    }
     return content;
-  } catch (err) {
-    throw err;
+  } finally {
+    if (sessionId) {
+      try {
+        await client2.session.delete({ path: { id: sessionId } });
+      } catch {
+      }
+    }
   }
 }
 function buildFallbackComment(reviews) {
@@ -5194,10 +5200,35 @@ function parseExtraEnv() {
 }
 
 // src/index.ts
+function configureOpencodeJson(reasoningEffort, enableThinking, workingDirectory) {
+  const configPath = (0, import_node_path2.join)(workingDirectory || ".", "opencode.json");
+  let config = {};
+  if ((0, import_node_fs2.existsSync)(configPath)) {
+    try {
+      config = JSON.parse((0, import_node_fs2.readFileSync)(configPath, "utf-8"));
+    } catch {
+      config = {};
+    }
+  }
+  if (!config.agent) config.agent = {};
+  const agent = config.agent;
+  if (!agent.build) agent.build = {};
+  const build = agent.build;
+  if (!build.options) build.options = {};
+  const options = build.options;
+  if (reasoningEffort) {
+    options.reasoningEffort = reasoningEffort;
+  }
+  if (enableThinking.toLowerCase() === "true") {
+    options.thinking = { type: "enabled" };
+  }
+  (0, import_node_fs2.writeFileSync)(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
 async function main() {
   parseExtraEnv();
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
+  const workingDirectory = env("MULTI_REVIEW_WORKING_DIRECTORY");
   const diffPath = (0, import_node_path2.join)(runnerTemp, ".pr-diff.txt");
   let prDiff = "";
   try {
@@ -5215,6 +5246,12 @@ async function main() {
   console.log(`Reviewers: ${reviewers.map((r) => r.name).join(", ")}`);
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
+  const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
+  const enableThinking = env("MULTI_REVIEW_ENABLE_THINKING");
+  if (reasoningEffort || enableThinking.toLowerCase() === "true") {
+    configureOpencodeJson(reasoningEffort, enableThinking, workingDirectory);
+    console.log(`Configured opencode.json: reasoningEffort=${reasoningEffort || "(default)"}, enableThinking=${enableThinking}`);
+  }
   console.log("Starting opencode server...");
   const { client: client2, server } = await createOpencode({
     config: { model: `${providerID}/${modelID}` }

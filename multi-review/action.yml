@@ -80,6 +80,18 @@ inputs:
       Empty lines and lines starting with '#' are ignored.
     required: false
     default: ""
+  reasoning-effort:
+    description: >-
+      Reasoning effort level for the model agent. Allowed values: low, medium, high, max.
+      Applied globally to all reviewers and the coordinator.
+    required: false
+    default: "high"
+  enable-thinking:
+    description: >-
+      Enable thinking mode for the model agent. When true, generates opencode.json
+      with thinking.type=enabled. Applied globally to all reviewers and the coordinator.
+    required: false
+    default: "true"
   cleanup-error-comments:
     description: Automatically delete error comments after a failed run.
     required: false
@@ -194,6 +206,8 @@ runs:
         MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
         MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
+        MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         GITHUB_TOKEN: ${{ inputs.github-token }}

@@ -1,9 +1,43 @@
 import { createOpencode } from "@opencode-ai/sdk";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails } from "./orchestrator.js";
 import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
+
+/**
+ * Generate or modify opencode.json with reasoning effort and thinking configuration.
+ * Mirrors the Python configure_opencode_json() in run-github-opencode.py.
+ */
+function configureOpencodeJson(reasoningEffort: string, enableThinking: string, workingDirectory: string): void {
+  const configPath = join(workingDirectory || ".", "opencode.json");
+
+  let config: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    try {
+      config = JSON.parse(readFileSync(configPath, "utf-8"));
+    } catch {
+      config = {};
+    }
+  }
+
+  if (!config.agent) config.agent = {};
+  const agent = config.agent as Record<string, unknown>;
+  if (!agent.build) agent.build = {};
+  const build = agent.build as Record<string, unknown>;
+  if (!build.options) build.options = {};
+  const options = build.options as Record<string, unknown>;
+
+  if (reasoningEffort) {
+    options.reasoningEffort = reasoningEffort;
+  }
+
+  if (enableThinking.toLowerCase() === "true") {
+    options.thinking = { type: "enabled" };
+  }
+
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
 
 async function main(): Promise<number> {
   // 0. Parse extra env vars into process.env
@@ -11,6 +45,7 @@ async function main(): Promise<number> {
 
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
+  const workingDirectory = env("MULTI_REVIEW_WORKING_DIRECTORY");
 
   // 1. Read PR diff (pre-fetched by action.yml)
   const diffPath = join(runnerTemp, ".pr-diff.txt");
@@ -35,7 +70,15 @@ async function main(): Promise<number> {
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
 
-  // 4. Start opencode server via SDK
+  // 4. Configure reasoning/thinking via opencode.json
+  const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
+  const enableThinking = env("MULTI_REVIEW_ENABLE_THINKING");
+  if (reasoningEffort || enableThinking.toLowerCase() === "true") {
+    configureOpencodeJson(reasoningEffort, enableThinking, workingDirectory);
+    console.log(`Configured opencode.json: reasoningEffort=${reasoningEffort || "(default)"}, enableThinking=${enableThinking}`);
+  }
+
+  // 5. Start opencode server via SDK
   console.log("Starting opencode server...");
   const { client, server } = await createOpencode({
     config: { model: `${providerID}/${modelID}` },
@@ -43,7 +86,7 @@ async function main(): Promise<number> {
   console.log("Server ready");
 
   try {
-    // 5. Run reviewers in parallel
+    // 6. Run reviewers in parallel
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
 
@@ -61,7 +104,7 @@ async function main(): Promise<number> {
       return 1;
     }
 
-    // 6. Run coordinator
+    // 7. Run coordinator
     let comment: string;
     try {
       const synthesis = await runCoordinator(client, reviews, {
@@ -75,10 +118,10 @@ async function main(): Promise<number> {
       comment = buildFallbackComment(reviews);
     }
 
-    // 7. Post comment
+    // 8. Post comment
     postPRComment(comment);
 
-    // 8. Cleanup error comments from previous runs
+    // 9. Cleanup error comments from previous runs
     cleanupErrorComments();
 
     return 0;
