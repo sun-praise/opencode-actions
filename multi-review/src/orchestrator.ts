@@ -1,6 +1,8 @@
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Reviewer, ReviewResult, OrchestratorOptions } from "./types.js";
 
+const activeSessions = new Set<string>();
+
 const DEFAULT_COORDINATOR_PROMPT = `你是一个代码审查协调员。以下审查由独立的专家 reviewer 生成。
 你的任务是整合为一个去重后的综合报告。
 
@@ -60,6 +62,7 @@ export async function runParallelReviewers(
         reviewer.name,
       );
       sessionId = sessionResult.data.id;
+      activeSessions.add(sessionId);
 
       const promptResult = await withTimeout(
         client.session.prompt({
@@ -89,6 +92,7 @@ export async function runParallelReviewers(
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
     } finally {
       if (sessionId) {
+        activeSessions.delete(sessionId);
         try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
       }
     }
@@ -117,6 +121,7 @@ export async function runCoordinator(
       "coordinator",
     );
     sessionId = sessionResult.data.id;
+    activeSessions.add(sessionId);
 
     console.log("[coordinator] Starting synthesis...");
 
@@ -142,6 +147,7 @@ export async function runCoordinator(
     return content;
   } finally {
     if (sessionId) {
+      activeSessions.delete(sessionId);
       try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
     }
   }
@@ -161,4 +167,11 @@ export function buildReviewerDetails(reviews: ReviewResult[]): string {
     return `<details>\n<summary>${r.reviewer}</summary>\n\n${body}\n\n</details>`;
   });
   return `<details>\n<summary>📋 各 Reviewer 详细审查结果</summary>\n\n${details.join("\n\n")}\n\n</details>`;
+}
+
+export async function cleanupAllSessions(client: OpencodeClient): Promise<void> {
+  for (const id of activeSessions) {
+    try { await client.session.delete({ path: { id } }); } catch { /* ignore */ }
+  }
+  activeSessions.clear();
 }
