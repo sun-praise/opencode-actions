@@ -5121,9 +5121,12 @@ ${details.join("\n\n")}
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
+var _platform;
 function detectPlatform() {
-  if (process.env.GITEA_API_URL) return "gitea";
-  return "github";
+  if (_platform === void 0) {
+    _platform = process.env.GITEA_API_URL ? "gitea" : "github";
+  }
+  return _platform;
 }
 function resolvePRNumber() {
   const ref = process.env.GITHUB_REF || "";
@@ -5134,12 +5137,13 @@ var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 function getRepo() {
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
-    throw new Error(`Invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+    console.warn(`Warning: invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+    return "";
   }
   return repo;
 }
 function getGiteaToken() {
-  return process.env.GITEA_TOKEN || "";
+  return process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
 }
 function getGiteaApiBase() {
   const url = process.env.GITEA_API_URL || "";
@@ -5161,11 +5165,12 @@ function hasTea() {
   }
   return _teaAvailable;
 }
+var MAX_PAGES = 20;
 function fetchAllGiteaComments(baseUrl, token) {
   const allComments = [];
   let page = 1;
   const limit = 50;
-  while (true) {
+  while (page <= MAX_PAGES) {
     const sep = baseUrl.includes("?") ? "&" : "?";
     const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
     const curlArgs = ["-sSf", "-H", "Accept: application/json"];
@@ -5181,6 +5186,9 @@ function fetchAllGiteaComments(baseUrl, token) {
     allComments.push(...batch);
     if (batch.length < limit) break;
     page++;
+  }
+  if (page > MAX_PAGES) {
+    console.warn(`Warning: fetchAllGiteaComments hit MAX_PAGES=${MAX_PAGES} limit, some comments may be missed`);
   }
   return allComments;
 }
@@ -5330,7 +5338,6 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
     );
     comments = JSON.parse(raw.toString());
   } catch {
-    console.error("cleanup-error-comments: failed to list comments");
     return;
   }
   for (const comment of comments) {

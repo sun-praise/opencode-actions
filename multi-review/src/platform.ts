@@ -4,15 +4,19 @@ import { execFileSync } from "node:child_process";
 
 export type Platform = "github" | "gitea";
 
-// ── Platform detection ─────────────────────────────────────────────────
+// ── Platform detection (cached) ────────────────────────────────────────
+
+let _platform: Platform | undefined;
 
 /**
- * Detect the current CI platform.
+ * Detect the current CI platform (cached after first call).
  * Gitea Actions injects `GITEA_API_URL`; GitHub Actions does not.
  */
 export function detectPlatform(): Platform {
-  if (process.env.GITEA_API_URL) return "gitea";
-  return "github";
+  if (_platform === undefined) {
+    _platform = process.env.GITEA_API_URL ? "gitea" : "github";
+  }
+  return _platform;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -26,18 +30,22 @@ export function resolvePRNumber(): string | null {
 
 const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 
-/** Get repo in `owner/repo` format from GITHUB_REPOSITORY. Validates format. */
+/**
+ * Get repo in `owner/repo` format from GITHUB_REPOSITORY.
+ * Returns empty string and warns if format is invalid (does NOT throw).
+ */
 function getRepo(): string {
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
-    throw new Error(`Invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+    console.warn(`Warning: invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
+    return "";
   }
   return repo;
 }
 
-/** Resolve the effective Gitea API token. Priority: env override > GITEA_TOKEN env. */
+/** Resolve the effective Gitea API token. Checks both TS and Python naming conventions. */
 function getGiteaToken(): string {
-  return process.env.GITEA_TOKEN || "";
+  return process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
 }
 
 /** Get the Gitea API base URL. Warns if non-HTTPS (token transmitted in cleartext). */
@@ -64,14 +72,15 @@ function hasTea(): boolean {
   return _teaAvailable;
 }
 
-/** Fetch all pages of Gitea API comments (handles pagination). */
+const MAX_PAGES = 20;
+
+/** Fetch all pages of Gitea API comments (handles pagination with upper bound). */
 function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: number; body: string }> {
   const allComments: Array<{ id: number; body: string }> = [];
   let page = 1;
   const limit = 50;
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (page <= MAX_PAGES) {
     const sep = baseUrl.includes("?") ? "&" : "?";
     const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
     const curlArgs = ["-sSf", "-H", "Accept: application/json"];
@@ -88,6 +97,10 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
     allComments.push(...batch);
     if (batch.length < limit) break;
     page++;
+  }
+
+  if (page > MAX_PAGES) {
+    console.warn(`Warning: fetchAllGiteaComments hit MAX_PAGES=${MAX_PAGES} limit, some comments may be missed`);
   }
 
   return allComments;
@@ -274,7 +287,7 @@ function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: strin
     );
     comments = JSON.parse(raw.toString());
   } catch {
-    console.error("cleanup-error-comments: failed to list comments");
+    /* ignore — list failed */
     return;
   }
 
@@ -289,7 +302,7 @@ function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: strin
       });
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
-      /* ignore */
+      /* ignore — delete failed */
     }
   }
 }
@@ -328,7 +341,7 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
       });
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
-      /* ignore */
+      /* ignore — delete failed */
     }
   }
 }

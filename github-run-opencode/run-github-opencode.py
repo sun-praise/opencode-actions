@@ -229,7 +229,7 @@ def _cleanup_error_comments_github(pr_number: str, github_repository: str, githu
             print(f"cleanup-error-comments: failed to list comments: {result.stderr}", file=sys.stderr)
             return
         comments = json.loads(result.stdout)
-    except Exception as e:
+    except (subprocess.TimeoutExpired, json.JSONDecodeError) as e:
         print(f"cleanup-error-comments: error listing comments: {e}", file=sys.stderr)
         return
 
@@ -256,18 +256,34 @@ def _cleanup_error_comments_github(pr_number: str, github_repository: str, githu
                 print(f"cleanup-error-comments: deleted error comment {comment_id}")
             else:
                 print(f"cleanup-error-comments: failed to delete comment {comment_id}: {del_result.stderr}", file=sys.stderr)
-        except (subprocess.TimeoutExpired, Exception) as e:
+        except subprocess.TimeoutExpired as e:
             print(f"cleanup-error-comments: error deleting comment {comment_id}: {e}", file=sys.stderr)
 
 
 def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github_run_id: str) -> None:
-    """Cleanup error comments on Gitea using REST API (via curl)."""
+    """Cleanup error comments on Gitea using REST API (via curl).
+
+    Note: parameters prefixed github_* for compatibility — Gitea Actions injects
+    the same GITHUB_REF/GITHUB_REPOSITORY/GITHUB_RUN_ID variables.
+    """
     api_base = get_env("GITEA_API_URL", "").rstrip("/")
-    token = get_env("GITHUB_RUN_OPENCODE_GITEA_TOKEN") or get_env("GITEA_TOKEN", "")
+    token = get_env("GITEA_TOKEN", "")
 
     if not api_base:
         print("cleanup-error-comments: skipping, GITEA_API_URL not set", file=sys.stderr)
         return
+
+    # Validate inputs before URL construction (aligned with TS platform.ts)
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", github_repository):
+        print(f"cleanup-error-comments: skipping, invalid GITHUB_REPOSITORY: {github_repository}", file=sys.stderr)
+        return
+    if not re.fullmatch(r"\d+", pr_number):
+        print(f"cleanup-error-comments: skipping, invalid PR number: {pr_number}", file=sys.stderr)
+        return
+
+    # Warn about plain HTTP (aligned with TS platform.ts getGiteaApiBase)
+    if api_base.startswith("http://"):
+        print(f"Warning: GITEA_API_URL uses plain HTTP — token transmitted in cleartext: {api_base}", file=sys.stderr)
 
     run_link_pattern = f"/{github_repository}/actions/runs/{github_run_id}"
     error_indicators = re.compile(
@@ -275,21 +291,32 @@ def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github
         re.IGNORECASE,
     )
 
-    # List comments
-    try:
-        curl_args = ["curl", "-sSf", "-H", "Accept: application/json"]
-        if token:
-            curl_args += ["-H", f"Authorization: token {token}"]
-        curl_args.append(f"{api_base}/repos/{github_repository}/issues/{pr_number}/comments")
+    # List comments with pagination
+    comments: list[dict] = []
+    page = 1
+    limit = 50
+    max_pages = 20
+    while page <= max_pages:
+        try:
+            curl_args = ["curl", "-sSf", "-H", "Accept: application/json"]
+            if token:
+                curl_args += ["-H", f"Authorization: token {token}"]
+            curl_args.append(f"{api_base}/repos/{github_repository}/issues/{pr_number}/comments?page={page}&limit={limit}")
 
-        result = subprocess.run(curl_args, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            print(f"cleanup-error-comments: failed to list Gitea comments: {result.stderr}", file=sys.stderr)
-            return
-        comments = json.loads(result.stdout)
-    except Exception as e:
-        print(f"cleanup-error-comments: error listing Gitea comments: {e}", file=sys.stderr)
-        return
+            result = subprocess.run(curl_args, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                print(f"cleanup-error-comments: failed to list Gitea comments page {page}: {result.stderr}", file=sys.stderr)
+                break
+            batch = json.loads(result.stdout)
+            if not isinstance(batch, list) or len(batch) == 0:
+                break
+            comments.extend(batch)
+            if len(batch) < limit:
+                break
+            page += 1
+        except (subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+            print(f"cleanup-error-comments: error listing Gitea comments page {page}: {e}", file=sys.stderr)
+            break
 
     for comment in comments:
         comment_id = comment.get("id")
@@ -309,7 +336,7 @@ def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github
                 print(f"cleanup-error-comments: deleted Gitea error comment {comment_id}")
             else:
                 print(f"cleanup-error-comments: failed to delete Gitea comment {comment_id}: {del_result.stderr}", file=sys.stderr)
-        except (subprocess.TimeoutExpired, Exception) as e:
+        except subprocess.TimeoutExpired as e:
             print(f"cleanup-error-comments: error deleting Gitea comment {comment_id}: {e}", file=sys.stderr)
 
 
