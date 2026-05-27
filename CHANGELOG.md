@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-05-27
+
+### Added
+- feat(architect-review): add architecture-level PR review action (#64)
+- feat(multi-review): add multi-agent parallel code review action (#81)
+- feat(multi-review): add collapsible reviewer details to coordinator comment
+- feat(multi-review): add global session cleanup as safety net (#115)
+- feat: add Gitea CI compatibility via platform abstraction layer (#119)
+- feat: rewrite multi-review using OpenCode SDK (#103)
+
+### Changed
+- refactor(multi-review): replace hand-written YAML parser with js-yaml (#111)
+- chore: change default thinking-intensity from max to high (#121)
+- docs: add multi-review to README (#109)
+- docs(setup-ci): add architect-review and multi-review to skill (#91)
+- docs(skills): add missing `permission` input and fix comment-command label (#95)
+- chore: remove multi-review action (#101)
+- chore: ignore serena file
+- chore: add opencode spec
+- Update setup-ci skill: add architect-review and multi-review (#88)
+
+### Fixed
+- fix(github-run-opencode): configure git identity before opencode runs
+- fix: surface opencode errors to CI and catch model-not-found in fallback (#100)
+- fix: deny bare git commands in read-only action permission config (#79)
+- fix(multi-review): ensure sessions are cleaned up on error paths (#114)
+- fix(multi-review): fix CI crashes and clean comment output (#86)
+- fix(multi-review): improve comment noise filtering (#87)
+- fix(multi-review): isolate reviewers in git worktrees (#90)
+- fix: remove unused configPath parameter from loadReviewers() (#113)
+- fix: align multi-review README example model provider name with code default (#112)
+- ci: test multi-review workflow (#107)
+- ci: add multi-review workflow (#84)
+
 ## [2.2.0] - 2026-05-18
 
 ### Added
