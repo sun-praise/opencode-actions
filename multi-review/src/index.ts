@@ -3,8 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
-import { postPRComment, cleanupErrorComments, parseExtraEnv } from "./comment.js";
-import { fetchPRDiff, resolvePRNumber } from "./platform.js";
+import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 
 async function main(): Promise<number> {
   // 0. Parse extra env vars into process.env
