@@ -5,7 +5,7 @@ description: Configure opencode-actions GitHub Actions workflows for a repositor
 
 # Setup opencode-actions CI
 
-Configure `Svtter/opencode-actions` GitHub Actions for a user's repository.
+Configure `sun-praise/opencode-actions` GitHub Actions for a user's repository.
 
 ## Workflow
 
@@ -56,7 +56,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run architect review
-        uses: Svtter/opencode-actions/architect-review@v3
+        uses: sun-praise/opencode-actions/architect-review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -89,7 +89,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run multi-review
-        uses: Svtter/opencode-actions/multi-review@v3
+        uses: sun-praise/opencode-actions/multi-review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -128,7 +128,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode review
-        uses: Svtter/opencode-actions/review@v3
+        uses: sun-praise/opencode-actions/review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -162,7 +162,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode review
-        uses: Svtter/opencode-actions/review@v3
+        uses: sun-praise/opencode-actions/review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -183,7 +183,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run feature missing audit
-        uses: Svtter/opencode-actions/feature-missing@v3
+        uses: sun-praise/opencode-actions/feature-missing@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -203,7 +203,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run spec coverage audit
-        uses: Svtter/opencode-actions/spec-coverage@v3
+        uses: sun-praise/opencode-actions/spec-coverage@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -282,7 +282,7 @@ jobs:
 
       - name: Run OpenCode
         if: ${{ steps.target.outputs.is_fork != 'true' }}
-        uses: Svtter/opencode-actions/github-run-opencode@v3
+        uses: sun-praise/opencode-actions/github-run-opencode@v3
         env:
           MODEL_NAME: zhipuai-coding-plan/glm-5.1
         with:
