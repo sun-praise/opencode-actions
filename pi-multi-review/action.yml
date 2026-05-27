@@ -1,0 +1,93 @@
+name: Pi Multi-Review
+description: Multi-agent parallel PR review using pi-coding-agent-action with pi-parallel-agents team mode.
+
+inputs:
+  github-token:
+    description: GitHub token for API access.
+    required: true
+  provider:
+    description: LLM provider (e.g. openai, anthropic, google).
+    required: true
+  model:
+    description: Default model for all reviewers (e.g. claude-sonnet-4-6, gpt-4o).
+    required: false
+    default: "claude-sonnet-4-6"
+  api-key:
+    description: API key for the LLM provider. Can also be set via provider-specific env vars.
+    required: false
+    default: ""
+  reviewers-config:
+    description: >-
+      Inline YAML string defining custom reviewer personas. When empty, uses the 4 built-in
+      reviewers (quality, security, performance, architecture). Each reviewer has: name, role,
+      prompt, model (optional).
+    required: false
+    default: ""
+  max-tokens:
+    description: Maximum tokens per reviewer response.
+    required: false
+    default: "4096"
+  diff-max-lines:
+    description: Maximum number of diff lines to include in PR diff.
+    required: false
+    default: "2000"
+  diff-ignore-patterns:
+    description: Space-separated file patterns to exclude from PR diffs.
+    required: false
+    default: ""
+  base-url:
+    description: Optional override for the provider base URL (e.g. for proxies or compatible gateways).
+    required: false
+    default: ""
+  thinking-level:
+    description: Thinking level for the model (off, low, medium, high).
+    required: false
+    default: "medium"
+  language:
+    description: Language for review output (e.g. Chinese, English).
+    required: false
+    default: "Chinese"
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'pi-multi-review currently supports Linux runners only\n' >&2
+        exit 1
+
+    - name: Build multi-review prompt
+      id: build-prompt
+      shell: bash
+      env:
+        INPUT_REVIEWERS_CONFIG: ${{ inputs.reviewers-config }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_LANGUAGE: ${{ inputs.language }}
+        INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        python3 "$ACTION_PATH/scripts/build-prompt.py" \
+          --reviewers-config "$INPUT_REVIEWERS_CONFIG" \
+          --default-model "$INPUT_MODEL" \
+          --language "$INPUT_LANGUAGE" \
+          --max-tokens "$INPUT_MAX_TOKENS" \
+          --action-path "$ACTION_PATH" \
+          --output "$RUNNER_TEMP/pi-multi-review-prompt.txt"
+        echo "prompt-file=$RUNNER_TEMP/pi-multi-review-prompt.txt" >> "$GITHUB_OUTPUT"
+
+    - name: Run pi multi-review
+      uses: shaftoe/pi-coding-agent-action@v2
+      with:
+        github_token: ${{ inputs.github-token }}
+        provider: ${{ inputs.provider }}
+        model: ${{ inputs.model }}
+        token: ${{ inputs.api-key }}
+        prompt: ${{ steps.build-prompt.outputs.prompt-file }}
+        extensions: "npm:pi-parallel-agents"
+        thinking_level: ${{ inputs.thinking-level }}
+        diff_max_lines: ${{ inputs.diff-max-lines }}
+        diff_ignore_patterns: ${{ inputs.diff-ignore-patterns }}
+        base_url: ${{ inputs.base-url }}

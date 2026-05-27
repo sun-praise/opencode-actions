@@ -1,0 +1,34 @@
+name: Pi Multi-Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+jobs:
+  multi-review:
+    # Skip draft PRs and cross-repo PRs; only trigger on /multi-review comments
+    if: >
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/multi-review'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.event.issue.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.event.issue.pull_request.head.ref }}
+
+      - name: Run Pi Multi-Review
+        uses: ./pi-multi-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ vars.PI_PROVIDER || 'anthropic' }}
+          model: ${{ vars.PI_MODEL || 'claude-sonnet-4-6' }}
+          api-key: ${{ secrets.PI_API_KEY }}
+          language: Chinese
