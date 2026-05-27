@@ -135,7 +135,7 @@ inputs:
   reasoning-effort:
     description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
     required: false
-    default: "max"
+    default: "high"
   enable-thinking:
     description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
     required: false
