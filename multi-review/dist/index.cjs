@@ -5199,7 +5199,7 @@ function fetchPRDiff(prNumber) {
   }
   if (hasTea()) {
     try {
-      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber], {
+      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
         env: { ...process.env },
         timeout: 3e4,
         stdio: "pipe",
@@ -5338,6 +5338,7 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
     );
     comments = JSON.parse(raw.toString());
   } catch {
+    console.error("cleanup-error-comments: failed to list comments");
     return;
   }
   for (const comment of comments) {

@@ -118,7 +118,7 @@ export function fetchPRDiff(prNumber: string): string {
   // Gitea: try tea CLI first, then REST API
   if (hasTea()) {
     try {
-      return execFileSync("tea", ["pulls", "diff", prNumber], {
+      return execFileSync("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
         env: { ...process.env },
         timeout: 30_000,
         stdio: "pipe",
@@ -287,7 +287,7 @@ function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: strin
     );
     comments = JSON.parse(raw.toString());
   } catch {
-    /* ignore — list failed */
+    console.error("cleanup-error-comments: failed to list comments");
     return;
   }
 

@@ -267,7 +267,7 @@ def _cleanup_error_comments_gitea(pr_number: str, github_repository: str, github
     the same GITHUB_REF/GITHUB_REPOSITORY/GITHUB_RUN_ID variables.
     """
     api_base = get_env("GITEA_API_URL", "").rstrip("/")
-    token = get_env("GITEA_TOKEN", "")
+    token = get_env("GITEA_TOKEN", "") or get_env("GITHUB_RUN_OPENCODE_GITEA_TOKEN", "")
 
     if not api_base:
         print("cleanup-error-comments: skipping, GITEA_API_URL not set", file=sys.stderr)
