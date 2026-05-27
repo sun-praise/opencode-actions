@@ -27,6 +27,13 @@
 - **输出语言**: 中文，首行给出判定（架构合理 / 架构有疑虑 / 架构有问题）
 - **特有输入**: `architecture-context`（逗号分隔的架构文档路径）
 
+### multi-review — 多角色并行审查
+- **用途**: 多个 reviewer 角色并行审查 PR，由 coordinator 综合输出最终评审
+- **触发**: `pull_request` (opened, synchronize, reopened, ready_for_review)
+- **输出语言**: 中文，coordinator 输出综合判定
+- **特有输入**: `default-team`（定义 reviewer 组合）、`coordinator-timeout-seconds`、`coordinator-prompt`、`gitea-token`
+
+
 ### setup-opencode — 安装 OpenCode CLI
 - **用途**: 在 runner 上安装、缓存 opencode 二进制，导出路径供后续步骤使用
 - **输出**: `opencode-path`、`install-dir`、`xdg-cache-home`、`cache-hit`、`version`
@@ -208,6 +215,27 @@ Outputs:
 | `permission` | empty | JSON 对象，opencode agent 级别权限覆盖（合并进 opencode.json） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
+### multi-review
+
+包含 `setup-opencode` 的全部安装参数 + 以下特有输入：
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `working-directory` | empty | 工作目录 |
+| `timeout-seconds` | `900` | 全部 reviewer 总超时（秒），`0` 禁用 |
+| `model` | empty | 所有 reviewer 和 coordinator 使用的模型 |
+| `default-team` | empty | reviewer 组合（如 `"quality:1,security:1,performance:1"`） |
+| `coordinator-timeout-seconds` | `300` | coordinator 综合步骤超时（秒） |
+| `coordinator-prompt` | empty | 自定义 coordinator prompt，用 `{{REVIEWS}}` 占位 |
+| `github-token` | empty | GitHub token |
+| `gitea-token` | empty | Gitea API token（支持 Gitea 实例） |
+| `zhipu-api-key` | empty | 智谱 API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
+| `deepseek-api-key` | empty | DeepSeek API key |
+| `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`） |
+| `cleanup-error-comments` | `true` | 自动删除失败评论 |
+
+
 ## Required Permissions
 
 ```yaml
@@ -215,6 +243,7 @@ Outputs:
 #
 # review:            contents: read, pull-requests: write, issues: write
 # architect-review:  contents: read, pull-requests: write, issues: write
+# multi-review:      contents: read, pull-requests: write, issues: write
 # feature-missing:   contents: read, pull-requests: write, issues: read
 # spec-coverage:     contents: read, pull-requests: write
 # github-run-opencode (comment trigger): id-token: write, contents: write, pull-requests: write, issues: write

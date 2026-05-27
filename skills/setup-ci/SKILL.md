@@ -20,12 +20,14 @@ Configure `Svtter/opencode-actions` GitHub Actions for a user's repository.
 | --- | --- | --- |
 | PR code review | `review` | Quality, bugs, security — Chinese output |
 | Architecture review | `architect-review` | Coupling, layering, structural concerns |
+| Multi-agent review | `multi-review` | Parallel reviewer personas + coordinator synthesis |
 | PR scope audit | `feature-missing` | Missing features vs linked issue spec |
 | Spec coverage | `spec-coverage` | Missing features vs project spec files |
 | Custom command | `github-run-opencode` | Flexible, user-defined prompt |
 | Manual setup | `setup-opencode` + `run-opencode` | Full control over install and run |
 
-Users typically combine `review` + `feature-missing` + `spec-coverage` for full coverage.
+Users typically combine `review` + `multi-review` + `feature-missing` for full coverage, or use `multi-review` alone for comprehensive parallel review.
+
 
 ## Architect Review Setup
 
@@ -54,11 +56,50 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run architect review
-        uses: Svtter/opencode-actions/architect-review@v2
+        uses: Svtter/opencode-actions/architect-review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
 ```
+
+## Multi-Review Setup
+
+Generate this in `.github/workflows/opencode-multi-review.yml`:
+
+```yaml
+name: OpenCode Multi-Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  multi-review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Run multi-review
+        uses: Svtter/opencode-actions/multi-review@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          # Optional: override default reviewer team (default: quality:1,security:1,performance:1)
+          # default-team: "quality:2,security:1,architecture:1"
+          # Optional: increase timeout for large PRs (default: 900s)
+          # timeout-seconds: "1200"
+```
+
 
 ## Minimal Review Setup
 
@@ -87,7 +128,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode review
-        uses: Svtter/opencode-actions/review@v2
+        uses: Svtter/opencode-actions/review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -121,7 +162,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode review
-        uses: Svtter/opencode-actions/review@v2
+        uses: Svtter/opencode-actions/review@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -142,7 +183,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run feature missing audit
-        uses: Svtter/opencode-actions/feature-missing@v2
+        uses: Svtter/opencode-actions/feature-missing@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -162,7 +203,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run spec coverage audit
-        uses: Svtter/opencode-actions/spec-coverage@v2
+        uses: Svtter/opencode-actions/spec-coverage@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
@@ -241,7 +282,7 @@ jobs:
 
       - name: Run OpenCode
         if: ${{ steps.target.outputs.is_fork != 'true' }}
-        uses: Svtter/opencode-actions/github-run-opencode@v2
+        uses: Svtter/opencode-actions/github-run-opencode@v3
         env:
           MODEL_NAME: zhipuai-coding-plan/glm-5.1
         with:
@@ -260,6 +301,6 @@ When generating workflows, remind the user about:
 4. **Timeout**: Default is 600s (10 min); adjust via `timeout-seconds:`
 5. **Fork PRs**: All templates skip fork PRs by default (secrets are not available)
 6. **Draft PRs**: All templates skip draft PRs via the `if:` guard
-7. **Version pinning**: Security-sensitive repos should pin to a full commit SHA instead of `@v2`
+7. **Version pinning**: Security-sensitive repos should pin to a full commit SHA instead of `@v3`
 
 For the complete list of inputs per action, see [references/actions-reference.md](references/actions-reference.md).
