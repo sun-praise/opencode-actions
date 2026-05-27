@@ -5,6 +5,38 @@ import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 
+const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
+
+/**
+ * Build SDK config with model, reasoning-effort, and thinking settings.
+ * Uses the SDK config layer instead of writing opencode.json — no file side effects.
+ */
+function buildSdkConfig(model: string): Record<string, unknown> {
+  const config: Record<string, unknown> = { model };
+
+  const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
+  const enableThinkingRaw = env("MULTI_REVIEW_ENABLE_THINKING");
+  const enableThinking = enableThinkingRaw.toLowerCase() === "true";
+
+  const agentOptions: Record<string, unknown> = {};
+  if (reasoningEffort) {
+    if (!ALLOWED_REASONING_EFFORTS.has(reasoningEffort)) {
+      console.warn(`Warning: invalid reasoning-effort "${reasoningEffort}", ignoring (allowed: low, medium, high, max)`);
+    } else {
+      agentOptions.reasoningEffort = reasoningEffort;
+    }
+  }
+  if (enableThinking) {
+    agentOptions.thinking = { type: "enabled" };
+  }
+
+  if (Object.keys(agentOptions).length > 0) {
+    config.agent = { build: { options: agentOptions } };
+  }
+
+  return config;
+}
+
 async function main(): Promise<number> {
   // 0. Parse extra env vars into process.env
   parseExtraEnv();
@@ -56,9 +88,8 @@ async function main(): Promise<number> {
 
   // 4. Start opencode server via SDK
   console.log("Starting opencode server...");
-  const { client, server } = await createOpencode({
-    config: { model: `${providerID}/${modelID}` },
-  });
+  const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
+  const { client, server } = await createOpencode({ config: sdkConfig as any });
   console.log("Server ready");
 
   // Register signal handlers for graceful cleanup (best-effort)

@@ -5418,6 +5418,28 @@ function parseExtraEnv() {
 }
 
 // src/index.ts
+var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
+function buildSdkConfig(model) {
+  const config = { model };
+  const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
+  const enableThinkingRaw = env("MULTI_REVIEW_ENABLE_THINKING");
+  const enableThinking = enableThinkingRaw.toLowerCase() === "true";
+  const agentOptions = {};
+  if (reasoningEffort) {
+    if (!ALLOWED_REASONING_EFFORTS.has(reasoningEffort)) {
+      console.warn(`Warning: invalid reasoning-effort "${reasoningEffort}", ignoring (allowed: low, medium, high, max)`);
+    } else {
+      agentOptions.reasoningEffort = reasoningEffort;
+    }
+  }
+  if (enableThinking) {
+    agentOptions.thinking = { type: "enabled" };
+  }
+  if (Object.keys(agentOptions).length > 0) {
+    config.agent = { build: { options: agentOptions } };
+  }
+  return config;
+}
 async function main() {
   parseExtraEnv();
   const actionPath = env("GITHUB_ACTION_PATH");
@@ -5455,9 +5477,8 @@ async function main() {
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
   console.log("Starting opencode server...");
-  const { client: client2, server } = await createOpencode({
-    config: { model: `${providerID}/${modelID}` }
-  });
+  const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
+  const { client: client2, server } = await createOpencode({ config: sdkConfig });
   console.log("Server ready");
   const shutdown = (signal) => {
     console.log(`Received ${signal}, cleaning up sessions...`);
