@@ -253,6 +253,43 @@ def main() -> int:
             pass
 
 
+def _ensure_git_identity() -> None:
+    """Configure git user.name and user.email if not already set.
+
+    opencode's ``github run`` built-in commit logic (triggered when the
+    working tree is dirty after the agent finishes) requires a git identity.
+    When ``use_github_token`` is true (the default for read-only actions),
+    opencode skips its own ``configureGit()`` call, leaving the runner
+    without a git identity.  This helper fills the gap so that the commit
+    never fails with "Author identity unknown".
+    """
+    for scope in ("--global", "--local"):
+        try:
+            result = subprocess.run(
+                ["git", "config", scope, "user.name"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return  # identity already configured
+        except FileNotFoundError:
+            return  # git not available, nothing to do
+
+    subprocess.run(
+        ["git", "config", "--global", "user.name", "github-actions[bot]"],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "config",
+            "--global",
+            "user.email",
+            "github-actions[bot]@users.noreply.github.com",
+        ],
+        check=True,
+    )
+
 def _main() -> int:
     timeout_seconds = require_non_negative_integer(
         get_env("GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS", "600"),
@@ -325,6 +362,12 @@ def _main() -> int:
         configure_opencode_json(reasoning_effort, enable_thinking, working_directory, permission)
 
     validate_regex(fallback_on_regex, "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX")
+    # Ensure git identity is configured so that opencode's built-in commit logic
+    # (triggered after agent runs when the branch is dirty) does not fail with
+    # "Author identity unknown".  opencode github run sets this itself when
+    # use_github_token is false, but skips it when use_github_token is true —
+    # which is the default for all read-only review actions.
+    _ensure_git_identity()
 
     run_script = script_dir / ".." / "run-opencode" / "run-opencode.sh"
 
