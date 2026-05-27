@@ -112,6 +112,10 @@ inputs:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
     default: "true"
+  gitea-token:
+    description: Gitea API token for posting PR comments on Gitea instances. Falls back to GITEA_TOKEN env var if unset.
+    required: false
+    default: ""
   github-token:
     description: Value exported as GITHUB_TOKEN before running `opencode github run`.
     required: false
@@ -245,6 +249,7 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
         GITHUB_RUN_OPENCODE_PROMPT: ${{ inputs.prompt }}
         GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN: ${{ inputs.use-github-token }}
+        GITHUB_RUN_OPENCODE_GITEA_TOKEN: ${{ inputs.gitea-token }}
         GITHUB_RUN_OPENCODE_GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
         GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
