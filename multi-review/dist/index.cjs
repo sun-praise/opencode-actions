@@ -4971,6 +4971,7 @@ function resolveModel() {
 }
 
 // src/orchestrator.ts
+var activeSessions = /* @__PURE__ */ new Set();
 var DEFAULT_COORDINATOR_PROMPT = `\u4F60\u662F\u4E00\u4E2A\u4EE3\u7801\u5BA1\u67E5\u534F\u8C03\u5458\u3002\u4EE5\u4E0B\u5BA1\u67E5\u7531\u72EC\u7ACB\u7684\u4E13\u5BB6 reviewer \u751F\u6210\u3002
 \u4F60\u7684\u4EFB\u52A1\u662F\u6574\u5408\u4E3A\u4E00\u4E2A\u53BB\u91CD\u540E\u7684\u7EFC\u5408\u62A5\u544A\u3002
 
@@ -5018,6 +5019,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         reviewer.name
       );
       sessionId = sessionResult.data.id;
+      activeSessions.add(sessionId);
       const promptResult = await withTimeout(
         client2.session.prompt({
           path: { id: sessionId },
@@ -5043,6 +5045,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
     } finally {
       if (sessionId) {
+        activeSessions.delete(sessionId);
         try {
           await client2.session.delete({ path: { id: sessionId } });
         } catch {
@@ -5065,6 +5068,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       "coordinator"
     );
     sessionId = sessionResult.data.id;
+    activeSessions.add(sessionId);
     console.log("[coordinator] Starting synthesis...");
     await withTimeout(
       client2.session.prompt({
@@ -5085,6 +5089,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     return content;
   } finally {
     if (sessionId) {
+      activeSessions.delete(sessionId);
       try {
         await client2.session.delete({ path: { id: sessionId } });
       } catch {
@@ -5118,6 +5123,15 @@ ${details.join("\n\n")}
 
 </details>`;
 }
+async function cleanupAllSessions(client2) {
+  for (const id of activeSessions) {
+    try {
+      await client2.session.delete({ path: { id } });
+    } catch {
+    }
+  }
+  activeSessions.clear();
+}
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
@@ -5134,25 +5148,30 @@ function resolvePRNumber() {
   return match ? match[1] : null;
 }
 var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+var _repo;
 function getRepo() {
+  if (_repo !== void 0) return _repo;
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
     console.warn(`Warning: invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
-    return "";
+    _repo = "";
+  } else {
+    _repo = repo;
   }
-  return repo;
+  return _repo;
 }
+var _giteaToken;
 function getGiteaToken() {
-  return process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
+  if (_giteaToken !== void 0) return _giteaToken;
+  _giteaToken = process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
+  return _giteaToken;
 }
+var _giteaApiBase;
 function getGiteaApiBase() {
+  if (_giteaApiBase !== void 0) return _giteaApiBase;
   const url = process.env.GITEA_API_URL || "";
-  if (url && url.startsWith("http://")) {
-    console.warn(
-      `Warning: GITEA_API_URL uses plain HTTP \u2014 API token will be transmitted in cleartext: ${url}`
-    );
-  }
-  return url.replace(/\/+$/, "");
+  _giteaApiBase = url.replace(/\/+$/, "");
+  return _giteaApiBase;
 }
 var _teaAvailable;
 function hasTea() {
@@ -5192,62 +5211,20 @@ function fetchAllGiteaComments(baseUrl, token) {
   }
   return allComments;
 }
-function fetchPRDiff(prNumber) {
-  const platform = detectPlatform();
-  if (platform === "github") {
-    return fetchDiffGithub(prNumber);
+function postPRComment(body) {
+  const prNumber = resolvePRNumber();
+  if (!prNumber) {
+    console.log("Not in PR context, printing review to stdout:");
+    console.log("---");
+    console.log(body);
+    return;
   }
-  if (hasTea()) {
-    try {
-      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
-        env: { ...process.env },
-        timeout: 3e4,
-        stdio: "pipe",
-        maxBuffer: 10 * 1024 * 1024
-      }).toString("utf-8");
-    } catch (err) {
-      console.error(`tea pr diff failed, falling back to REST API: ${err}`);
-    }
-  }
-  return fetchDiffGitea(prNumber);
-}
-function fetchDiffGithub(prNumber) {
-  const repo = getRepo();
-  return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
-    env: { ...process.env },
-    timeout: 3e4,
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024
-  }).toString("utf-8");
-}
-function fetchDiffGitea(prNumber) {
-  const repo = getRepo();
-  const base = getGiteaApiBase();
-  const token = getGiteaToken();
-  if (!base || !repo) {
-    throw new Error(
-      `Gitea diff fetch requires GITEA_API_URL and GITHUB_REPOSITORY (got: base=${base}, repo=${repo})`
-    );
-  }
-  const url = `${base}/repos/${repo}/pulls/${prNumber}.diff`;
-  const curlArgs = ["-sSf", "-H", "Accept: text/plain"];
-  if (token) {
-    curlArgs.push("-H", `Authorization: token ${token}`);
-  }
-  curlArgs.push(url);
-  return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-    timeout: 3e4,
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024
-  }).toString("utf-8");
-}
-function postPRComment(prNumber, body) {
   const platform = detectPlatform();
   if (platform === "github") {
     postCommentGithub(prNumber, body);
-    return;
+  } else {
+    postCommentGitea(prNumber, body);
   }
-  postCommentGitea(prNumber, body);
 }
 function postCommentGithub(prNumber, body) {
   const repo = getRepo();
@@ -5297,10 +5274,7 @@ function postCommentGitea(prNumber, body) {
       curlArgs.push("-H", `${k}: ${v}`);
     }
     curlArgs.push("-d", JSON.stringify({ body }));
-    (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-      timeout: 3e4,
-      stdio: "pipe"
-    });
+    (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 3e4, stdio: "pipe" });
     console.log(`Posted review comment on PR #${prNumber} (via Gitea API)`);
   } catch (err) {
     console.error(`Failed to post Gitea comment: ${err}`);
@@ -5311,6 +5285,54 @@ function fallbackStdout(body) {
   console.log("--- Review (fallback to stdout) ---");
   console.log(body);
 }
+function fetchPRDiff(prNumber) {
+  if (detectPlatform() === "github") {
+    return fetchDiffGithub(prNumber);
+  }
+  if (hasTea()) {
+    try {
+      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
+        env: { ...process.env },
+        timeout: 3e4,
+        stdio: "pipe",
+        maxBuffer: 10 * 1024 * 1024
+      }).toString("utf-8");
+    } catch (err) {
+      console.error(`tea pr diff failed, falling back to REST API: ${err}`);
+    }
+  }
+  return fetchDiffGitea(prNumber);
+}
+function fetchDiffGithub(prNumber) {
+  const repo = getRepo();
+  return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
+    env: { ...process.env },
+    timeout: 3e4,
+    stdio: "pipe",
+    maxBuffer: 10 * 1024 * 1024
+  }).toString("utf-8");
+}
+function fetchDiffGitea(prNumber) {
+  const repo = getRepo();
+  const base = getGiteaApiBase();
+  const token = getGiteaToken();
+  if (!base || !repo) {
+    throw new Error(
+      `Gitea diff fetch requires GITEA_API_URL and GITHUB_REPOSITORY (got: base=${base}, repo=${repo})`
+    );
+  }
+  const url = `${base}/repos/${repo}/pulls/${prNumber}.diff`;
+  const curlArgs = ["-sSf", "-H", "Accept: text/plain"];
+  if (token) {
+    curlArgs.push("-H", `Authorization: token ${token}`);
+  }
+  curlArgs.push(url);
+  return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+    timeout: 3e4,
+    stdio: "pipe",
+    maxBuffer: 10 * 1024 * 1024
+  }).toString("utf-8");
+}
 function cleanupErrorComments() {
   const enabled = process.env.MULTI_REVIEW_CLEANUP_ERROR_COMMENTS || "true";
   if (enabled.toLowerCase() !== "true") return;
@@ -5319,16 +5341,15 @@ function cleanupErrorComments() {
   const repo = getRepo();
   const runId = process.env.GITHUB_RUN_ID || "";
   if (!repo || !runId) return;
-  const platform = detectPlatform();
-  if (platform === "github") {
+  if (detectPlatform() === "github") {
     cleanupErrorCommentsGithub(prNumber, repo, runId);
   } else {
     cleanupErrorCommentsGitea(prNumber, repo, runId);
   }
 }
+var ERROR_RE = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
 function cleanupErrorCommentsGithub(prNumber, repo, runId) {
-  const runLinkPattern = `/${repo}/actions/runs/${runId}`;
-  const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
   let comments;
   try {
     const raw = (0, import_node_child_process2.execFileSync)(
@@ -5343,7 +5364,7 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
   }
   for (const comment of comments) {
     if (!comment.body) continue;
-    if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
+    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
       (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
         env: { ...process.env },
@@ -5359,8 +5380,7 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
   const base = getGiteaApiBase();
   const token = getGiteaToken();
   if (!base) return;
-  const runLinkPattern = `/${repo}/actions/runs/${runId}`;
-  const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
   const listUrl = `${base}/repos/${repo}/issues/${prNumber}/comments`;
   let comments;
   try {
@@ -5371,35 +5391,17 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
   }
   for (const comment of comments) {
     if (!comment.body) continue;
-    if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
+    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
       const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
       const curlArgs = ["-sSf", "-X", "DELETE"];
       if (token) curlArgs.push("-H", `Authorization: token ${token}`);
       curlArgs.push(delUrl);
-      (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-        timeout: 1e4,
-        stdio: "pipe"
-      });
+      (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
     }
   }
-}
-
-// src/comment.ts
-function postPRComment2(body) {
-  const prNumber = resolvePRNumber();
-  if (!prNumber) {
-    console.log("Not in PR context, printing review to stdout:");
-    console.log("---");
-    console.log(body);
-    return;
-  }
-  postPRComment(prNumber, body);
-}
-function cleanupErrorComments2() {
-  cleanupErrorComments();
 }
 function parseExtraEnv() {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
@@ -5457,6 +5459,16 @@ async function main() {
     config: { model: `${providerID}/${modelID}` }
   });
   console.log("Server ready");
+  const shutdown = (signal) => {
+    console.log(`Received ${signal}, cleaning up sessions...`);
+    cleanupAllSessions(client2).catch(() => {
+    }).finally(() => {
+      server.close();
+      process.exit(signal === "SIGTERM" ? 143 : 130);
+    });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
   try {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
@@ -5483,10 +5495,11 @@ async function main() {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);
     }
-    postPRComment2(comment);
-    cleanupErrorComments2();
+    postPRComment(comment);
+    cleanupErrorComments();
     return 0;
   } finally {
+    await cleanupAllSessions(client2);
     server.close();
   }
 }

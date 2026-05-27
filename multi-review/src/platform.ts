@@ -8,10 +8,7 @@ export type Platform = "github" | "gitea";
 
 let _platform: Platform | undefined;
 
-/**
- * Detect the current CI platform (cached after first call).
- * Gitea Actions injects `GITEA_API_URL`; GitHub Actions does not.
- */
+/** Detect the current CI platform (cached after first call). */
 export function detectPlatform(): Platform {
   if (_platform === undefined) {
     _platform = process.env.GITEA_API_URL ? "gitea" : "github";
@@ -19,9 +16,8 @@ export function detectPlatform(): Platform {
   return _platform;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Helpers (cached) ───────────────────────────────────────────────────
 
-/** Resolve PR number from GITHUB_REF (both GitHub and Gitea set this). */
 export function resolvePRNumber(): string | null {
   const ref = process.env.GITHUB_REF || "";
   const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
@@ -30,36 +26,34 @@ export function resolvePRNumber(): string | null {
 
 const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 
-/**
- * Get repo in `owner/repo` format from GITHUB_REPOSITORY.
- * Returns empty string and warns if format is invalid (does NOT throw).
- */
+let _repo: string | undefined;
 function getRepo(): string {
+  if (_repo !== undefined) return _repo;
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
     console.warn(`Warning: invalid GITHUB_REPOSITORY format: "${repo}" (expected owner/repo)`);
-    return "";
+    _repo = "";
+  } else {
+    _repo = repo;
   }
-  return repo;
+  return _repo;
 }
 
-/** Resolve the effective Gitea API token. Checks both TS and Python naming conventions. */
+let _giteaToken: string | undefined;
 function getGiteaToken(): string {
-  return process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
+  if (_giteaToken !== undefined) return _giteaToken;
+  _giteaToken = process.env.GITEA_TOKEN || process.env.GITHUB_RUN_OPENCODE_GITEA_TOKEN || "";
+  return _giteaToken;
 }
 
-/** Get the Gitea API base URL. Warns if non-HTTPS (token transmitted in cleartext). */
+let _giteaApiBase: string | undefined;
 function getGiteaApiBase(): string {
+  if (_giteaApiBase !== undefined) return _giteaApiBase;
   const url = process.env.GITEA_API_URL || "";
-  if (url && url.startsWith("http://")) {
-    console.warn(
-      `Warning: GITEA_API_URL uses plain HTTP — API token will be transmitted in cleartext: ${url}`,
-    );
-  }
-  return url.replace(/\/+$/, "");
+  _giteaApiBase = url.replace(/\/+$/, "");
+  return _giteaApiBase;
 }
 
-/** Lazily cached check whether `tea` CLI is available on PATH. */
 let _teaAvailable: boolean | undefined;
 function hasTea(): boolean {
   if (_teaAvailable !== undefined) return _teaAvailable;
@@ -74,7 +68,6 @@ function hasTea(): boolean {
 
 const MAX_PAGES = 20;
 
-/** Fetch all pages of Gitea API comments (handles pagination with upper bound). */
 function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: number; body: string }> {
   const allComments: Array<{ id: number; body: string }> = [];
   let page = 1;
@@ -106,16 +99,99 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
   return allComments;
 }
 
+// ── Post PR comment (with PR-context guard) ───────────────────────────
+
+export function postPRComment(body: string): void {
+  const prNumber = resolvePRNumber();
+  if (!prNumber) {
+    console.log("Not in PR context, printing review to stdout:");
+    console.log("---");
+    console.log(body);
+    return;
+  }
+
+  const platform = detectPlatform();
+  if (platform === "github") {
+    postCommentGithub(prNumber, body);
+  } else {
+    postCommentGitea(prNumber, body);
+  }
+}
+
+function postCommentGithub(prNumber: string, body: string): void {
+  const repo = getRepo();
+  try {
+    execFileSync("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
+      env: { ...process.env },
+      timeout: 30_000,
+      stdio: "pipe",
+    });
+    console.log(`Posted review comment on PR #${prNumber}`);
+  } catch (err) {
+    console.error(`Failed to post comment: ${err}`);
+    fallbackStdout(body);
+  }
+}
+
+function postCommentGitea(prNumber: string, body: string): void {
+  const repo = getRepo();
+  const base = getGiteaApiBase();
+  const token = getGiteaToken();
+
+  if (!base || !repo) {
+    console.error("Cannot post Gitea comment: missing GITEA_API_URL or GITHUB_REPOSITORY");
+    fallbackStdout(body);
+    return;
+  }
+
+  if (hasTea()) {
+    try {
+      execFileSync("tea", ["issues", "comment", prNumber, "--repo", repo, "--body", body], {
+        env: { ...process.env },
+        timeout: 30_000,
+        stdio: "pipe",
+      });
+      console.log(`Posted review comment on PR #${prNumber} (via tea)`);
+      return;
+    } catch (err) {
+      console.error(`tea comment failed, falling back to REST API: ${err}`);
+    }
+  }
+
+  const url = `${base}/repos/${repo}/issues/${prNumber}/comments`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (token) headers["Authorization"] = `token ${token}`;
+
+  try {
+    const curlArgs = ["-sSf", "-X", "POST", url];
+    for (const [k, v] of Object.entries(headers)) {
+      curlArgs.push("-H", `${k}: ${v}`);
+    }
+    curlArgs.push("-d", JSON.stringify({ body }));
+
+    execFileSync("curl", curlArgs, { timeout: 30_000, stdio: "pipe" });
+    console.log(`Posted review comment on PR #${prNumber} (via Gitea API)`);
+  } catch (err) {
+    console.error(`Failed to post Gitea comment: ${err}`);
+    fallbackStdout(body);
+  }
+}
+
+function fallbackStdout(body: string): void {
+  console.log("--- Review (fallback to stdout) ---");
+  console.log(body);
+}
+
 // ── Fetch PR diff ──────────────────────────────────────────────────────
 
 export function fetchPRDiff(prNumber: string): string {
-  const platform = detectPlatform();
-
-  if (platform === "github") {
+  if (detectPlatform() === "github") {
     return fetchDiffGithub(prNumber);
   }
 
-  // Gitea: try tea CLI first, then REST API
   if (hasTea()) {
     try {
       return execFileSync("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
@@ -167,91 +243,6 @@ function fetchDiffGitea(prNumber: string): string {
   }).toString("utf-8");
 }
 
-// ── Post PR comment ───────────────────────────────────────────────────
-
-export function postPRComment(prNumber: string, body: string): void {
-  const platform = detectPlatform();
-
-  if (platform === "github") {
-    postCommentGithub(prNumber, body);
-    return;
-  }
-
-  postCommentGitea(prNumber, body);
-}
-
-function postCommentGithub(prNumber: string, body: string): void {
-  const repo = getRepo();
-  try {
-    execFileSync("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
-      env: { ...process.env },
-      timeout: 30_000,
-      stdio: "pipe",
-    });
-    console.log(`Posted review comment on PR #${prNumber}`);
-  } catch (err) {
-    console.error(`Failed to post comment: ${err}`);
-    fallbackStdout(body);
-  }
-}
-
-function postCommentGitea(prNumber: string, body: string): void {
-  const repo = getRepo();
-  const base = getGiteaApiBase();
-  const token = getGiteaToken();
-
-  if (!base || !repo) {
-    console.error("Cannot post Gitea comment: missing GITEA_API_URL or GITHUB_REPOSITORY");
-    fallbackStdout(body);
-    return;
-  }
-
-  // Try tea CLI first
-  if (hasTea()) {
-    try {
-      execFileSync("tea", ["issues", "comment", prNumber, "--repo", repo, "--body", body], {
-        env: { ...process.env },
-        timeout: 30_000,
-        stdio: "pipe",
-      });
-      console.log(`Posted review comment on PR #${prNumber} (via tea)`);
-      return;
-    } catch (err) {
-      console.error(`tea comment failed, falling back to REST API: ${err}`);
-    }
-  }
-
-  // REST API fallback
-  const url = `${base}/repos/${repo}/issues/${prNumber}/comments`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (token) headers["Authorization"] = `token ${token}`;
-
-  try {
-    const curlArgs = ["-sSf", "-X", "POST", url];
-    for (const [k, v] of Object.entries(headers)) {
-      curlArgs.push("-H", `${k}: ${v}`);
-    }
-    curlArgs.push("-d", JSON.stringify({ body }));
-
-    execFileSync("curl", curlArgs, {
-      timeout: 30_000,
-      stdio: "pipe",
-    });
-    console.log(`Posted review comment on PR #${prNumber} (via Gitea API)`);
-  } catch (err) {
-    console.error(`Failed to post Gitea comment: ${err}`);
-    fallbackStdout(body);
-  }
-}
-
-function fallbackStdout(body: string): void {
-  console.log("--- Review (fallback to stdout) ---");
-  console.log(body);
-}
-
 // ── Cleanup error comments ────────────────────────────────────────────
 
 export function cleanupErrorComments(): void {
@@ -265,18 +256,17 @@ export function cleanupErrorComments(): void {
   const runId = process.env.GITHUB_RUN_ID || "";
   if (!repo || !runId) return;
 
-  const platform = detectPlatform();
-
-  if (platform === "github") {
+  if (detectPlatform() === "github") {
     cleanupErrorCommentsGithub(prNumber, repo, runId);
   } else {
     cleanupErrorCommentsGitea(prNumber, repo, runId);
   }
 }
 
+const ERROR_RE = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+
 function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: string): void {
-  const runLinkPattern = `/${repo}/actions/runs/${runId}`;
-  const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
+  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
 
   let comments: Array<{ id: number; body: string }>;
   try {
@@ -293,7 +283,7 @@ function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: strin
 
   for (const comment of comments) {
     if (!comment.body) continue;
-    if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
+    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
       execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
         env: { ...process.env },
@@ -312,12 +302,9 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
   const token = getGiteaToken();
   if (!base) return;
 
-  // Note: variable prefixed github_* for compatibility — Gitea Actions injects
-  // the same GITHUB_REF/GITHUB_REPOSITORY/GITHUB_RUN_ID variables.
-  const runLinkPattern = `/${repo}/actions/runs/${runId}`;
-  const errorRe = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
-
+  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
   const listUrl = `${base}/repos/${repo}/issues/${prNumber}/comments`;
+
   let comments: Array<{ id: number; body: string }>;
   try {
     comments = fetchAllGiteaComments(listUrl, token);
@@ -328,20 +315,33 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
 
   for (const comment of comments) {
     if (!comment.body) continue;
-    if (!comment.body.includes(runLinkPattern) || !errorRe.test(comment.body)) continue;
+    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
       const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
       const curlArgs = ["-sSf", "-X", "DELETE"];
       if (token) curlArgs.push("-H", `Authorization: token ${token}`);
       curlArgs.push(delUrl);
 
-      execFileSync("curl", curlArgs, {
-        timeout: 10_000,
-        stdio: "pipe",
-      });
+      execFileSync("curl", curlArgs, { timeout: 10_000, stdio: "pipe" });
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
       /* ignore — delete failed */
     }
+  }
+}
+
+// ── Parse extra env ───────────────────────────────────────────────────
+
+export function parseExtraEnv(): void {
+  const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
+  if (!raw) return;
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim();
+    if (key) process.env[key] = value;
   }
 }
