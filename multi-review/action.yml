@@ -88,6 +88,14 @@ inputs:
     description: Automatically delete error comments after a failed run.
     required: false
     default: "true"
+  reasoning-effort:
+    description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
+    required: false
+    default: "max"
+  enable-thinking:
+    description: Enable thinking mode for the model agent. When true, configures the SDK with thinking.type=enabled.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -202,6 +210,8 @@ runs:
         MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
+        MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         GITEA_TOKEN: ${{ inputs.gitea-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}

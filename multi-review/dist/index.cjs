@@ -4971,6 +4971,7 @@ function resolveModel() {
 }
 
 // src/orchestrator.ts
+var activeSessions = /* @__PURE__ */ new Set();
 var DEFAULT_COORDINATOR_PROMPT = `\u4F60\u662F\u4E00\u4E2A\u4EE3\u7801\u5BA1\u67E5\u534F\u8C03\u5458\u3002\u4EE5\u4E0B\u5BA1\u67E5\u7531\u72EC\u7ACB\u7684\u4E13\u5BB6 reviewer \u751F\u6210\u3002
 \u4F60\u7684\u4EFB\u52A1\u662F\u6574\u5408\u4E3A\u4E00\u4E2A\u53BB\u91CD\u540E\u7684\u7EFC\u5408\u62A5\u544A\u3002
 
@@ -5018,6 +5019,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         reviewer.name
       );
       sessionId = sessionResult.data.id;
+      activeSessions.add(sessionId);
       const promptResult = await withTimeout(
         client2.session.prompt({
           path: { id: sessionId },
@@ -5043,6 +5045,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       return { reviewer: reviewer.name, content: "", success: false, error: msg };
     } finally {
       if (sessionId) {
+        activeSessions.delete(sessionId);
         try {
           await client2.session.delete({ path: { id: sessionId } });
         } catch {
@@ -5065,6 +5068,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       "coordinator"
     );
     sessionId = sessionResult.data.id;
+    activeSessions.add(sessionId);
     console.log("[coordinator] Starting synthesis...");
     await withTimeout(
       client2.session.prompt({
@@ -5085,6 +5089,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     return content;
   } finally {
     if (sessionId) {
+      activeSessions.delete(sessionId);
       try {
         await client2.session.delete({ path: { id: sessionId } });
       } catch {
@@ -5117,6 +5122,15 @@ ${body}
 ${details.join("\n\n")}
 
 </details>`;
+}
+async function cleanupAllSessions(client2) {
+  for (const id of activeSessions) {
+    try {
+      await client2.session.delete({ path: { id } });
+    } catch {
+    }
+  }
+  activeSessions.clear();
 }
 
 // src/platform.ts
@@ -5416,6 +5430,28 @@ function parseExtraEnv() {
 }
 
 // src/index.ts
+var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
+function buildSdkConfig(model) {
+  const config = { model };
+  const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
+  const enableThinkingRaw = env("MULTI_REVIEW_ENABLE_THINKING");
+  const enableThinking = enableThinkingRaw.toLowerCase() === "true";
+  const agentOptions = {};
+  if (reasoningEffort) {
+    if (!ALLOWED_REASONING_EFFORTS.has(reasoningEffort)) {
+      console.warn(`Warning: invalid reasoning-effort "${reasoningEffort}", ignoring (allowed: low, medium, high, max)`);
+    } else {
+      agentOptions.reasoningEffort = reasoningEffort;
+    }
+  }
+  if (enableThinking) {
+    agentOptions.thinking = { type: "enabled" };
+  }
+  if (Object.keys(agentOptions).length > 0) {
+    config.agent = { build: { options: agentOptions } };
+  }
+  return config;
+}
 async function main() {
   parseExtraEnv();
   const actionPath = env("GITHUB_ACTION_PATH");
@@ -5453,10 +5489,19 @@ async function main() {
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
   console.log("Starting opencode server...");
-  const { client: client2, server } = await createOpencode({
-    config: { model: `${providerID}/${modelID}` }
-  });
+  const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
+  const { client: client2, server } = await createOpencode({ config: sdkConfig });
   console.log("Server ready");
+  const shutdown = (signal) => {
+    console.log(`Received ${signal}, cleaning up sessions...`);
+    cleanupAllSessions(client2).catch(() => {
+    }).finally(() => {
+      server.close();
+      process.exit(signal === "SIGTERM" ? 143 : 130);
+    });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
   try {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
@@ -5487,6 +5532,7 @@ async function main() {
     cleanupErrorComments2();
     return 0;
   } finally {
+    await cleanupAllSessions(client2);
     server.close();
   }
 }
