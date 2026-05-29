@@ -75,13 +75,19 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[key] = value
 
 
-def configure_opencode_json(
+def configure_opencode_env(
     reasoning_effort: str,
     enable_thinking: str,
     working_directory: str = "",
     permission: dict | None = None,
 ) -> None:
-    """Generate or modify opencode.json with reasoning effort, thinking, and permission configuration."""
+    """Set OPENCODE_CONFIG_CONTENT env var with reasoning effort, thinking, and permission configuration.
+
+    Reads existing opencode.json from the working directory (if present) and merges
+    the CI-specific settings into it.  The merged config is passed via the
+    ``OPENCODE_CONFIG_CONTENT`` environment variable so that no file is written
+    to the working tree, keeping it clean and avoiding spurious git push attempts.
+    """
     config_path = Path(working_directory) / "opencode.json" if working_directory else Path("opencode.json")
 
     config: dict = {}
@@ -114,9 +120,7 @@ def configure_opencode_json(
             config["agent"][agent_name]["permission"] = {}
         _deep_merge(config["agent"][agent_name]["permission"], permission)
 
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    os.environ["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, ensure_ascii=False)
 
 
 def run_model(model: str, log_file: str, effective_timeout: int, run_script: Path) -> int:
@@ -456,7 +460,7 @@ def _main() -> int:
 
     needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
     if needs_config:
-        configure_opencode_json(reasoning_effort, enable_thinking, working_directory, permission)
+        configure_opencode_env(reasoning_effort, enable_thinking, working_directory, permission)
 
     validate_regex(fallback_on_regex, "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX")
     # Ensure git identity is configured so that opencode's built-in commit logic

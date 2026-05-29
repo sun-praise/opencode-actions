@@ -2,6 +2,7 @@
 """Unified Python test suite for opencode-actions."""
 
 import http.server
+import json
 import os
 import re
 import shutil
@@ -403,6 +404,91 @@ class TestRunOpencode(unittest.TestCase):
         """OPENCODE_ATTEMPTS=0 should fail validation."""
         result = self.run_opencode(OPENCODE_ATTEMPTS="0")
         self.assertNotEqual(result.returncode, 0, "expected attempts=0 to fail validation")
+
+
+class TestConfigureOpencodeEnv(unittest.TestCase):
+    """Tests for configure_opencode_env() — OPENCODE_CONFIG_CONTENT instead of file write."""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        # Clear leaks from outer env
+        for key in ["OPENCODE_CONFIG_CONTENT"]:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        for key in ["OPENCODE_CONFIG_CONTENT"]:
+            os.environ.pop(key, None)
+
+    def _run_configure(self, **kwargs) -> subprocess.CompletedProcess:
+        """Run configure_opencode_env via subprocess and capture OPENCODE_CONFIG_CONTENT."""
+        script = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
+        reasoning_effort = kwargs.get("reasoning_effort", "")
+        enable_thinking = kwargs.get("enable_thinking", "false")
+        working_directory = kwargs.get("working_directory", str(self.work_dir))
+        permission_json = kwargs.get("permission", "")
+
+        permission_arg = f"json.loads({permission_json!r})" if permission_json else "None"
+        snippet = (
+            "import sys, importlib.util, json, os; "
+            f"spec = importlib.util.spec_from_file_location('m', '{script}'); "
+            "mod = importlib.util.module_from_spec(spec); "
+            "spec.loader.exec_module(mod); "
+            f"mod.configure_opencode_env({reasoning_effort!r}, {enable_thinking!r}, {working_directory!r}, {permission_arg}); "
+            "print(os.environ.get('OPENCODE_CONFIG_CONTENT', ''))"
+        )
+        env = os.environ.copy()
+        env.pop("OPENCODE_CONFIG_CONTENT", None)
+        return subprocess.run(
+            ["python3", "-c", snippet],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_no_file_written(self):
+        """configure_opencode_env should NOT create opencode.json in working directory."""
+        result = self._run_configure(reasoning_effort="high", enable_thinking="true")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config_file = self.work_dir / "opencode.json"
+        self.assertFalse(config_file.exists(), "opencode.json should not be written to working tree")
+
+    def test_config_content_set(self):
+        """OPENCODE_CONFIG_CONTENT should contain agent build options."""
+        result = self._run_configure(reasoning_effort="high", enable_thinking="true")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+        self.assertIn("agent", config)
+        self.assertIn("build", config["agent"])
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "high")
+        self.assertEqual(config["agent"]["build"]["options"]["thinking"], {"type": "enabled"})
+
+    def test_merges_existing_opencode_json(self):
+        """Should read and merge an existing opencode.json from the working tree."""
+        existing = {"provider": {"anthropic": {"options": {"apiKey": "test"}}}}
+        config_file = self.work_dir / "opencode.json"
+        config_file.write_text(json.dumps(existing))
+
+        result = self._run_configure(reasoning_effort="medium")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+
+        # Existing provider config should be preserved
+        self.assertIn("provider", config)
+        self.assertEqual(config["provider"]["anthropic"]["options"]["apiKey"], "test")
+        # Our settings should be added
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "medium")
+
+    def test_permission_merged(self):
+        """Permission should be deep-merged into agent config."""
+        result = self._run_configure(
+            reasoning_effort="low",
+            permission='{"allow": ["bash(npm test)"]}',
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+        self.assertEqual(config["agent"]["build"]["permission"]["allow"], ["bash(npm test)"])
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "low")
 
 
 class TestGithubRunOpencode(unittest.TestCase):

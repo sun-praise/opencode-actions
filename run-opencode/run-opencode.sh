@@ -12,7 +12,7 @@ OPENCODE_RETRY_DELAY_SECONDS="${OPENCODE_RETRY_DELAY_SECONDS:-15}"
 OPENCODE_REASONING_EFFORT="${OPENCODE_REASONING_EFFORT:-}"
 OPENCODE_ENABLE_THINKING="${OPENCODE_ENABLE_THINKING:-false}"
 
-configure_opencode_json() {
+configure_opencode_env() {
   local reasoning_effort="$1"
   local enable_thinking="$2"
   local working_directory="$3"
@@ -25,11 +25,12 @@ configure_opencode_json() {
   fi
 
   if ! command -v python3 >/dev/null 2>&1; then
-    printf 'warning: python3 not available, skipping opencode.json configuration\n' >&2
+    printf 'warning: python3 not available, skipping opencode configuration\n' >&2
     return
   fi
 
-  python3 <<EOF
+  local config_json
+  config_json="$(python3 <<EOF
 import json
 import sys
 
@@ -59,10 +60,10 @@ if reasoning_effort:
 if enable_thinking == "true":
     config["agent"][agent_name]["options"]["thinking"] = {"type": "enabled"}
 
-with open(config_path, "w", encoding="utf-8") as f:
-    json.dump(config, f, indent=2, ensure_ascii=False)
-    f.write("\n")
+print(json.dumps(config, ensure_ascii=False))
 EOF
+  )"
+  export OPENCODE_CONFIG_CONTENT="$config_json"
 }
 
 resolve_retry_profile() {
@@ -108,7 +109,7 @@ if [[ -n "$OPENCODE_WORKING_DIRECTORY" ]]; then
 fi
 
 if [[ -n "$OPENCODE_REASONING_EFFORT" ]] || [[ "$OPENCODE_ENABLE_THINKING" == "true" ]]; then
-  configure_opencode_json "$OPENCODE_REASONING_EFFORT" "$OPENCODE_ENABLE_THINKING" "$OPENCODE_WORKING_DIRECTORY"
+  configure_opencode_env "$OPENCODE_REASONING_EFFORT" "$OPENCODE_ENABLE_THINKING" "$OPENCODE_WORKING_DIRECTORY"
 fi
 
 if [[ "$OPENCODE_BIN_PATH" == */* ]]; then
