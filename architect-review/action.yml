@@ -314,7 +314,7 @@ runs:
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
-          {"edit":"deny","bash":{"git commit *":"deny","git push *":"deny","git add *":"deny","git stash *":"deny","git reset *":"deny","git checkout *":"deny"}}
+          {"edit":"deny","bash":"deny"}
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
