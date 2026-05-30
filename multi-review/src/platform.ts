@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync, unlinkSync, mkdtempSync } from "node:fs";
+import { writeFileSync, unlinkSync, mkdtempSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -111,11 +111,14 @@ const MAX_PAGES = 20;
 
 /** Create a unique temp directory for auth header files (avoids concurrent job conflicts). */
 const _tempDir = mkdtempSync(join(tmpdir(), "opencode-review-"));
+// Restrict directory permissions to owner-only (prevent other processes from reading auth headers)
+chmodSync(_tempDir, 0o700);
 
 /** Write auth header to a unique temp file and return its path. Caller must unlink when done. */
 function writeAuthHeader(token: string, prefix: string): string {
   const path = join(_tempDir, `${prefix}-${process.pid}`);
   writeFileSync(path, `Authorization: Bearer ${token}`);
+  chmodSync(path, 0o600);
   return path;
 }
 
@@ -470,8 +473,8 @@ function deleteCommentGithub(commentId: number, repo: string): void {
         stdio: "pipe",
       });
       return;
-    } catch {
-      // gh CLI failed — fall back to REST API
+    } catch (e) {
+      console.debug(`gh delete comment ${commentId} failed, falling back to REST API: ${formatError(e)}`);
     }
   }
 
