@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -210,12 +212,45 @@ export function fetchPRDiff(prNumber: string): string {
 
 function fetchDiffGithub(prNumber: string): string {
   const repo = getRepo();
-  return execFileSync("gh", ["pr", "diff", prNumber, "--repo", repo], {
-    env: { ...process.env },
-    timeout: 30_000,
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024,
-  }).toString("utf-8");
+
+  // Try gh CLI first (available on GitHub-hosted runners)
+  try {
+    return execFileSync("gh", ["pr", "diff", prNumber, "--repo", repo], {
+      env: { ...process.env },
+      timeout: 30_000,
+      stdio: "pipe",
+      maxBuffer: 10 * 1024 * 1024,
+    }).toString("utf-8");
+  } catch (err) {
+    console.warn(`gh CLI not available or failed: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // Fallback: GitHub REST API via curl (works on self-hosted runners without gh)
+  // Write auth header to a temp file to avoid exposing token in /proc/<pid>/cmdline
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
+
+  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff"];
+  let headerFile: string | undefined;
+  if (token) {
+    headerFile = join(process.env.RUNNER_TEMP || "/tmp", ".diff-auth-header");
+    writeFileSync(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push(url);
+
+  try {
+    return execFileSync("curl", curlArgs, {
+      timeout: 30_000,
+      stdio: "pipe",
+      maxBuffer: 10 * 1024 * 1024,
+    }).toString("utf-8");
+  } finally {
+    if (headerFile) {
+      try { unlinkSync(headerFile); } catch { /* ignore */ }
+    }
+  }
 }
 
 function fetchDiffGitea(prNumber: string): string {
