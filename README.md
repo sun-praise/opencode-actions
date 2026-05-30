@@ -307,3 +307,4 @@ The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 - `args` is parsed as a space-delimited string, so keep complex text in environment variables like `PROMPT`
 - the installer is external, so cache invalidation uses `cache-key` instead of a guaranteed version pin
 - first version is optimized for GitHub-hosted or Linux self-hosted runners
+
