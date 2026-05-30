@@ -144,8 +144,12 @@ async function main(): Promise<number> {
     // 7. Post comment
     postPRComment(comment);
 
-    // 8. Cleanup error comments from previous runs
-    cleanupErrorComments();
+    // 8. Cleanup error comments from previous runs (best-effort, never blocks the main flow)
+    try {
+      cleanupErrorComments();
+    } catch (err) {
+      console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
+    }
 
     return 0;
   } finally {
