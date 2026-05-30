@@ -5435,9 +5435,11 @@ function buildSdkConfig(model) {
   if (enableThinking) {
     agentOptions.thinking = { type: "enabled" };
   }
+  const agent = { permission: { edit: "deny", bash: "deny" } };
   if (Object.keys(agentOptions).length > 0) {
-    config.agent = { build: { options: agentOptions } };
+    agent.build = { options: agentOptions };
   }
+  config.agent = agent;
   return config;
 }
 async function main() {
