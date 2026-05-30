@@ -5217,9 +5217,11 @@ function curlWithAuth(url, headers, opts = {}) {
 }
 var MAX_PAGES = 20;
 var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
+(0, import_node_fs2.chmodSync)(_tempDir, 448);
 function writeAuthHeader(token, prefix) {
   const path = (0, import_node_path2.join)(_tempDir, `${prefix}-${process.pid}`);
   (0, import_node_fs2.writeFileSync)(path, `Authorization: Bearer ${token}`);
+  (0, import_node_fs2.chmodSync)(path, 384);
   return path;
 }
 function fetchAllGiteaComments(baseUrl, token) {
@@ -5529,7 +5531,8 @@ function deleteCommentGithub(commentId, repo) {
         stdio: "pipe"
       });
       return;
-    } catch {
+    } catch (e) {
+      console.debug(`gh delete comment ${commentId} failed, falling back to REST API: ${formatError2(e)}`);
     }
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
