@@ -129,9 +129,38 @@ function postCommentGithub(prNumber: string, body: string): void {
       stdio: "pipe",
     });
     console.log(`Posted review comment on PR #${prNumber}`);
+    return;
   } catch (err) {
-    console.error(`Failed to post comment: ${err}`);
+    console.warn(`gh CLI comment failed, falling back to REST API: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // Fallback: GitHub REST API via curl (works on self-hosted runners without gh)
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
+
+  const curlArgs = ["-sSf", "-X", "POST", "-H", "Accept: application/vnd.github+json"];
+  // Write auth header to a temp file to avoid exposing token in /proc/<pid>/cmdline
+  let headerFile: string | undefined;
+  if (token) {
+    headerFile = join(process.env.RUNNER_TEMP || "/tmp", ".comment-auth-header");
+    writeFileSync(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push("-H", "Content-Type: application/json");
+  curlArgs.push("-d", JSON.stringify({ body }));
+  curlArgs.push(url);
+
+  try {
+    execFileSync("curl", curlArgs, { timeout: 30_000, stdio: "pipe" });
+    console.log(`Posted review comment on PR #${prNumber} (via REST API)`);
+  } catch (err) {
+    console.error(`Failed to post comment via REST API: ${err}`);
     fallbackStdout(body);
+  } finally {
+    if (headerFile) {
+      try { unlinkSync(headerFile); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -312,22 +341,89 @@ function cleanupErrorCommentsGithub(prNumber: string, repo: string, runId: strin
     );
     comments = JSON.parse(raw.toString());
   } catch {
-    console.error("cleanup-error-comments: failed to list comments");
-    return;
+    // gh CLI unavailable — fall back to REST API via curl
+    console.warn("cleanup-error-comments: gh CLI failed, falling back to REST API");
+    try {
+      comments = listCommentsGithubRest(prNumber, repo);
+    } catch (err) {
+      console.error(`cleanup-error-comments: failed to list comments via REST API: ${err}`);
+      return;
+    }
   }
 
   for (const comment of comments) {
     if (!comment.body) continue;
     if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
-      execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
-        env: { ...process.env },
-        timeout: 10_000,
-        stdio: "pipe",
-      });
+      deleteCommentGithub(comment.id, repo);
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
       /* ignore — delete failed */
+    }
+  }
+}
+
+/** List PR comments via GitHub REST API (curl fallback for self-hosted runners). */
+function listCommentsGithubRest(prNumber: string, repo: string): Array<{ id: number; body: string }> {
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
+
+  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github+json"];
+  let headerFile: string | undefined;
+  if (token) {
+    headerFile = join(process.env.RUNNER_TEMP || "/tmp", ".cleanup-list-auth-header");
+    writeFileSync(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push(url);
+
+  try {
+    const raw = execFileSync("curl", curlArgs, {
+      timeout: 30_000,
+      stdio: "pipe",
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    return JSON.parse(raw.toString());
+  } finally {
+    if (headerFile) {
+      try { unlinkSync(headerFile); } catch { /* ignore */ }
+    }
+  }
+}
+
+/** Delete a PR comment via GitHub REST API (curl fallback for self-hosted runners). */
+function deleteCommentGithub(commentId: number, repo: string): void {
+  // Try gh CLI first
+  try {
+    execFileSync("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${commentId}`], {
+      env: { ...process.env },
+      timeout: 10_000,
+      stdio: "pipe",
+    });
+    return;
+  } catch {
+    // gh CLI unavailable — fall back to REST API
+  }
+
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/comments/${commentId}`;
+
+  const curlArgs = ["-sSf", "-X", "DELETE", "-H", "Accept: application/vnd.github+json"];
+  let headerFile: string | undefined;
+  if (token) {
+    headerFile = join(process.env.RUNNER_TEMP || "/tmp", ".cleanup-del-auth-header");
+    writeFileSync(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push(url);
+
+  try {
+    execFileSync("curl", curlArgs, { timeout: 10_000, stdio: "pipe" });
+  } finally {
+    if (headerFile) {
+      try { unlinkSync(headerFile); } catch { /* ignore */ }
     }
   }
 }

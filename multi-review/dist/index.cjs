@@ -5237,9 +5237,36 @@ function postCommentGithub(prNumber, body) {
       stdio: "pipe"
     });
     console.log(`Posted review comment on PR #${prNumber}`);
+    return;
   } catch (err) {
-    console.error(`Failed to post comment: ${err}`);
+    console.warn(`gh CLI comment failed, falling back to REST API: ${err instanceof Error ? err.message : err}`);
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
+  const curlArgs = ["-sSf", "-X", "POST", "-H", "Accept: application/vnd.github+json"];
+  let headerFile;
+  if (token) {
+    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".comment-auth-header");
+    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push("-H", "Content-Type: application/json");
+  curlArgs.push("-d", JSON.stringify({ body }));
+  curlArgs.push(url);
+  try {
+    (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 3e4, stdio: "pipe" });
+    console.log(`Posted review comment on PR #${prNumber} (via REST API)`);
+  } catch (err) {
+    console.error(`Failed to post comment via REST API: ${err}`);
     fallbackStdout(body);
+  } finally {
+    if (headerFile) {
+      try {
+        (0, import_node_fs2.unlinkSync)(headerFile);
+      } catch {
+      }
+    }
   }
 }
 function postCommentGitea(prNumber, body) {
@@ -5390,20 +5417,81 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
     );
     comments = JSON.parse(raw.toString());
   } catch {
-    console.error("cleanup-error-comments: failed to list comments");
-    return;
+    console.warn("cleanup-error-comments: gh CLI failed, falling back to REST API");
+    try {
+      comments = listCommentsGithubRest(prNumber, repo);
+    } catch (err) {
+      console.error(`cleanup-error-comments: failed to list comments via REST API: ${err}`);
+      return;
+    }
   }
   for (const comment of comments) {
     if (!comment.body) continue;
     if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
-      (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${comment.id}`], {
-        env: { ...process.env },
-        timeout: 1e4,
-        stdio: "pipe"
-      });
+      deleteCommentGithub(comment.id, repo);
       console.log(`Deleted error comment ${comment.id}`);
     } catch {
+    }
+  }
+}
+function listCommentsGithubRest(prNumber, repo) {
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
+  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github+json"];
+  let headerFile;
+  if (token) {
+    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".cleanup-list-auth-header");
+    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push(url);
+  try {
+    const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+      timeout: 3e4,
+      stdio: "pipe",
+      maxBuffer: 5 * 1024 * 1024
+    });
+    return JSON.parse(raw.toString());
+  } finally {
+    if (headerFile) {
+      try {
+        (0, import_node_fs2.unlinkSync)(headerFile);
+      } catch {
+      }
+    }
+  }
+}
+function deleteCommentGithub(commentId, repo) {
+  try {
+    (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${commentId}`], {
+      env: { ...process.env },
+      timeout: 1e4,
+      stdio: "pipe"
+    });
+    return;
+  } catch {
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/comments/${commentId}`;
+  const curlArgs = ["-sSf", "-X", "DELETE", "-H", "Accept: application/vnd.github+json"];
+  let headerFile;
+  if (token) {
+    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".cleanup-del-auth-header");
+    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
+  }
+  curlArgs.push(url);
+  try {
+    (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
+  } finally {
+    if (headerFile) {
+      try {
+        (0, import_node_fs2.unlinkSync)(headerFile);
+      } catch {
+      }
     }
   }
 }
@@ -5550,7 +5638,11 @@ async function main() {
       comment = buildFallbackComment(reviews);
     }
     postPRComment(comment);
-    cleanupErrorComments();
+    try {
+      cleanupErrorComments();
+    } catch (err) {
+      console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
+    }
     return 0;
   } finally {
     await cleanupAllSessions(client2);
