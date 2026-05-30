@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2026-05-30
+
+### Added
+- feat(multi-review): deny bash and edit in SDK config
+- feat: fully deny bash in review actions for security
+
+### Changed
+- chore: remove useless smoke-test workflow (#139)
+
+### Fixed
+- fix(multi-review): fallback to GitHub REST API when gh CLI unavailable (#137)
+- fix: use OPENCODE_CONFIG_CONTENT env var instead of writing opencode.json
+
 ## [3.0.1] - 2026-05-30
 
 ### Added
