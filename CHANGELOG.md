@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-05-30
+
+### Added
+- feat(multi-review): add reasoning-effort and enable-thinking inputs (#127)
+
+### Changed
+- docs: add v3.0.0 release notes (#128)
+- docs(setup-ci): add multi-review action and bump to v3
+- chore: remove redundant setup-ci.skill zip
+- chore: add new spec
+
+### Fixed
+- fix: align examples to @v3 and tighten feature-missing permissions
+- fix: use sun-praise owner and local action refs
+- refactor: address review follow-up from PR #119
+- ci: bump feature-missing workflow to v3
+
 ## [3.0.0] - 2026-05-27
 
 ### Added
