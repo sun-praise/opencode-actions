@@ -34,21 +34,13 @@ git push origin vX.Y.Z
 
 ### 3. 验证
 
-触发 **Release Test** workflow（GitHub Actions → Release Test → Run workflow）：
+创建测试 PR 验证 review actions 是否正常：
 
-- **version**: 输入版本号，如 `v3.0.1`
-- **publish**: 不勾选（先测试）
-
-Workflow 会自动：
-
-1. 创建测试分支，将 `multi-review.yml` 和 `feature-missing.yml` 指向新 tag
-2. 创建测试 PR（标题带 `test:` 前缀）
-3. 等待 CI（multi-review、feature-missing）通过
-4. 失败时自动评论并关闭 PR
-
-检查测试 PR 的 CI 结果：
-- multi-review action 是否正常执行
-- feature-missing action 是否正常执行
+1. 从 main 创建测试分支：`git checkout -b test-release/vX.Y.Z origin/main`
+2. 修改 `.github/workflows/multi-review.yml`，将 `uses: ./multi-review` 改为 `uses: sun-praise/opencode-actions/multi-review@vX.Y.Z`
+3. 修改 `.github/workflows/feature-missing.yml`，将 action 引用改为 `@vX.Y.Z`
+4. 提交并创建 PR（标题加 `test:` 前缀）
+5. 等 CI 通过，确认 multi-review 和 feature-missing action 正常执行
 
 ### 4. 发布 Release
 
@@ -57,8 +49,6 @@ Workflow 会自动：
 ```bash
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog>"
 ```
-
-或再次触发 **Release Test** workflow，勾选 **publish**，会自动完成。
 
 ### 5. 更新大版本 Tag
 
@@ -78,7 +68,7 @@ git push origin v3 --force
 
 ### 6. 清理
 
-关闭测试 PR（如果未自动关闭），删除测试分支。
+关闭测试 PR（不要合并），删除测试分支。
 
 ## 注意事项
 
