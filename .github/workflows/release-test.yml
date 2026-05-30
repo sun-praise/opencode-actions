@@ -1,0 +1,192 @@
+name: Release Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to test (e.g. v3.0.1)"
+        required: true
+        type: string
+      publish:
+        description: "Publish release after tests pass"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-test-pr:
+    name: Create Test PR
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.create-pr.outputs.pr-number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must be in vX.Y.Z format, got: $VERSION"
+            exit 1
+          fi
+
+          # Verify tag exists on remote
+          git ls-remote --tags origin "refs/tags/$VERSION" | grep -q "$VERSION" || {
+            echo "::error::Tag $VERSION does not exist on remote"
+            exit 1
+          }
+
+      - name: Create test branch
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="test-release/${VERSION}"
+          git checkout -b "$branch"
+
+          # Patch multi-review.yml to use the new tag
+          sed -i "s|uses: \./multi-review|uses: sun-praise/opencode-actions/multi-review@${VERSION}|" \
+            .github/workflows/multi-review.yml
+
+          # Patch feature-missing.yml to use the new tag
+          sed -i "s|uses: sun-praise/opencode-actions/feature-missing@v[0-9]*$|uses: sun-praise/opencode-actions/feature-missing@${VERSION}|" \
+            .github/workflows/feature-missing.yml
+
+          git add .github/workflows/multi-review.yml .github/workflows/feature-missing.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "test: verify ${VERSION} review actions"
+          git push origin "$branch"
+
+      - name: Create pull request
+        id: create-pr
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_url=$(gh pr create \
+            --title "test: verify ${VERSION} review actions" \
+            --body "Automated test PR for **${VERSION}**.
+
+          - multi-review: \`sun-praise/opencode-actions/multi-review@${VERSION}\`
+          - feature-missing: \`sun-praise/opencode-actions/feature-missing@${VERSION}\`
+
+          **Do NOT merge this PR.**" \
+            --base main)
+          pr_number=$(basename "$pr_url")
+          echo "pr-number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "Created test PR: ${pr_url}"
+
+  wait-for-tests:
+    name: Wait for Tests
+    needs: create-test-pr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-test-pr.outputs.pr-number }}
+        run: |
+          echo "Waiting for CI checks on PR #${PR_NUMBER}..."
+
+          # Wait up to 30 minutes for checks to complete
+          timeout=1800
+          elapsed=0
+          interval=30
+
+          while [ $elapsed -lt $timeout ]; do
+            status=$(gh pr checks "$PR_NUMBER" 2>/dev/null || echo "pending")
+
+            if echo "$status" | grep -q "fail"; then
+              echo "::error::CI checks failed"
+              echo "$status"
+              exit 1
+            fi
+
+            if echo "$status" | grep -q "pass" && ! echo "$status" | grep -q "pending"; then
+              echo "All CI checks passed!"
+              echo "$status"
+              exit 0
+            fi
+
+            echo "Checks still running... (${elapsed}s / ${timeout}s)"
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+
+          echo "::error::Timed out waiting for CI checks"
+          exit 1
+
+  publish-release:
+    name: Publish Release
+    needs: wait-for-tests
+    if: inputs.publish == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract changelog section for this version
+          changelog=""
+          in_section=false
+          while IFS= read -r line; do
+            if [[ "$line" == "## [${VERSION#v}]"* ]]; then
+              in_section=true
+              continue
+            fi
+            if [[ "$in_section" == true && "$line" == "## ["* ]]; then
+              break
+            fi
+            if [[ "$in_section" == true ]]; then
+              changelog="${changelog}${line}"$'\n'
+            fi
+          done < CHANGELOG.md
+
+          if [[ -z "$changelog" ]]; then
+            changelog="Release ${VERSION}"
+          fi
+
+          gh release create "$VERSION" \
+            --title "${VERSION}" \
+            --notes "${changelog}"
+
+          echo "Release ${VERSION} published!"
+          echo "The 'Update Major Tag' workflow will automatically move the major tag."
+
+      - name: Close test PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-test-pr.outputs.pr-number }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh pr close "$PR_NUMBER" \
+            --comment "Tests passed for ${VERSION}. Release published, closing test PR." \
+            --delete-branch
+
+  cleanup-on-failure:
+    name: Cleanup on Failure
+    needs: [create-test-pr, wait-for-tests]
+    if: failure() && needs.create-test-pr.outputs.pr-number != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close test PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.create-test-pr.outputs.pr-number }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh pr comment "$PR_NUMBER" \
+            --body "❌ CI checks failed for ${VERSION}. Please investigate."
+          gh pr close "$PR_NUMBER" --delete-branch
