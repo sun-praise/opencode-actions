@@ -5305,8 +5305,25 @@ function fetchPRDiff(prNumber) {
 }
 function fetchDiffGithub(prNumber) {
   const repo = getRepo();
-  return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
-    env: { ...process.env },
+  try {
+    return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
+      env: { ...process.env },
+      timeout: 3e4,
+      stdio: "pipe",
+      maxBuffer: 10 * 1024 * 1024
+    }).toString("utf-8");
+  } catch (err) {
+    console.warn(`gh CLI not available or failed: ${err instanceof Error ? err.message : err}`);
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
+  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff"];
+  if (token) {
+    curlArgs.push("-H", `Authorization: Bearer ${token}`);
+  }
+  curlArgs.push(url);
+  return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
     timeout: 3e4,
     stdio: "pipe",
     maxBuffer: 10 * 1024 * 1024

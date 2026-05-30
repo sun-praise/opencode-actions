@@ -186,6 +186,9 @@ runs:
           # Pre-fetch diff as fallback for platforms where TS-side fetch may fail
           if command -v gh >/dev/null 2>&1; then
             gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          elif [ -n "${GITHUB_TOKEN:-}" ]; then
+            api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${GITHUB_REPOSITORY}/pulls/${pr}.diff"
+            curl -sSf -H "Accept: application/vnd.github.v3.diff" -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api_url" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
           else
             echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
           fi
