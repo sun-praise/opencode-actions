@@ -5137,6 +5137,7 @@ async function cleanupAllSessions(client2) {
 var import_node_child_process2 = require("child_process");
 var import_node_fs2 = require("fs");
 var import_node_path2 = require("path");
+var import_node_os = require("os");
 var _platform;
 function detectPlatform() {
   if (_platform === void 0) {
@@ -5187,6 +5188,12 @@ function hasTea() {
   return _teaAvailable;
 }
 var MAX_PAGES = 20;
+var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
+function writeAuthHeader(token, prefix) {
+  const path = (0, import_node_path2.join)(_tempDir, `${prefix}-${process.pid}`);
+  (0, import_node_fs2.writeFileSync)(path, `Authorization: Bearer ${token}`);
+  return path;
+}
 function fetchAllGiteaComments(baseUrl, token) {
   const allComments = [];
   let page = 1;
@@ -5242,30 +5249,38 @@ function postCommentGithub(prNumber, body) {
     console.warn(`gh CLI comment failed, falling back to REST API: ${err instanceof Error ? err.message : err}`);
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  if (!token) {
+    console.warn("No GitHub token available for REST API fallback");
+    fallbackStdout(body);
+    return;
+  }
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
-  const curlArgs = ["-sSf", "-X", "POST", "-H", "Accept: application/vnd.github+json"];
-  let headerFile;
-  if (token) {
-    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".comment-auth-header");
-    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
-    curlArgs.push("-H", `@${headerFile}`);
-  }
-  curlArgs.push("-H", "Content-Type: application/json");
-  curlArgs.push("-d", JSON.stringify({ body }));
-  curlArgs.push(url);
+  const headerFile = writeAuthHeader(token, "comment");
+  const curlArgs = [
+    "-sSf",
+    "-X",
+    "POST",
+    "-H",
+    "Accept: application/vnd.github+json",
+    "-H",
+    `@${headerFile}`,
+    "-H",
+    "Content-Type: application/json",
+    "-d",
+    JSON.stringify({ body }),
+    url
+  ];
   try {
     (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 3e4, stdio: "pipe" });
     console.log(`Posted review comment on PR #${prNumber} (via REST API)`);
   } catch (err) {
-    console.error(`Failed to post comment via REST API: ${err}`);
+    console.error(`Failed to post comment via REST API: ${err instanceof Error ? err.message : err}`);
     fallbackStdout(body);
   } finally {
-    if (headerFile) {
-      try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
-      } catch {
-      }
+    try {
+      (0, import_node_fs2.unlinkSync)(headerFile);
+    } catch {
     }
   }
 }
@@ -5347,14 +5362,11 @@ function fetchDiffGithub(prNumber) {
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
-  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff"];
-  let headerFile;
-  if (token) {
-    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".diff-auth-header");
-    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
-    curlArgs.push("-H", `@${headerFile}`);
+  if (!token) {
+    throw new Error("gh CLI unavailable and no GitHub token for REST API fallback");
   }
-  curlArgs.push(url);
+  const headerFile = writeAuthHeader(token, "diff");
+  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff", "-H", `@${headerFile}`, url];
   try {
     return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
       timeout: 3e4,
@@ -5362,11 +5374,9 @@ function fetchDiffGithub(prNumber) {
       maxBuffer: 10 * 1024 * 1024
     }).toString("utf-8");
   } finally {
-    if (headerFile) {
-      try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
-      } catch {
-      }
+    try {
+      (0, import_node_fs2.unlinkSync)(headerFile);
+    } catch {
     }
   }
 }
@@ -5438,22 +5448,36 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
 function listCommentsGithubRest(prNumber, repo) {
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
-  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github+json"];
+  const baseUrl = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
+  const allComments = [];
+  let page = 1;
+  const perPage = 100;
   let headerFile;
+  const headerArgs = [];
   if (token) {
-    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".cleanup-list-auth-header");
-    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
-    curlArgs.push("-H", `@${headerFile}`);
+    headerFile = writeAuthHeader(token, "cleanup-list");
+    headerArgs.push("-H", `@${headerFile}`);
   }
-  curlArgs.push(url);
   try {
-    const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-      timeout: 3e4,
-      stdio: "pipe",
-      maxBuffer: 5 * 1024 * 1024
-    });
-    return JSON.parse(raw.toString());
+    while (page <= MAX_PAGES) {
+      const sep = baseUrl.includes("?") ? "&" : "?";
+      const url = `${baseUrl}${sep}page=${page}&per_page=${perPage}`;
+      const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github+json", ...headerArgs, url];
+      const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+        timeout: 3e4,
+        stdio: "pipe",
+        maxBuffer: 5 * 1024 * 1024
+      });
+      const batch = JSON.parse(raw.toString());
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      allComments.push(...batch);
+      if (batch.length < perPage) break;
+      page++;
+    }
+    if (page > MAX_PAGES) {
+      console.warn(`Warning: listCommentsGithubRest hit MAX_PAGES=${MAX_PAGES} limit, some comments may be missed`);
+    }
+    return allComments;
   } finally {
     if (headerFile) {
       try {
@@ -5474,24 +5498,20 @@ function deleteCommentGithub(commentId, repo) {
   } catch {
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
+  if (!token) {
+    console.warn(`Cannot delete comment ${commentId} via REST API: no token available`);
+    return;
+  }
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/comments/${commentId}`;
-  const curlArgs = ["-sSf", "-X", "DELETE", "-H", "Accept: application/vnd.github+json"];
-  let headerFile;
-  if (token) {
-    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".cleanup-del-auth-header");
-    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
-    curlArgs.push("-H", `@${headerFile}`);
-  }
-  curlArgs.push(url);
+  const headerFile = writeAuthHeader(token, "cleanup-del");
+  const curlArgs = ["-sSf", "-X", "DELETE", "-H", "Accept: application/vnd.github+json", "-H", `@${headerFile}`, url];
   try {
     (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
   } finally {
-    if (headerFile) {
-      try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
-      } catch {
-      }
+    try {
+      (0, import_node_fs2.unlinkSync)(headerFile);
+    } catch {
     }
   }
 }
