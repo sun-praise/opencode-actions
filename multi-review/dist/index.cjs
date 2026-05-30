@@ -5645,8 +5645,8 @@ async function main() {
     }
   }
   if (!prDiff.trim()) {
-    console.error("PR diff is empty or unavailable");
-    return 1;
+    console.log("PR diff is empty or unavailable \u2014 skipping review");
+    return 0;
   }
   const reviewers = loadReviewers({ actionPath });
   if (reviewers.length === 0) {
