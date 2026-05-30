@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.1] - 2026-05-30
+
+### Changed
+- refactor(multi-review): improve platform.ts code quality (#148)
+
+### Fixed
+- fix(multi-review): address PR #148 review feedback (#149)
+- fix(multi-review): add REST API fallback for comment posting on self-hosted runners (#147)
+
 ## [3.1.0] - 2026-05-30
 
 ### Added
