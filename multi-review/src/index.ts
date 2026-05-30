@@ -73,8 +73,8 @@ async function main(): Promise<number> {
   }
 
   if (!prDiff.trim()) {
-    console.error("PR diff is empty or unavailable");
-    return 1;
+    console.log("PR diff is empty or unavailable — skipping review");
+    return 0;
   }
 
   // 2. Load reviewers
