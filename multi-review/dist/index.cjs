@@ -5187,6 +5187,34 @@ function hasTea() {
   }
   return _teaAvailable;
 }
+var _ghAvailable;
+function hasGh() {
+  if (_ghAvailable !== void 0) return _ghAvailable;
+  try {
+    (0, import_node_child_process2.execFileSync)("which", ["gh"], { stdio: "pipe", timeout: 5e3 });
+    _ghAvailable = true;
+  } catch {
+    _ghAvailable = false;
+  }
+  return _ghAvailable;
+}
+function formatError2(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function curlWithAuth(url, headers, opts = {}) {
+  const args = ["-sSf"];
+  if (opts.method) args.push("-X", opts.method);
+  for (const [k, v] of Object.entries(headers)) {
+    args.push("-H", `${k}: ${v}`);
+  }
+  if (opts.body) args.push("-d", opts.body);
+  args.push(url);
+  return (0, import_node_child_process2.execFileSync)("curl", args, {
+    timeout: opts.timeout ?? 3e4,
+    stdio: "pipe",
+    maxBuffer: opts.maxBuffer ?? 5 * 1024 * 1024
+  });
+}
 var MAX_PAGES = 20;
 var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
 function writeAuthHeader(token, prefix) {
@@ -5201,14 +5229,9 @@ function fetchAllGiteaComments(baseUrl, token) {
   while (page <= MAX_PAGES) {
     const sep = baseUrl.includes("?") ? "&" : "?";
     const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
-    const curlArgs = ["-sSf", "-H", "Accept: application/json"];
-    if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-    curlArgs.push(url);
-    const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-      timeout: 3e4,
-      stdio: "pipe",
-      maxBuffer: 5 * 1024 * 1024
-    });
+    const hdrs = { Accept: "application/json" };
+    if (token) hdrs["Authorization"] = `token ${token}`;
+    const raw = curlWithAuth(url, hdrs);
     const batch = JSON.parse(raw.toString());
     if (!Array.isArray(batch) || batch.length === 0) break;
     allComments.push(...batch);
@@ -5237,16 +5260,18 @@ function postPRComment(body) {
 }
 function postCommentGithub(prNumber, body) {
   const repo = getRepo();
-  try {
-    (0, import_node_child_process2.execFileSync)("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
-      env: { ...process.env },
-      timeout: 3e4,
-      stdio: "pipe"
-    });
-    console.log(`Posted review comment on PR #${prNumber}`);
-    return;
-  } catch (err) {
-    console.warn(`gh CLI comment failed, falling back to REST API: ${err instanceof Error ? err.message : err}`);
+  if (hasGh()) {
+    try {
+      (0, import_node_child_process2.execFileSync)("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
+        env: { ...process.env },
+        timeout: 3e4,
+        stdio: "pipe"
+      });
+      console.log(`Posted review comment on PR #${prNumber}`);
+      return;
+    } catch (err) {
+      console.warn(`gh CLI comment failed, falling back to REST API: ${formatError2(err)}`);
+    }
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
   if (!token) {
@@ -5275,12 +5300,13 @@ function postCommentGithub(prNumber, body) {
     (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 3e4, stdio: "pipe" });
     console.log(`Posted review comment on PR #${prNumber} (via REST API)`);
   } catch (err) {
-    console.error(`Failed to post comment via REST API: ${err instanceof Error ? err.message : err}`);
+    console.error(`Failed to post comment via REST API: ${formatError2(err)}`);
     fallbackStdout(body);
   } finally {
     try {
       (0, import_node_fs2.unlinkSync)(headerFile);
-    } catch {
+    } catch (e) {
+      console.debug(`Failed to delete temp auth header: ${formatError2(e)}`);
     }
   }
 }
@@ -5303,7 +5329,7 @@ function postCommentGitea(prNumber, body) {
       console.log(`Posted review comment on PR #${prNumber} (via tea)`);
       return;
     } catch (err) {
-      console.error(`tea comment failed, falling back to REST API: ${err}`);
+      console.error(`tea comment failed, falling back to REST API: ${formatError2(err)}`);
     }
   }
   const url = `${base}/repos/${repo}/issues/${prNumber}/comments`;
@@ -5313,15 +5339,10 @@ function postCommentGitea(prNumber, body) {
   };
   if (token) headers["Authorization"] = `token ${token}`;
   try {
-    const curlArgs = ["-sSf", "-X", "POST", url];
-    for (const [k, v] of Object.entries(headers)) {
-      curlArgs.push("-H", `${k}: ${v}`);
-    }
-    curlArgs.push("-d", JSON.stringify({ body }));
-    (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 3e4, stdio: "pipe" });
+    curlWithAuth(url, headers, { method: "POST", body: JSON.stringify({ body }) });
     console.log(`Posted review comment on PR #${prNumber} (via Gitea API)`);
   } catch (err) {
-    console.error(`Failed to post Gitea comment: ${err}`);
+    console.error(`Failed to post Gitea comment: ${formatError2(err)}`);
     fallbackStdout(body);
   }
 }
@@ -5342,22 +5363,24 @@ function fetchPRDiff(prNumber) {
         maxBuffer: 10 * 1024 * 1024
       }).toString("utf-8");
     } catch (err) {
-      console.error(`tea pr diff failed, falling back to REST API: ${err}`);
+      console.error(`tea pr diff failed, falling back to REST API: ${formatError2(err)}`);
     }
   }
   return fetchDiffGitea(prNumber);
 }
 function fetchDiffGithub(prNumber) {
   const repo = getRepo();
-  try {
-    return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
-      env: { ...process.env },
-      timeout: 3e4,
-      stdio: "pipe",
-      maxBuffer: 10 * 1024 * 1024
-    }).toString("utf-8");
-  } catch (err) {
-    console.warn(`gh CLI not available or failed: ${err instanceof Error ? err.message : err}`);
+  if (hasGh()) {
+    try {
+      return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
+        env: { ...process.env },
+        timeout: 3e4,
+        stdio: "pipe",
+        maxBuffer: 10 * 1024 * 1024
+      }).toString("utf-8");
+    } catch (err) {
+      console.warn(`gh CLI failed, falling back to REST API: ${formatError2(err)}`);
+    }
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
@@ -5376,7 +5399,8 @@ function fetchDiffGithub(prNumber) {
   } finally {
     try {
       (0, import_node_fs2.unlinkSync)(headerFile);
-    } catch {
+    } catch (e) {
+      console.debug(`Failed to delete temp auth header: ${formatError2(e)}`);
     }
   }
 }
@@ -5390,16 +5414,9 @@ function fetchDiffGitea(prNumber) {
     );
   }
   const url = `${base}/repos/${repo}/pulls/${prNumber}.diff`;
-  const curlArgs = ["-sSf", "-H", "Accept: text/plain"];
-  if (token) {
-    curlArgs.push("-H", `Authorization: token ${token}`);
-  }
-  curlArgs.push(url);
-  return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-    timeout: 3e4,
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024
-  }).toString("utf-8");
+  const headers = { Accept: "text/plain" };
+  if (token) headers["Authorization"] = `token ${token}`;
+  return curlWithAuth(url, headers, { maxBuffer: 10 * 1024 * 1024 }).toString("utf-8");
 }
 function cleanupErrorComments() {
   const enabled = process.env.MULTI_REVIEW_CLEANUP_ERROR_COMMENTS || "true";
@@ -5419,19 +5436,33 @@ var ERROR_RE = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|per
 function cleanupErrorCommentsGithub(prNumber, repo, runId) {
   const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
   let comments;
-  try {
-    const raw = (0, import_node_child_process2.execFileSync)(
-      "gh",
-      ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`],
-      { env: { ...process.env }, timeout: 3e4, stdio: "pipe", maxBuffer: 5 * 1024 * 1024 }
-    );
-    comments = JSON.parse(raw.toString());
-  } catch {
-    console.warn("cleanup-error-comments: gh CLI failed, falling back to REST API");
+  if (hasGh()) {
+    try {
+      const raw = (0, import_node_child_process2.execFileSync)(
+        "gh",
+        ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`],
+        { env: { ...process.env }, timeout: 3e4, stdio: "pipe", maxBuffer: 5 * 1024 * 1024 }
+      );
+      const parsed = JSON.parse(raw.toString());
+      if (!Array.isArray(parsed)) {
+        console.error("cleanup-error-comments: unexpected API response format (expected array)");
+        return;
+      }
+      comments = parsed;
+    } catch {
+      console.warn("cleanup-error-comments: gh CLI failed, falling back to REST API");
+      try {
+        comments = listCommentsGithubRest(prNumber, repo);
+      } catch (err) {
+        console.error(`cleanup-error-comments: failed to list comments via REST API: ${formatError2(err)}`);
+        return;
+      }
+    }
+  } else {
     try {
       comments = listCommentsGithubRest(prNumber, repo);
     } catch (err) {
-      console.error(`cleanup-error-comments: failed to list comments via REST API: ${err}`);
+      console.error(`cleanup-error-comments: failed to list comments via REST API: ${formatError2(err)}`);
       return;
     }
   }
@@ -5441,7 +5472,8 @@ function cleanupErrorCommentsGithub(prNumber, repo, runId) {
     try {
       deleteCommentGithub(comment.id, repo);
       console.log(`Deleted error comment ${comment.id}`);
-    } catch {
+    } catch (e) {
+      console.debug(`Failed to delete error comment ${comment.id}: ${formatError2(e)}`);
     }
   }
 }
@@ -5482,20 +5514,23 @@ function listCommentsGithubRest(prNumber, repo) {
     if (headerFile) {
       try {
         (0, import_node_fs2.unlinkSync)(headerFile);
-      } catch {
+      } catch (e) {
+        console.debug(`Failed to delete temp auth header: ${formatError2(e)}`);
       }
     }
   }
 }
 function deleteCommentGithub(commentId, repo) {
-  try {
-    (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${commentId}`], {
-      env: { ...process.env },
-      timeout: 1e4,
-      stdio: "pipe"
-    });
-    return;
-  } catch {
+  if (hasGh()) {
+    try {
+      (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${commentId}`], {
+        env: { ...process.env },
+        timeout: 1e4,
+        stdio: "pipe"
+      });
+      return;
+    } catch {
+    }
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
   if (!token) {
@@ -5511,7 +5546,8 @@ function deleteCommentGithub(commentId, repo) {
   } finally {
     try {
       (0, import_node_fs2.unlinkSync)(headerFile);
-    } catch {
+    } catch (e) {
+      console.debug(`Failed to delete temp auth header: ${formatError2(e)}`);
     }
   }
 }
@@ -5525,7 +5561,7 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
   try {
     comments = fetchAllGiteaComments(listUrl, token);
   } catch (err) {
-    console.error(`cleanup-error-comments: failed to list Gitea comments: ${err}`);
+    console.error(`cleanup-error-comments: failed to list Gitea comments: ${formatError2(err)}`);
     return;
   }
   for (const comment of comments) {
@@ -5533,12 +5569,12 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
     if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
     try {
       const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
-      const curlArgs = ["-sSf", "-X", "DELETE"];
-      if (token) curlArgs.push("-H", `Authorization: token ${token}`);
-      curlArgs.push(delUrl);
-      (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
+      const delHeaders = {};
+      if (token) delHeaders["Authorization"] = `token ${token}`;
+      curlWithAuth(delUrl, delHeaders, { method: "DELETE", timeout: 1e4 });
       console.log(`Deleted error comment ${comment.id}`);
-    } catch {
+    } catch (e) {
+      console.debug(`Failed to delete Gitea error comment ${comment.id}: ${formatError2(e)}`);
     }
   }
 }
