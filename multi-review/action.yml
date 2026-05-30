@@ -186,9 +186,12 @@ runs:
           # Pre-fetch diff as fallback for platforms where TS-side fetch may fail
           if command -v gh >/dev/null 2>&1; then
             gh pr diff "$pr" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
-          elif [ -n "${GITHUB_TOKEN:-}" ]; then
-            api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${GITHUB_REPOSITORY}/pulls/${pr}.diff"
-            curl -sSf -H "Accept: application/vnd.github.v3.diff" -H "Authorization: Bearer ${GITHUB_TOKEN}" "$api_url" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+          elif _token="${GITHUB_TOKEN:-${MULTI_REVIEW_GITHUB_TOKEN:-}}" && [ -n "$_token" ]; then
+            api_base="${GITHUB_API_URL:-https://api.github.com}"
+            api_url="${api_base%/}/repos/${GITHUB_REPOSITORY}/pulls/${pr}.diff"
+            printf 'Authorization: Bearer %s' "$_token" > "${RUNNER_TEMP}/.diff-auth-header"
+            curl -sSf -H "Accept: application/vnd.github.v3.diff" -H @"${RUNNER_TEMP}/.diff-auth-header" "$api_url" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
+            rm -f "${RUNNER_TEMP}/.diff-auth-header"
           else
             echo "" > "${RUNNER_TEMP}/.pr-diff.txt"
           fi

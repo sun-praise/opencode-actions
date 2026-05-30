@@ -2280,8 +2280,8 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-var import_node_fs2 = require("fs");
-var import_node_path2 = require("path");
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
 
 // src/reviewers.ts
 var import_node_fs = require("fs");
@@ -5135,6 +5135,8 @@ async function cleanupAllSessions(client2) {
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
 var _platform;
 function detectPlatform() {
   if (_platform === void 0) {
@@ -5319,15 +5321,27 @@ function fetchDiffGithub(prNumber) {
   const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
   const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff"];
+  let headerFile;
   if (token) {
-    curlArgs.push("-H", `Authorization: Bearer ${token}`);
+    headerFile = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", ".diff-auth-header");
+    (0, import_node_fs2.writeFileSync)(headerFile, `Authorization: Bearer ${token}`);
+    curlArgs.push("-H", `@${headerFile}`);
   }
   curlArgs.push(url);
-  return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-    timeout: 3e4,
-    stdio: "pipe",
-    maxBuffer: 10 * 1024 * 1024
-  }).toString("utf-8");
+  try {
+    return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+      timeout: 3e4,
+      stdio: "pipe",
+      maxBuffer: 10 * 1024 * 1024
+    }).toString("utf-8");
+  } finally {
+    if (headerFile) {
+      try {
+        (0, import_node_fs2.unlinkSync)(headerFile);
+      } catch {
+      }
+    }
+  }
 }
 function fetchDiffGitea(prNumber) {
   const repo = getRepo();
@@ -5462,9 +5476,9 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const diffPath = (0, import_node_path2.join)(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path3.join)(runnerTemp, ".pr-diff.txt");
   try {
-    prDiff = (0, import_node_fs2.readFileSync)(diffPath, "utf-8");
+    prDiff = (0, import_node_fs3.readFileSync)(diffPath, "utf-8");
     if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
