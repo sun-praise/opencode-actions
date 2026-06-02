@@ -16,6 +16,7 @@ Write this in your CI.yaml
 
     # only one is enough.
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+    minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
@@ -63,6 +64,7 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `zhipu-api-key` | empty | Exported as `ZHIPU_API_KEY` before `opencode github run` |
 | `deepseek-api-key` | empty | Exported as `DEEPSEEK_API_KEY` before `opencode github run` |
 | `opencode-go-api-key` | empty | Exported as `OPENCODE_GO_API_KEY` before `opencode github run` |
+| `minimax-api-key` | empty | Exported as `MINIMAX_API_KEY` before `opencode github run` |
 | `reasoning-effort` | `max` | Reasoning effort level for the model agent (`low`, `medium`, `high`, `max`) |
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
@@ -120,6 +122,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `github-token` | empty | GitHub token for posting PR comments |
 | `zhipu-api-key` | empty | Zhipu AI API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
+| `minimax-api-key` | empty | MiniMax API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
@@ -261,6 +264,7 @@ uses: sun-praise/opencode-actions/run-opencode@v2
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+    minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 More examples live in `examples/`.
