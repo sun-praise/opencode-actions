@@ -60,6 +60,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 ## Multi-Review Setup
@@ -94,6 +95,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           # Optional: override default reviewer team (default: quality:1,security:1,performance:1)
           # default-team: "quality:2,security:1,architecture:1"
           # Optional: increase timeout for large PRs (default: 900s)
@@ -133,6 +135,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 ## Full Audit Setup (Review + Feature-Missing + Spec-Coverage)
@@ -167,6 +170,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 
   feature-missing:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
@@ -188,6 +192,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 
   spec-coverage:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
@@ -208,6 +213,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 ## Comment Command Setup
@@ -289,13 +295,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
 ## Customization Checklist
 
 When generating workflows, remind the user about:
 
-1. **API Key**: At least one of `ZHIPU_API_KEY`, `DEEPSEEK_API_KEY`, or `OPENCODE_GO_API_KEY` must be configured in repository Secrets
+1. **API Key**: At least one of `ZHIPU_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_GO_API_KEY`, or `MINIMAX_API_KEY` must be configured in repository Secrets
 2. **Model override**: Set `model:` input or `MODEL_NAME` env var to change the default model
 3. **Fallback models**: Use `fallback-models:` for timeout-driven model rotation
 4. **Timeout**: Default is 600s (10 min); adjust via `timeout-seconds:`
