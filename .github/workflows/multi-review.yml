@@ -25,7 +25,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run multi-review
-        uses: sun-praise/opencode-actions/multi-review@v3.1.1
+        uses: sun-praise/opencode-actions/multi-review@v3.2.0
         with:
           model: ${{ vars.MODEL_NAME }}
           default-team: "quality:1,security:1,performance:1,architecture:1"
@@ -33,3 +33,4 @@ jobs:
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
