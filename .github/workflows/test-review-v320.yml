@@ -1,0 +1,23 @@
+name: Test Review v3.2.0 MiniMax
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sun-praise/opencode-actions/review@v3.2.0
+        with:
+          model: minimax-cn-coding-plan/MiniMax-M3
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          timeout-seconds: "600"
+          reasoning-effort: high
+          enable-thinking: "true"
