@@ -14,7 +14,11 @@ from pathlib import Path
 script_dir = Path(__file__).resolve().parent
 
 SUPPORTED_LANGUAGES = {"zh", "en"}
-SENSITIVE_ENV_KEYS = {"GITHUB_TOKEN", "MODEL", "ZHIPU_API_KEY", "OPENCODE_API_KEY", "DEEPSEEK_API_KEY", "PROMPT"}
+SENSITIVE_ENV_KEYS = {
+    "GITHUB_TOKEN", "MODEL", "PROMPT", "USE_GITHUB_TOKEN",
+    "ZHIPU_API_KEY", "OPENCODE_API_KEY", "DEEPSEEK_API_KEY",
+    "MINIMAX_API_KEY", "XIAOMI_API_KEY",
+}
 
 
 def get_env(name: str, default: str = "") -> str:
