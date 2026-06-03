@@ -95,7 +95,13 @@ async function main(): Promise<number> {
   // 4. Start opencode server via SDK
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
-  const { client, server } = await createOpencode({ config: sdkConfig as any });
+  // SDK 默认 server-start 超时仅 5000ms，繁忙 self-hosted runner 上 opencode binary 启动常 >5s
+  // 导致 "Timeout waiting for server to start"。放宽默认到 30s 并允许 env 覆盖。
+  const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 30000);
+  const { client, server } = await createOpencode({
+    config: sdkConfig as any,
+    timeout: serverTimeoutMs,
+  });
   console.log("Server ready");
 
   // Register signal handlers for graceful cleanup (best-effort)
