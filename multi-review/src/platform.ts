@@ -177,7 +177,8 @@ const INLINE_CODE_RE = /`[^`]+`/g;
  * - Escapes "#N" after whitespace, `(`, `[`, `{`, `<`, `（`, `"`, `'`, `` ` ```,
  *   `>`, `:`, and Chinese punctuation `：`, `，`, `、`.
  * - Skips content inside fenced code blocks (```...```) and inline code
- *   (`...`). Does NOT handle unclosed fences/backticks.
+ *   (`...`). Does NOT handle unclosed fences/backticks; unclosed markers
+ *   will cause subsequent content to be treated as code and left unescaped.
  */
 export function escapeHashReferences(text: string): string {
   const segments: string[] = [];
@@ -637,8 +638,7 @@ export function parseExtraEnv(): ExtraEnvResult {
     process.env[key] = value;
   }
   const sorted = [...blockedKeys].sort();
-  if (sorted.length > 0) {
-    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
-  }
+  if (sorted.length === 0) return { blockedKeys: [] };
+  console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
   return { blockedKeys: sorted };
 }

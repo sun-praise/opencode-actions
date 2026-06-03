@@ -764,7 +764,7 @@ class TestGithubRunOpencode(unittest.TestCase):
             GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=a\nMODEL=b",
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("blocked 1 sensitive key override(s): MODEL", result.stderr)
+        self.assertIn("blocked 1 disallowed key override(s): MODEL", result.stderr)
 
     def test_extra_env_allow_sensitive_normalizes(self):
         """extra-env-allow-sensitive should accept '1' and 'yes'."""
@@ -994,7 +994,7 @@ class TestEscapeHashReferences(unittest.TestCase):
         import re as re_mod
 
         HASH_NUM_RE = re_mod.compile(
-            r"(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)",
+            r"(?:^|(?<=[\s(\[{<>)（\"'`:，、：]))(#)(\d{1,6})(?=[\s)\]}>）\"'`,.!?;，。！？、：]|$)",
             re_mod.MULTILINE,
         )
         FENCED_CODE_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
@@ -1088,6 +1088,27 @@ class TestEscapeHashReferences(unittest.TestCase):
         self.assertIn("#\u200B5", result)
         self.assertNotIn("#\u200B2", result)
         self.assertNotIn("#\u200B4", result)
+
+    def test_after_fullwidth_paren(self):
+        result = self._run_escape("（#123）")
+        self.assertIn("#\u200B123", result)
+
+    def test_after_single_quote(self):
+        result = self._run_escape("see '#42'")
+        self.assertIn("#\u200B42", result)
+
+    def test_after_double_quote(self):
+        result = self._run_escape('ref "#99"')
+        self.assertIn("#\u200B99", result)
+
+    def test_after_angle_bracket(self):
+        result = self._run_escape("<#7>")
+        self.assertIn("#\u200B7", result)
+
+    def test_comma_separated(self):
+        result = self._run_escape("(#1, #2)")
+        self.assertIn("#\u200B1", result)
+        self.assertIn("#\u200B2", result)
 
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):

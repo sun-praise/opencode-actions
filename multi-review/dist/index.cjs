@@ -5678,9 +5678,8 @@ function parseExtraEnv() {
     process.env[key] = value;
   }
   const sorted = [...blockedKeys].sort();
-  if (sorted.length > 0) {
-    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
-  }
+  if (sorted.length === 0) return { blockedKeys: [] };
+  console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
   return { blockedKeys: sorted };
 }
 
