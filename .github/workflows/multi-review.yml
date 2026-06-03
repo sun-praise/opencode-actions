@@ -25,7 +25,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run multi-review (xiaomi mimo test)
-        uses: sun-praise/opencode-actions/multi-review@491e985
+        uses: sun-praise/opencode-actions/multi-review@491e985dac3ca8360d99b70002cf7a9d25ec5b31
         with:
           model: xiaomi-token-plan-cn/mimo-v2.5
           default-team: "quality:1,security:1,performance:1,architecture:1"

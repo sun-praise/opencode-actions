@@ -23,7 +23,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.event.pull_request.head.sha }}
 
       - name: Run feature missing audit (xiaomi mimo test)
-        uses: sun-praise/opencode-actions/feature-missing@491e985
+        uses: sun-praise/opencode-actions/feature-missing@491e985dac3ca8360d99b70002cf7a9d25ec5b31
         with:
           model: xiaomi-token-plan-cn/mimo-v2.5
           github-token: ${{ secrets.GITHUB_TOKEN }}
