@@ -182,8 +182,7 @@ const INLINE_CODE_RE = /`[^`\n]+`/g;
  */
 /** @internal Exported for testing only — not a public API. */
 export function escapeHashReferences(text: string): string {
-  if (!text || !HASH_NUM_RE.test(text)) return text;
-  HASH_NUM_RE.lastIndex = 0;
+  if (!text || !text.includes("#")) return text;
   const segments: string[] = [];
   let lastEnd = 0;
   for (const m of text.matchAll(FENCED_CODE_RE)) {
@@ -607,11 +606,17 @@ const SENSITIVE_ENV_KEYS = new Set([
 
 export interface ExtraEnvResult {
   blockedKeys: string[];
+  prefixBlocked: string[];
+  sensitiveBlocked: string[];
+}
+
+function emptyResult(): ExtraEnvResult {
+  return { blockedKeys: [], prefixBlocked: [], sensitiveBlocked: [] };
 }
 
 export function parseExtraEnv(): ExtraEnvResult {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
-  if (!raw) return { blockedKeys: [] };
+  if (!raw) return emptyResult();
   const allowSensitive = ["true", "1", "yes"].includes(
     (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase(),
   );
@@ -642,12 +647,12 @@ export function parseExtraEnv(): ExtraEnvResult {
     process.env[key] = value;
   }
   const allBlocked = [...prefixBlocked, ...sensitiveBlocked];
-  if (allBlocked.length === 0) return { blockedKeys: [] };
+  if (allBlocked.length === 0) return emptyResult();
   if (prefixBlocked.length > 0) {
     console.error(`extra-env: blocked ${prefixBlocked.length} reserved-prefix key(s): ${prefixBlocked.join(", ")}`);
   }
   if (sensitiveBlocked.length > 0) {
     console.error(`extra-env: blocked ${sensitiveBlocked.length} sensitive key override(s): ${sensitiveBlocked.join(", ")}`);
   }
-  return { blockedKeys: allBlocked };
+  return { blockedKeys: allBlocked, prefixBlocked, sensitiveBlocked };
 }
