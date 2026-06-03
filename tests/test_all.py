@@ -1054,12 +1054,15 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
     """Verify that hash-avoidance instructions in TS and Python match
-    the shared prompt files in shared/prompts/ (single source of truth).
+    the shared prompt files in shared/prompts/ (test-side anchor).
+
+    shared/prompts/*.txt is the canonical reference for testing only;
+    TS and Python still hardcode the same text at runtime.
     """
 
     @staticmethod
     def _read_shared(name: str) -> str:
-        return (REPO_ROOT / "shared" / "prompts" / name).read_text().rstrip("\n")
+        return (REPO_ROOT / "shared" / "prompts" / name).read_text().strip("\n")
 
     @staticmethod
     def _extract_py_hash_avoid():
@@ -1076,12 +1079,14 @@ class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
             py_content,
             re.DOTALL,
         )
-        assert py_zh_match is not None, "hash_avoid_zh not found in run-github-opencode.py"
-        assert py_en_match is not None, "hash_avoid_en not found in run-github-opencode.py"
+        if py_zh_match is None:
+            raise AssertionError("hash_avoid_zh not found in run-github-opencode.py")
+        if py_en_match is None:
+            raise AssertionError("hash_avoid_en not found in run-github-opencode.py")
 
         def extract_concat_strings(block: str) -> str:
             parts = re.findall(r'"((?:[^"\\]|\\.)*)"', block)
-            return "".join(parts).replace("\\n", "\n")
+            return "".join(parts).replace("\\n", "\n").lstrip("\n")
 
         return extract_concat_strings(py_zh_match.group(1)), extract_concat_strings(py_en_match.group(1))
 
@@ -1098,10 +1103,12 @@ class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
             r'HASH_AVOID_EN\s*=\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"',
             ts_content,
         )
-        assert ts_zh_match is not None, "HASH_AVOID_ZH not found in reviewers.ts"
-        assert ts_en_match is not None, "HASH_AVOID_EN not found in reviewers.ts"
-        ts_zh = (ts_zh_match.group(1) + ts_zh_match.group(2)).replace("\\n", "\n")
-        ts_en = (ts_en_match.group(1) + ts_en_match.group(2) + ts_en_match.group(3)).replace("\\n", "\n")
+        if ts_zh_match is None:
+            raise AssertionError("HASH_AVOID_ZH not found in reviewers.ts")
+        if ts_en_match is None:
+            raise AssertionError("HASH_AVOID_EN not found in reviewers.ts")
+        ts_zh = (ts_zh_match.group(1) + ts_zh_match.group(2)).replace("\\n", "\n").lstrip("\n")
+        ts_en = (ts_en_match.group(1) + ts_en_match.group(2) + ts_en_match.group(3)).replace("\\n", "\n").lstrip("\n")
         return ts_zh, ts_en
 
     def test_zh_matches_shared_file(self):
