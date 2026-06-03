@@ -423,11 +423,11 @@ def _main() -> int:
 
     # Model resolution (same order as original shell script)
     if get_env("GITHUB_RUN_OPENCODE_MODEL"):
-        os.environ["MODEL"] = get_env("GITHUB_RUN_OPENCODE_MODEL")
+        set_env("MODEL", get_env("GITHUB_RUN_OPENCODE_MODEL"))
     elif get_env("MODEL_NAME"):
-        os.environ["MODEL"] = get_env("MODEL_NAME")
+        set_env("MODEL", get_env("MODEL_NAME"))
     else:
-        os.environ["MODEL"] = "zhipuai-coding-plan/glm-5.1"
+        set_env("MODEL", "zhipuai-coding-plan/glm-5.1")
 
     set_env("PROMPT", get_env("GITHUB_RUN_OPENCODE_PROMPT"))
     set_env("USE_GITHUB_TOKEN", get_env("GITHUB_RUN_OPENCODE_USE_GITHUB_TOKEN"))
@@ -443,6 +443,10 @@ def _main() -> int:
     # language instructions since there is nothing to respond to.
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
     existing_prompt = get_env("PROMPT", "")
+    zh_instruction = (
+        "\n\n请使用中文回复。所有分析和说明均使用中文。"
+        "对于 prompt 中列出的判定关键词，使用其中文版本。"
+    )
     if existing_prompt:
         if language == "en":
             set_env("PROMPT", (
@@ -452,24 +456,13 @@ def _main() -> int:
                 "For any verdict keywords listed in the prompt, use their English equivalents."
             ))
         elif language == "zh":
-            set_env("PROMPT", (
-                existing_prompt
-                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
-                "对于 prompt 中列出的判定关键词，使用其中文版本。"
-            ))
-        elif language in SUPPORTED_LANGUAGES:
-            # Future language — no dedicated instruction yet, default to zh
-            pass
+            set_env("PROMPT", existing_prompt + zh_instruction)
         else:
             print(
                 f"::warning::Unsupported language: '{language}', defaulting to Chinese. "
                 f"Supported values are: {', '.join(sorted(SUPPORTED_LANGUAGES))}."
             )
-            set_env("PROMPT", (
-                existing_prompt
-                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
-                "对于 prompt 中列出的判定关键词，使用其中文版本。"
-            ))
+            set_env("PROMPT", existing_prompt + zh_instruction)
 
     # Extra env vars from extra-env input
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
@@ -565,7 +558,7 @@ def _main() -> int:
         return 1
 
     if len(eligible_models) == 1:
-        os.environ["MODEL"] = eligible_models[0]
+        set_env("MODEL", eligible_models[0])
         return run_single(run_script, timeout_seconds)
 
     # Fallback loop with global timeout budget
