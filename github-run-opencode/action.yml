@@ -146,6 +146,8 @@ inputs:
       When false (default), extra-env entries that override sensitive runtime
       variables (API keys, MODEL, PROMPT, etc.) are blocked with an error.
       Set to true to allow such overrides (with a warning).
+      Note: entries using the reserved GITHUB_RUN_OPENCODE_ prefix are always
+      blocked regardless of this setting.
     required: false
     default: "false"
 

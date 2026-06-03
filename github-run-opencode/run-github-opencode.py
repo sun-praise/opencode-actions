@@ -478,9 +478,9 @@ def _main() -> int:
 
     # Extra env vars from extra-env input
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
-    allow_sensitive = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE", "false").strip().lower() == "true"
+    allow_sensitive = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE", "false").strip().lower() in ("true", "1", "yes")
     if extra_env_raw:
-        blocked_keys: list[str] = []
+        blocked_keys: set[str] = set()
         for line in extra_env_raw.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -494,18 +494,19 @@ def _main() -> int:
             if key:
                 if key.startswith("GITHUB_RUN_OPENCODE_"):
                     print(f"::error::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_' and is not allowed")
-                    blocked_keys.append(key)
+                    blocked_keys.add(key)
                     continue
                 if key in SENSITIVE_ENV_KEYS:
                     if allow_sensitive:
                         print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)")
                     else:
                         print(f"::error::extra-env key '{key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow")
-                        blocked_keys.append(key)
+                        blocked_keys.add(key)
                         continue
                 os.environ[key] = value
         if blocked_keys:
-            print(f"extra-env: blocked {len(blocked_keys)} sensitive key override(s): {', '.join(blocked_keys)}", file=sys.stderr)
+            sorted_keys = sorted(blocked_keys)
+            print(f"extra-env: blocked {len(sorted_keys)} sensitive key override(s): {', '.join(sorted_keys)}", file=sys.stderr)
             sys.exit(1)
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
