@@ -182,6 +182,8 @@ const INLINE_CODE_RE = /`[^`\n]+`/g;
  */
 /** @internal Exported for testing only — not a public API. */
 export function escapeHashReferences(text: string): string {
+  if (!text || !HASH_NUM_RE.test(text)) return text;
+  HASH_NUM_RE.lastIndex = 0;
   const segments: string[] = [];
   let lastEnd = 0;
   for (const m of text.matchAll(FENCED_CODE_RE)) {
@@ -613,7 +615,8 @@ export function parseExtraEnv(): ExtraEnvResult {
   const allowSensitive = ["true", "1", "yes"].includes(
     (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase(),
   );
-  const blockedKeys = new Set<string>();
+  const prefixBlocked: string[] = [];
+  const sensitiveBlocked: string[] = [];
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -624,7 +627,7 @@ export function parseExtraEnv(): ExtraEnvResult {
     if (!key) continue;
     if (key.startsWith("MULTI_REVIEW_")) {
       console.log(`::error::extra-env key '${key}' starts with reserved prefix 'MULTI_REVIEW_' and is not allowed`);
-      blockedKeys.add(key);
+      prefixBlocked.push(key);
       continue;
     }
     if (SENSITIVE_ENV_KEYS.has(key)) {
@@ -632,14 +635,19 @@ export function parseExtraEnv(): ExtraEnvResult {
         console.log(`::warning::extra-env key '${key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)`);
       } else {
         console.log(`::error::extra-env key '${key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow`);
-        blockedKeys.add(key);
+        sensitiveBlocked.push(key);
         continue;
       }
     }
     process.env[key] = value;
   }
-  const sorted = [...blockedKeys].sort();
-  if (sorted.length === 0) return { blockedKeys: [] };
-  console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
-  return { blockedKeys: sorted };
+  const allBlocked = [...prefixBlocked, ...sensitiveBlocked];
+  if (allBlocked.length === 0) return { blockedKeys: [] };
+  if (prefixBlocked.length > 0) {
+    console.error(`extra-env: blocked ${prefixBlocked.length} reserved-prefix key(s): ${prefixBlocked.join(", ")}`);
+  }
+  if (sensitiveBlocked.length > 0) {
+    console.error(`extra-env: blocked ${sensitiveBlocked.length} sensitive key override(s): ${sensitiveBlocked.join(", ")}`);
+  }
+  return { blockedKeys: allBlocked };
 }

@@ -9,6 +9,33 @@ permissions:
   contents: read
 
 jobs:
+  dist-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: multi-review
+
+      - name: Rebuild dist
+        run: npm run build
+        working-directory: multi-review
+
+      - name: Verify dist is up to date
+        run: |
+          if ! git diff --quiet -- multi-review/dist/; then
+            echo "::error::multi-review/dist/ is out of date. Run 'npm run build' in multi-review/ and commit the result."
+            git diff -- multi-review/dist/
+            exit 1
+          fi
+
   smoke-actions:
     runs-on: ubuntu-latest
     env:
