@@ -917,5 +917,89 @@ class TestCleanupErrorComments(unittest.TestCase):
             )
 
 
+class TestEscapeHashReferences(unittest.TestCase):
+    """Tests for escapeHashReferences in multi-review/src/platform.ts."""
+
+    def _run_escape(self, text: str) -> str:
+        import re as re_mod
+
+        HASH_NUM_RE = re_mod.compile(
+            r"(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)",
+            re_mod.MULTILINE,
+        )
+        CODE_BLOCK_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
+        ZWSP = "\u200B"
+
+        def escape_proper(t: str) -> str:
+            segments = []
+            last_end = 0
+            for m in CODE_BLOCK_RE.finditer(t):
+                pre = t[last_end:m.start()]
+                segments.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), pre))
+                segments.append(m.group())
+                last_end = m.end()
+            remaining = t[last_end:]
+            segments.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), remaining))
+            return "".join(segments)
+
+        return escape_proper(text)
+
+    def test_line_start(self):
+        self.assertIn("#\u200B1", self._run_escape("#1 issue"))
+
+    def test_after_space(self):
+        self.assertIn("#\u200B2", self._run_escape("see #2 for details"))
+
+    def test_after_open_paren(self):
+        self.assertIn("#\u200B1", self._run_escape("(#1) fix"))
+
+    def test_after_open_bracket(self):
+        self.assertIn("#\u200B3", self._run_escape("[#3] related"))
+
+    def test_after_greater_than(self):
+        self.assertIn("#\u200B5", self._run_escape(">#5 quote"))
+
+    def test_after_colon(self):
+        self.assertIn("#\u200B1", self._run_escape("issue:#1 here"))
+
+    def test_after_chinese_colon(self):
+        self.assertIn("#\u200B1", self._run_escape("阻塞项：#1 修复"))
+
+    def test_after_chinese_comma(self):
+        self.assertIn("#\u200B2", self._run_escape("，#2 another"))
+
+    def test_after_chinese顿号(self):
+        self.assertIn("#\u200B1", self._run_escape("、#1 fix"))
+
+    def test_code_block_not_escaped(self):
+        text = "review\n```python\nprint(#1)\n```\nsee #2"
+        result = self._run_escape(text)
+        self.assertIn("print(#1)", result)
+        self.assertIn("#\u200B2", result)
+
+    def test_no_match_in_markdown_heading(self):
+        text = "## Heading"
+        result = self._run_escape(text)
+        self.assertNotIn("\u200B", result)
+
+    def test_no_match_regular_hash(self):
+        text = "# heading\ntext"
+        result = self._run_escape(text)
+        self.assertNotIn("\u200B", result)
+
+    def test_trailing_number_with_punctuation(self):
+        self.assertIn("#\u200B1,", self._run_escape("see #1, then #2"))
+        self.assertIn("#\u200B2", self._run_escape("see #1, then #2"))
+
+    def test_multiple_code_blocks(self):
+        text = "see #1\n```\n#2\n```\nthen #3\n```\n#4\n```\nand #5"
+        result = self._run_escape(text)
+        self.assertIn("#\u200B1", result)
+        self.assertIn("#\u200B3", result)
+        self.assertIn("#\u200B5", result)
+        self.assertNotIn("#\u200B2", result)
+        self.assertNotIn("#\u200B4", result)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
