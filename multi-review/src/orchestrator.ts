@@ -81,6 +81,10 @@ export async function runParallelReviewers(
         remaining(),
         reviewer.name,
       );
+      // Debug: log raw message structure for diagnosing empty responses
+      for (const msg of messagesResult.data) {
+        console.log(`[${reviewer.name}] msg role=${msg.info.role} parts=[${msg.parts.map((p: any) => `${p.type}${p.text ? `(${p.text.length}c)` : ""}`).join(",")}]`);
+      }
       const content = extractText(messagesResult.data);
 
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);

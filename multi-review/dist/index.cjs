@@ -5036,6 +5036,9 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         remaining(),
         reviewer.name
       );
+      for (const msg of messagesResult.data) {
+        console.log(`[${reviewer.name}] msg role=${msg.info.role} parts=[${msg.parts.map((p) => `${p.type}${p.text ? `(${p.text.length}c)` : ""}`).join(",")}]`);
+      }
       const content = extractText(messagesResult.data);
       console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
       return { reviewer: reviewer.name, content, success: true };
