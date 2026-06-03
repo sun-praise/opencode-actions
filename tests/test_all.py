@@ -1094,15 +1094,20 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
     """Verify that hash-avoidance instructions in TS and Python match
-    the shared prompt files in shared/prompts/ (test-side anchor).
+    the shared prompt files in shared/prompts/.
 
-    shared/prompts/*.txt is the canonical reference for testing only;
-    TS and Python still hardcode the same text at runtime.
+    TS loads from multi-review/shared-prompts/ at runtime (no more hardcoded strings).
+    Python still inlines the text (cannot access shared files in CI).
+    Both are verified against the canonical shared/prompts/ files.
     """
 
     @staticmethod
     def _read_shared(name: str) -> str:
         return (REPO_ROOT / "shared" / "prompts" / name).read_text().strip("\n")
+
+    @staticmethod
+    def _read_ts_runtime(name: str) -> str:
+        return (REPO_ROOT / "multi-review" / "shared-prompts" / name).read_text().strip("\n")
 
     @staticmethod
     def _extract_py_hash_avoid():
@@ -1130,39 +1135,18 @@ class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
 
         return extract_concat_strings(py_zh_match.group(1)), extract_concat_strings(py_en_match.group(1))
 
-    @staticmethod
-    def _extract_ts_hash_avoid():
-        ts_file = REPO_ROOT / "multi-review" / "src" / "reviewers.ts"
-        ts_content = ts_file.read_text()
-
-        ts_zh_match = re.search(
-            r'HASH_AVOID_ZH\s*=\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"',
-            ts_content,
-        )
-        ts_en_match = re.search(
-            r'HASH_AVOID_EN\s*=\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"',
-            ts_content,
-        )
-        if ts_zh_match is None:
-            raise AssertionError("HASH_AVOID_ZH not found in reviewers.ts")
-        if ts_en_match is None:
-            raise AssertionError("HASH_AVOID_EN not found in reviewers.ts")
-        ts_zh = (ts_zh_match.group(1) + ts_zh_match.group(2)).replace("\\n", "\n").lstrip("\n")
-        ts_en = (ts_en_match.group(1) + ts_en_match.group(2) + ts_en_match.group(3)).replace("\\n", "\n").lstrip("\n")
-        return ts_zh, ts_en
-
     def test_zh_matches_shared_file(self):
         shared = self._read_shared("hash-avoid-zh.txt")
-        ts_zh, _ = self._extract_ts_hash_avoid()
+        ts_zh = self._read_ts_runtime("hash-avoid-zh.txt")
         py_zh, _ = self._extract_py_hash_avoid()
-        self.assertEqual(ts_zh, shared, "TS HASH_AVOID_ZH differs from shared/prompts/hash-avoid-zh.txt")
+        self.assertEqual(ts_zh, shared, "TS shared-prompts/ differs from shared/prompts/ for ZH")
         self.assertEqual(py_zh, shared, "Python hash_avoid_zh differs from shared/prompts/hash-avoid-zh.txt")
 
     def test_en_matches_shared_file(self):
         shared = self._read_shared("hash-avoid-en.txt")
-        _, ts_en = self._extract_ts_hash_avoid()
+        ts_en = self._read_ts_runtime("hash-avoid-en.txt")
         _, py_en = self._extract_py_hash_avoid()
-        self.assertEqual(ts_en, shared, "TS HASH_AVOID_EN differs from shared/prompts/hash-avoid-en.txt")
+        self.assertEqual(ts_en, shared, "TS shared-prompts/ differs from shared/prompts/ for EN")
         self.assertEqual(py_en, shared, "Python hash_avoid_en differs from shared/prompts/hash-avoid-en.txt")
 
 
