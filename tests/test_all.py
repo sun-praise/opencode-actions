@@ -758,14 +758,13 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertIn("reserved prefix", result.stdout)
 
     def test_extra_env_deduplicates_blocked_keys(self):
-        """Duplicate sensitive keys should be deduplicated in error output."""
+        """Duplicate sensitive keys should be deduplicated in summary."""
         self.reset_env()
         result = self.run_wrapper(
             GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=a\nMODEL=b",
         )
         self.assertNotEqual(result.returncode, 0)
-        blocked_count = result.stderr.count("blocked")
-        self.assertLessEqual(blocked_count, 1)
+        self.assertIn("blocked 1 sensitive key override(s): MODEL", result.stderr)
 
     def test_extra_env_allow_sensitive_normalizes(self):
         """extra-env-allow-sensitive should accept '1' and 'yes'."""

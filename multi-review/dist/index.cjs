@@ -4933,15 +4933,21 @@ function loadBuiltInReviewers(reviewersDir) {
   }
   return map2;
 }
+var HASH_AVOID_ZH = "\n\u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\uFF08\u5982 #1\u3001#2\uFF09\u7F16\u53F7\uFF0CGitHub \u4F1A\u81EA\u52A8\u5C06\u5176\u8F6C\u6362\u4E3A issue/PR \u5F15\u7528\u3002\u8BF7\u4F7F\u7528 1. 2. 3. \u6216 - \u7684\u5217\u8868\u683C\u5F0F\u3002";
+var HASH_AVOID_EN = "\nNever use #N format (e.g. #1, #2) to number items \u2014 GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.";
+function buildLangInstruction(language) {
+  if (language === "en") {
+    return "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." + HASH_AVOID_EN;
+  }
+  return "\n\n\u8BF7\u4F7F\u7528\u4E2D\u6587\u56DE\u590D\u3002\u6240\u6709\u5206\u6790\u548C\u8BF4\u660E\u5747\u4F7F\u7528\u4E2D\u6587\u3002\u5BF9\u4E8E prompt \u4E2D\u5217\u51FA\u7684\u5224\u5B9A\u5173\u952E\u8BCD\uFF0C\u4F7F\u7528\u5176\u4E2D\u6587\u7248\u672C\u3002" + HASH_AVOID_ZH;
+}
 function loadReviewers(opts) {
   const builtInDir = (0, import_node_path.join)(opts.actionPath, "reviewers");
   const personas = loadBuiltInReviewers(builtInDir);
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
   const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
-  const hashAvoidZh = "\n\u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\uFF08\u5982 #1\u3001#2\uFF09\u7F16\u53F7\uFF0CGitHub \u4F1A\u81EA\u52A8\u5C06\u5176\u8F6C\u6362\u4E3A issue/PR \u5F15\u7528\u3002\u8BF7\u4F7F\u7528 1. 2. 3. \u6216 - \u7684\u5217\u8868\u683C\u5F0F\u3002";
-  const hashAvoidEn = "\nNever use #N format (e.g. #1, #2) to number items \u2014 GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.";
-  const langInstruction = language === "en" ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." + hashAvoidEn : "\n\n\u8BF7\u4F7F\u7528\u4E2D\u6587\u56DE\u590D\u3002\u6240\u6709\u5206\u6790\u548C\u8BF4\u660E\u5747\u4F7F\u7528\u4E2D\u6587\u3002\u5BF9\u4E8E prompt \u4E2D\u5217\u51FA\u7684\u5224\u5B9A\u5173\u952E\u8BCD\uFF0C\u4F7F\u7528\u5176\u4E2D\u6587\u7248\u672C\u3002" + hashAvoidZh;
+  const langInstruction = buildLangInstruction(language);
   const reviewers = [];
   for (const [name, count] of team) {
     const persona = personas.get(name);
@@ -5254,9 +5260,35 @@ function fetchAllGiteaComments(baseUrl, token) {
   }
   return allComments;
 }
-var HASH_NUM_RE = /(^|\s)#(\d{1,6})(?=[\s:.]|$)/gm;
+var HASH_NUM_RE = /(?:^|(?<=[\s(\[{<（"'`>:，、：]))(#)(\d{1,6})(?=[\s)\]}>）"'`,.!?;，。！？、：]|$)/gm;
+var FENCED_CODE_RE = /```[\s\S]*?```/g;
+var INLINE_CODE_RE = /`[^`]+`/g;
 function escapeHashReferences(text) {
-  return text.replace(HASH_NUM_RE, "$1#&#8203;$2");
+  const segments = [];
+  let lastEnd = 0;
+  for (const m of text.matchAll(FENCED_CODE_RE)) {
+    if (m.index !== void 0) {
+      segments.push(escapeSegment(text.slice(lastEnd, m.index)));
+      segments.push(m[0]);
+      lastEnd = m.index + m[0].length;
+    }
+  }
+  const tail = text.slice(lastEnd);
+  segments.push(escapeSegment(tail));
+  return segments.join("");
+}
+function escapeSegment(text) {
+  const parts = [];
+  let lastEnd = 0;
+  for (const m of text.matchAll(INLINE_CODE_RE)) {
+    if (m.index !== void 0) {
+      parts.push(text.slice(lastEnd, m.index).replace(HASH_NUM_RE, "$1\u200B$2"));
+      parts.push(m[0]);
+      lastEnd = m.index + m[0].length;
+    }
+  }
+  parts.push(text.slice(lastEnd).replace(HASH_NUM_RE, "$1\u200B$2"));
+  return parts.join("");
 }
 function postPRComment(body) {
   const escaped = escapeHashReferences(body);
@@ -5616,7 +5648,7 @@ var SENSITIVE_ENV_KEYS = /* @__PURE__ */ new Set([
 ]);
 function parseExtraEnv() {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
-  if (!raw) return;
+  if (!raw) return { blockedKeys: [] };
   const allowSensitive = ["true", "1", "yes"].includes(
     (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase()
   );
@@ -5645,11 +5677,11 @@ function parseExtraEnv() {
     }
     process.env[key] = value;
   }
-  if (blockedKeys.size > 0) {
-    const sorted = [...blockedKeys].sort();
+  const sorted = [...blockedKeys].sort();
+  if (sorted.length > 0) {
     console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
-    process.exit(1);
   }
+  return { blockedKeys: sorted };
 }
 
 // src/index.ts
@@ -5678,7 +5710,10 @@ function buildSdkConfig(model) {
   return config;
 }
 async function main() {
-  parseExtraEnv();
+  const envResult = parseExtraEnv();
+  if (envResult.blockedKeys.length > 0) {
+    return 1;
+  }
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
