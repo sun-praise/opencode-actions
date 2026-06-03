@@ -82,6 +82,10 @@ inputs:
     description: MiniMax API key.
     required: false
     default: ""
+  xiaomi-api-key:
+    description: Xiaomi MiMo API key.
+    required: false
+    default: ""
   extra-env:
     description: >-
       Extra environment variables. Multi-line KEY=VALUE pairs, one per line.
@@ -219,6 +223,7 @@ runs:
         MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
         MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MULTI_REVIEW_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
+        MULTI_REVIEW_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
@@ -230,6 +235,7 @@ runs:
         OPENCODE_API_KEY: ${{ inputs.opencode-go-api-key }}
         DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
+        XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         GITHUB_REF: ${{ github.ref }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}

@@ -51,6 +51,7 @@ printf 'USE_GITHUB_TOKEN=%s\n' "${USE_GITHUB_TOKEN:-}"
 printf 'GITHUB_TOKEN=%s\n' "${GITHUB_TOKEN:-}"
 printf 'ZHIPU_API_KEY=%s\n' "${ZHIPU_API_KEY:-}"
 printf 'OPENCODE_API_KEY=%s\n' "${OPENCODE_API_KEY:-}"
+printf 'XIAOMI_API_KEY=%s\n' "${XIAOMI_API_KEY:-}"
 EOF
 
 chmod +x "$target_dir/opencode"
