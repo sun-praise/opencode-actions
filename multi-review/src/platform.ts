@@ -154,23 +154,58 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
 // in agent output before posting to GitHub/Gitea. Prompt-layer instructions
 // in reviewers.ts / run-github-opencode.py are merely hints to reduce the
 // volume of corrections needed at this layer.
+//
+// Note: HASH_NUM_RE uses the global (g) flag. Do not share exec/matchAll
+// state across calls — always use replace() or reconstruct matchAll().
 
+/** Matches "#N" preceded by whitespace, opening punctuation, or line start,
+ *  and followed by whitespace, closing punctuation, or line end. */
 const HASH_NUM_RE = /(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)/gm;
 
-const CODE_BLOCK_RE = /```[\s\S]*?```/g;
+/** Matches triple-backtick fenced code blocks. */
+const FENCED_CODE_RE = /```[\s\S]*?```/g;
 
-function escapeHashReferences(text: string): string {
+/** Matches inline code (single backtick). */
+const INLINE_CODE_RE = /`[^`]+`/g;
+
+/**
+ * Escape hash-number patterns ("#N") in text to prevent GitHub/Gitea from
+ * auto-converting them to issue/PR references. Inserts a zero-width space
+ * between "#" and the digit.
+ *
+ * Coverage:
+ * - Escapes "#N" after whitespace, `(`, `[`, `{`, `>`, `:`, and Chinese
+ *   punctuation `：`, `，`, `、`.
+ * - Skips content inside fenced code blocks (```...```) and inline code
+ *   (`...`). Does NOT handle unclosed fences/backticks.
+ */
+export function escapeHashReferences(text: string): string {
   const segments: string[] = [];
   let lastEnd = 0;
-  for (const m of text.matchAll(CODE_BLOCK_RE)) {
+  for (const m of text.matchAll(FENCED_CODE_RE)) {
     if (m.index !== undefined) {
-      segments.push(text.slice(lastEnd, m.index).replace(HASH_NUM_RE, "$1\u200B$2"));
+      segments.push(escapeSegment(text.slice(lastEnd, m.index)));
       segments.push(m[0]);
       lastEnd = m.index + m[0].length;
     }
   }
-  segments.push(text.slice(lastEnd).replace(HASH_NUM_RE, "$1\u200B$2"));
+  const tail = text.slice(lastEnd);
+  segments.push(escapeSegment(tail));
   return segments.join("");
+}
+
+function escapeSegment(text: string): string {
+  const parts: string[] = [];
+  let lastEnd = 0;
+  for (const m of text.matchAll(INLINE_CODE_RE)) {
+    if (m.index !== undefined) {
+      parts.push(text.slice(lastEnd, m.index).replace(HASH_NUM_RE, "$1\u200B$2"));
+      parts.push(m[0]);
+      lastEnd = m.index + m[0].length;
+    }
+  }
+  parts.push(text.slice(lastEnd).replace(HASH_NUM_RE, "$1\u200B$2"));
+  return parts.join("");
 }
 
 // ── Post PR comment (with PR-context guard) ───────────────────────────
