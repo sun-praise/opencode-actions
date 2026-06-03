@@ -247,7 +247,7 @@ Outputs:
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
-> **Model compatibility**: MiniMax and Xiaomi MiMo token plans have concurrency limits that are incompatible with multi-review's multi-agent parallel execution. Use DeepSeek (`deepseek/deepseek-v4-flash`), Zhipu, or OpenCode Go instead.
+**Model compatibility (multi-review)**: MiniMax and Xiaomi MiMo subscriptions have concurrency limits (low QPS / concurrent request caps on token plans) that conflict with multi-review's parallel multi-agent execution pattern (4+ concurrent SDK sessions). Use DeepSeek (`deepseek/deepseek-v4-flash`), Zhipu (`zhipuai-coding-plan/glm-5.1`), or OpenCode Go (`opencode-go/deepseek-v4-flash`) instead. See [Model Constraints](#model-constraints) for details.
 
 ## Required Permissions
 
@@ -267,3 +267,18 @@ Outputs:
 在仓库 Settings → Secrets and variables → Actions 中添加：
 - 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 或 `XIAOMI_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
 - `GITHUB_TOKEN` 自动提供，无需手动配置
+
+## Model Constraints
+
+### multi-review 兼容性
+
+multi-review 会同时启动多个 reviewer + 1 个 coordinator 的 SDK 会话（通常 4–5 个并发请求）。以下 provider 的订阅计划存在并发限制，**不兼容 multi-review**：
+
+| Provider | 受影响计划 | 限制原因 |
+| --- | --- | --- |
+| MiniMax | `minimax-cn-coding-plan` (token plan) | token plan 的并发请求数上限低，无法支撑多 agent 并行 |
+| Xiaomi MiMo | `xiaomi-token-plan-cn` (token plan) | token plan 的 QPS 限制与多 agent 并行冲突 |
+
+**推荐替代**：`deepseek/deepseek-v4-flash`、`zhipuai-coding-plan/glm-5.1`、`opencode-go/deepseek-v4-flash`。
+
+> 这些 provider 的单 agent action（`review`、`architect-review`、`feature-missing` 等）不受影响。

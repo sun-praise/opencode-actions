@@ -36,8 +36,8 @@ Users typically combine `review` + `multi-review` + `feature-missing` for full c
 | `deepseek/deepseek-v4-flash` | DeepSeek | `DEEPSEEK_API_KEY` | Fast and cost-effective; recommended for multi-review |
 | `zhipuai-coding-plan/glm-5.1` | Zhipu | `ZHIPU_API_KEY` | General-purpose, good balance of speed and quality |
 | `opencode-go/deepseek-v4-flash` | OpenCode Go | `OPENCODE_GO_API_KEY` | Proxy service, uses DeepSeek under the hood |
-| `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review (concurrency limits) |
-| `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review (concurrency limits) |
+| `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
+| `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
 
 Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
 
@@ -319,7 +319,7 @@ jobs:
 
 When generating workflows, remind the user about:
 
-1. **API Key**: At least one of `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `OPENCODE_GO_API_KEY`, `MINIMAX_API_KEY`, or `XIAOMI_API_KEY` must be configured in repository Secrets. For multi-review, `DEEPSEEK_API_KEY` is recommended (MiniMax and Xiaomi token plans have concurrency limits incompatible with multi-agent review).
+1. **API Key**: At least one of `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `OPENCODE_GO_API_KEY`, `MINIMAX_API_KEY`, or `XIAOMI_API_KEY` must be configured in repository Secrets. For multi-review, `DEEPSEEK_API_KEY` is recommended — see [Model Constraints](references/actions-reference.md#model-constraints) for details.
 2. **Model override**: Set `model:` input or `MODEL_NAME` env var to change the default model
 3. **Fallback models**: Use `fallback-models:` for timeout-driven model rotation
 4. **Timeout**: Default is 600s (10 min); adjust via `timeout-seconds:`

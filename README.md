@@ -104,11 +104,11 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
   uses: sun-praise/opencode-actions/multi-review@v2
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    model: zhipuai-coding-plan/glm-5.1
+    model: deepseek/deepseek-v4-flash
     default-team: "quality:1,security:1,performance:1"
     timeout-seconds: "900"
     coordinator-timeout-seconds: "300"
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+    deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
 
 ### Inputs
@@ -124,9 +124,9 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `github-token` | empty | GitHub token for posting PR comments |
 | `zhipu-api-key` | empty | Zhipu AI API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
-| `minimax-api-key` | empty | MiniMax API key |
-| `deepseek-api-key` | empty | DeepSeek API key |
-| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `minimax-api-key` | empty | MiniMax API key (not compatible with multi-review due to concurrency limits) |
+| `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
 
