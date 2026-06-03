@@ -14,41 +14,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Check if multi-review source changed
-        id: changed
-        run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            CHANGED=$(git diff --name-only HEAD^ HEAD -- multi-review/src/ multi-review/package.json multi-review/tsconfig.json multi-review/tsup.config.ts .github/workflows/ci.yml 2>/dev/null || true)
-            if [[ -n "$CHANGED" ]]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
 
       - name: Setup Node.js
-        if: steps.changed.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install dependencies
-        if: steps.changed.outputs.run == 'true'
         run: npm install
         working-directory: multi-review
 
       - name: Rebuild dist
-        if: steps.changed.outputs.run == 'true'
         run: npm run build
         working-directory: multi-review
 
       - name: Verify dist is up to date
-        if: steps.changed.outputs.run == 'true'
         run: |
           if ! git diff --quiet -- multi-review/dist/; then
             echo "::error::multi-review/dist/ is out of date. Run 'npm run build' in multi-review/ and commit the result."
