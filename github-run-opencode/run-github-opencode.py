@@ -492,7 +492,8 @@ def _main() -> int:
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
     allow_sensitive = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE", "false").strip().lower() in ("true", "1", "yes")
     if extra_env_raw:
-        blocked_keys: set[str] = set()
+        prefix_blocked: list[str] = []
+        sensitive_blocked: list[str] = []
         for line in extra_env_raw.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -506,19 +507,22 @@ def _main() -> int:
             if key:
                 if key.startswith("GITHUB_RUN_OPENCODE_"):
                     print(f"::error::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_' and is not allowed")
-                    blocked_keys.add(key)
+                    prefix_blocked.append(key)
                     continue
                 if key in SENSITIVE_ENV_KEYS:
                     if allow_sensitive:
                         print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)")
                     else:
                         print(f"::error::extra-env key '{key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow")
-                        blocked_keys.add(key)
+                        sensitive_blocked.append(key)
                         continue
                 os.environ[key] = value
-        if blocked_keys:
-            sorted_keys = sorted(blocked_keys)
-            print(f"extra-env: blocked {len(sorted_keys)} disallowed key override(s): {', '.join(sorted_keys)}", file=sys.stderr)
+        all_blocked = prefix_blocked + sensitive_blocked
+        if all_blocked:
+            if prefix_blocked:
+                print(f"extra-env: blocked {len(prefix_blocked)} reserved-prefix key(s): {', '.join(prefix_blocked)}", file=sys.stderr)
+            if sensitive_blocked:
+                print(f"extra-env: blocked {len(sensitive_blocked)} sensitive key override(s): {', '.join(sensitive_blocked)}", file=sys.stderr)
             sys.exit(1)
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")

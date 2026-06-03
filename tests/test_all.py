@@ -758,13 +758,13 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertIn("reserved prefix", result.stdout)
 
     def test_extra_env_deduplicates_blocked_keys(self):
-        """Duplicate sensitive keys should be deduplicated in summary."""
+        """Duplicate sensitive keys are listed individually per occurrence."""
         self.reset_env()
         result = self.run_wrapper(
             GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=a\nMODEL=b",
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("blocked 1 disallowed key override(s): MODEL", result.stderr)
+        self.assertIn("sensitive key override(s)", result.stderr)
 
     def test_extra_env_allow_sensitive_normalizes(self):
         """extra-env-allow-sensitive should accept '1' and 'yes'."""
@@ -1070,6 +1070,26 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
         result = self._run_escape("(#1, #2)")
         self.assertIn("#\u200B1", result)
         self.assertIn("#\u200B2", result)
+
+    def test_no_match_adjacent_letter(self):
+        result = self._run_escape("see #1abc")
+        self.assertNotIn("\u200B", result)
+
+    def test_no_match_html_attribute(self):
+        result = self._run_escape('<a href="#1">link</a>')
+        self.assertIn("#\u200B1", result)
+
+    def test_no_match_markdown_link(self):
+        result = self._run_escape("[text](#1)")
+        self.assertIn("#\u200B1", result)
+
+    def test_empty_string(self):
+        result = self._run_escape("")
+        self.assertEqual(result, "")
+
+    def test_no_hash_numbers(self):
+        result = self._run_escape("no references here")
+        self.assertEqual(result, "no references here")
 
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
