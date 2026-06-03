@@ -247,6 +247,8 @@ Outputs:
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
+> **Model compatibility**: MiniMax and Xiaomi MiMo token plans have concurrency limits that are incompatible with multi-review's multi-agent parallel execution. Use DeepSeek (`deepseek/deepseek-v4-flash`), Zhipu, or OpenCode Go instead.
+
 
 ## Required Permissions
 
@@ -264,5 +266,5 @@ Outputs:
 ## Secrets 配置
 
 在仓库 Settings → Secrets and variables → Actions 中添加：
-- 至少配置一个 API key：`ZHIPU_API_KEY`、`DEEPSEEK_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 或 `XIAOMI_API_KEY`
+- 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 或 `XIAOMI_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
 - `GITHUB_TOKEN` 自动提供，无需手动配置
