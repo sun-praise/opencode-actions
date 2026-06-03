@@ -31,6 +31,32 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   return map;
 }
 
+// Shared hash-number avoidance instruction appended to all reviewer prompts.
+// Keep in sync with github-run-opencode/run-github-opencode.py.
+const HASH_AVOID_ZH =
+  "\n请勿使用 #N 格式（如 #1、#2）编号，GitHub 会自动将其转换为 issue/PR 引用。" +
+  "请使用 1. 2. 3. 或 - 的列表格式。";
+const HASH_AVOID_EN =
+  "\nNever use #N format (e.g. #1, #2) to number items — " +
+  "GitHub auto-converts #N to issue/PR references. " +
+  "Use 1. 2. 3. or - list format instead.";
+
+function buildLangInstruction(language: string): string {
+  if (language === "en") {
+    return (
+      "\n\nIMPORTANT: Respond entirely in English. " +
+      "Use English for all analysis, explanations, and output. " +
+      "For any verdict keywords listed in the prompt, use their English equivalents." +
+      HASH_AVOID_EN
+    );
+  }
+  return (
+    "\n\n请使用中文回复。所有分析和说明均使用中文。" +
+    "对于 prompt 中列出的判定关键词，使用其中文版本。" +
+    HASH_AVOID_ZH
+  );
+}
+
 export function loadReviewers(opts: {
   actionPath: string;
   team?: string;
@@ -42,11 +68,7 @@ export function loadReviewers(opts: {
   const team = parseTeam(teamStr);
 
   const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
-  const hashAvoidZh = "\n请勿使用 #N 格式（如 #1、#2）编号，GitHub 会自动将其转换为 issue/PR 引用。请使用 1. 2. 3. 或 - 的列表格式。";
-  const hashAvoidEn = "\nNever use #N format (e.g. #1, #2) to number items — GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.";
-  const langInstruction = language === "en"
-    ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." + hashAvoidEn
-    : "\n\n请使用中文回复。所有分析和说明均使用中文。对于 prompt 中列出的判定关键词，使用其中文版本。" + hashAvoidZh;
+  const langInstruction = buildLangInstruction(language);
 
   const reviewers: Reviewer[] = [];
   for (const [name, count] of team) {

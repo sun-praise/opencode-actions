@@ -148,12 +148,29 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
   return allComments;
 }
 
-// ── Escape #N references ─────────────────────────────────────────────
+// ── Escape hash-number references (platform-layer guarantee) ──────────
+//
+// The platform layer is the authoritative safeguard — it escapes "#N" patterns
+// in agent output before posting to GitHub/Gitea. Prompt-layer instructions
+// in reviewers.ts / run-github-opencode.py are merely hints to reduce the
+// volume of corrections needed at this layer.
 
-const HASH_NUM_RE = /(^|\s)#(\d{1,6})(?=[\s:.]|$)/gm;
+const HASH_NUM_RE = /(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)/gm;
+
+const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 
 function escapeHashReferences(text: string): string {
-  return text.replace(HASH_NUM_RE, "$1#&#8203;$2");
+  const segments: string[] = [];
+  let lastEnd = 0;
+  for (const m of text.matchAll(CODE_BLOCK_RE)) {
+    if (m.index !== undefined) {
+      segments.push(text.slice(lastEnd, m.index).replace(HASH_NUM_RE, "$1\u200B$2"));
+      segments.push(m[0]);
+      lastEnd = m.index + m[0].length;
+    }
+  }
+  segments.push(text.slice(lastEnd).replace(HASH_NUM_RE, "$1\u200B$2"));
+  return segments.join("");
 }
 
 // ── Post PR comment (with PR-context guard) ───────────────────────────
