@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 
+## [3.3.0] - 2026-06-03
+
+### Added
+- feat: add XIAOMI_API_KEY support across all actions (#165)
+- docs: add recommended models section to setup-ci skill (#163)
+
 ## [3.2.0] - 2026-06-02
 
 ### Added
