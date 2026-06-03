@@ -556,6 +556,7 @@ class TestGithubRunOpencode(unittest.TestCase):
             "GITHUB_RUN_OPENCODE_GITHUB_TOKEN",
             "GITHUB_RUN_OPENCODE_ZHIPU_API_KEY",
             "GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY",
+            "GITHUB_RUN_OPENCODE_XIAOMI_API_KEY",
             "GITHUB_RUN_OPENCODE_ATTEMPTS",
             "GITHUB_RUN_OPENCODE_RETRY_PROFILE",
             "GITHUB_RUN_OPENCODE_FALLBACK_MODELS",
@@ -588,6 +589,7 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.env["GITHUB_RUN_OPENCODE_GITHUB_TOKEN"] = "gh-token"
         self.env["GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"] = "zhipu-token"
         self.env["GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"] = "go-token"
+        self.env["GITHUB_RUN_OPENCODE_XIAOMI_API_KEY"] = "xiaomi-token"
         self.env["GITHUB_RUN_OPENCODE_ATTEMPTS"] = "1"
         self.env["GITHUB_RUN_OPENCODE_RETRY_PROFILE"] = "github-network"
 
@@ -613,6 +615,7 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN=gh-token", result.stdout)
         self.assertIn("ZHIPU_API_KEY=zhipu-token", result.stdout)
         self.assertIn("OPENCODE_API_KEY=go-token", result.stdout)
+        self.assertIn("XIAOMI_API_KEY=xiaomi-token", result.stdout)
         self.assertIn("TIMEOUT_DURATION=600s", result.stdout)
 
     def test_single_model_timeout_override(self):
@@ -673,6 +676,18 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.env.pop("ZHIPU_API_KEY", None)
         result = self.run_wrapper(
             GITHUB_RUN_OPENCODE_MODEL="zhipuai-coding-plan/glm-5",
+            GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
+    def test_xiaomi_key_filtering_skips_model(self):
+        """Should skip xiaomi-prefixed models when XIAOMI_API_KEY is unavailable."""
+        self.reset_env()
+        self.env.pop("GITHUB_RUN_OPENCODE_XIAOMI_API_KEY", None)
+        self.env.pop("XIAOMI_API_KEY", None)
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="xiaomi-token-plan-cn/mimo-v2-pro",
             GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")

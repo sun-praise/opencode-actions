@@ -105,6 +105,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -133,6 +134,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
 ### spec-coverage
@@ -160,6 +162,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -189,6 +192,7 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `extra-env` | empty | 额外环境变量 |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -217,6 +221,7 @@ Outputs:
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `permission` | empty | JSON 对象，opencode agent 级别权限覆盖（合并进 opencode.json） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -238,6 +243,7 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -258,5 +264,5 @@ Outputs:
 ## Secrets 配置
 
 在仓库 Settings → Secrets and variables → Actions 中添加：
-- 至少配置一个 API key：`ZHIPU_API_KEY`、`DEEPSEEK_API_KEY`、`OPENCODE_GO_API_KEY` 或 `MINIMAX_API_KEY`
+- 至少配置一个 API key：`ZHIPU_API_KEY`、`DEEPSEEK_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 或 `XIAOMI_API_KEY`
 - `GITHUB_TOKEN` 自动提供，无需手动配置

@@ -46,6 +46,8 @@ def supports_model_with_available_key(model: str) -> bool:
         return bool(os.environ.get("DEEPSEEK_API_KEY"))
     if model.startswith("minimax"):
         return bool(os.environ.get("MINIMAX_API_KEY"))
+    if model.startswith("xiaomi"):
+        return bool(os.environ.get("XIAOMI_API_KEY"))
     return True
 
 
@@ -431,6 +433,7 @@ def _main() -> int:
     set_env("OPENCODE_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"))
     set_env("DEEPSEEK_API_KEY", get_env("GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"))
     set_env("MINIMAX_API_KEY", get_env("GITHUB_RUN_OPENCODE_MINIMAX_API_KEY"))
+    set_env("XIAOMI_API_KEY", get_env("GITHUB_RUN_OPENCODE_XIAOMI_API_KEY"))
 
     # Extra env vars from extra-env input
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
