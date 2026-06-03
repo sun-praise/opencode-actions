@@ -42,7 +42,10 @@ function buildSdkConfig(model: string): Record<string, unknown> {
 
 async function main(): Promise<number> {
   // 0. Parse extra env vars into process.env
-  parseExtraEnv();
+  const envResult = parseExtraEnv();
+  if (envResult.blockedKeys.length > 0) {
+    return 1;
+  }
 
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";

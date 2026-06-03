@@ -518,7 +518,7 @@ def _main() -> int:
                 os.environ[key] = value
         if blocked_keys:
             sorted_keys = sorted(blocked_keys)
-            print(f"extra-env: blocked {len(sorted_keys)} sensitive key override(s): {', '.join(sorted_keys)}", file=sys.stderr)
+            print(f"extra-env: blocked {len(sorted_keys)} disallowed key override(s): {', '.join(sorted_keys)}", file=sys.stderr)
             sys.exit(1)
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")

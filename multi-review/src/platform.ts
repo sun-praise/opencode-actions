@@ -159,8 +159,8 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
 // state across calls — always use replace() or reconstruct matchAll().
 
 /** Matches "#N" preceded by whitespace, opening punctuation, or line start,
- *  and followed by whitespace, closing punctuation, or line end. */
-const HASH_NUM_RE = /(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)/gm;
+ *  and followed by whitespace, punctuation, or line end. */
+const HASH_NUM_RE = /(?:^|(?<=[\s(\[{<（"'`>:，、：]))(#)(\d{1,6})(?=[\s)\]}>）"'`,.!?;，。！？、：]|$)/gm;
 
 /** Matches triple-backtick fenced code blocks. */
 const FENCED_CODE_RE = /```[\s\S]*?```/g;
@@ -174,10 +174,11 @@ const INLINE_CODE_RE = /`[^`\n]+`/g;
  * between "#" and the digit.
  *
  * Coverage:
- * - Escapes "#N" after whitespace, `(`, `[`, `{`, `>`, `:`, and Chinese
- *   punctuation `：`, `，`, `、`.
+ * - Escapes "#N" after whitespace, `(`, `[`, `{`, `<`, `（`, `"`, `'`, `` ` ```,
+ *   `>`, `:`, and Chinese punctuation `：`, `，`, `、`.
  * - Skips content inside fenced code blocks (```...```) and inline code
- *   (`...`). Does NOT handle unclosed fences/backticks.
+ *   (`...`). Does NOT handle unclosed fences/backticks; unclosed markers
+ *   will cause subsequent content to be treated as code and left unescaped.
  */
 /** @internal Exported for testing only — not a public API. */
 export function escapeHashReferences(text: string): string {
@@ -602,9 +603,13 @@ const SENSITIVE_ENV_KEYS = new Set([
   "OPENCODE_RETRY_DELAY_SECONDS",
 ]);
 
-export function parseExtraEnv(): void {
+export interface ExtraEnvResult {
+  blockedKeys: string[];
+}
+
+export function parseExtraEnv(): ExtraEnvResult {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
-  if (!raw) return;
+  if (!raw) return { blockedKeys: [] };
   const allowSensitive = ["true", "1", "yes"].includes(
     (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase(),
   );
@@ -633,9 +638,8 @@ export function parseExtraEnv(): void {
     }
     process.env[key] = value;
   }
-  if (blockedKeys.size > 0) {
-    const sorted = [...blockedKeys].sort();
-    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
-    process.exit(1);
-  }
+  const sorted = [...blockedKeys].sort();
+  if (sorted.length === 0) return { blockedKeys: [] };
+  console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
+  return { blockedKeys: sorted };
 }
