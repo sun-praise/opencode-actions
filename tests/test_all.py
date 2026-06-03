@@ -917,8 +917,13 @@ class TestCleanupErrorComments(unittest.TestCase):
             )
 
 
-class TestEscapeHashReferences(unittest.TestCase):
-    """Tests for escapeHashReferences in multi-review/src/platform.ts."""
+class TestEscapeHashReferencesSmoke(unittest.TestCase):
+    """Smoke tests for the Python mirror of escapeHashReferences.
+
+    Comprehensive coverage lives in multi-review/src/platform.test.ts (TS).
+    This class only verifies the Python re-implementation produces consistent
+    results for a few representative cases.
+    """
 
     def _run_escape(self, text: str) -> str:
         import re as re_mod
@@ -928,7 +933,7 @@ class TestEscapeHashReferences(unittest.TestCase):
             re_mod.MULTILINE,
         )
         FENCED_CODE_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
-        INLINE_CODE_RE = re_mod.compile(r"`[^`]+`")
+        INLINE_CODE_RE = re_mod.compile(r"`[^`\n]+`")
         ZWSP = "\u200B"
 
         def escape_text(t: str) -> str:
@@ -957,71 +962,34 @@ class TestEscapeHashReferences(unittest.TestCase):
 
         return escape_text(text)
 
-    def test_line_start(self):
-        self.assertIn("#\u200B1", self._run_escape("#1 issue"))
-
-    def test_after_space(self):
+    def test_basic_escape(self):
         self.assertIn("#\u200B2", self._run_escape("see #2 for details"))
 
-    def test_after_open_paren(self):
-        self.assertIn("#\u200B1", self._run_escape("(#1) fix"))
-
-    def test_after_open_bracket(self):
-        self.assertIn("#\u200B3", self._run_escape("[#3] related"))
-
-    def test_after_greater_than(self):
-        self.assertIn("#\u200B5", self._run_escape(">#5 quote"))
-
-    def test_after_colon(self):
-        self.assertIn("#\u200B1", self._run_escape("issue:#1 here"))
-
-    def test_after_chinese_colon(self):
-        self.assertIn("#\u200B1", self._run_escape("阻塞项：#1 修复"))
-
-    def test_after_chinese_comma(self):
-        self.assertIn("#\u200B2", self._run_escape("，#2 another"))
-
-    def test_after_chinese顿号(self):
-        self.assertIn("#\u200B1", self._run_escape("、#1 fix"))
-
-    def test_fenced_code_block_not_escaped(self):
+    def test_fenced_code_skipped(self):
         text = "review\n```python\nprint(#1)\n```\nsee #2"
         result = self._run_escape(text)
         self.assertIn("print(#1)", result)
         self.assertIn("#\u200B2", result)
 
-    def test_inline_code_not_escaped(self):
+    def test_inline_code_skipped(self):
         text = "use `#1` to refer, see #2"
         result = self._run_escape(text)
         self.assertIn("`#1`", result)
         self.assertIn("#\u200B2", result)
 
-    def test_no_match_in_markdown_heading(self):
-        text = "## Heading"
-        result = self._run_escape(text)
-        self.assertNotIn("\u200B", result)
-
-    def test_no_match_regular_hash(self):
-        text = "# heading\ntext"
-        result = self._run_escape(text)
-        self.assertNotIn("\u200B", result)
-
-    def test_trailing_number_with_punctuation(self):
-        self.assertIn("#\u200B1,", self._run_escape("see #1, then #2"))
-        self.assertIn("#\u200B2", self._run_escape("see #1, then #2"))
-
-    def test_multiple_fenced_code_blocks(self):
-        text = "see #1\n```\n#2\n```\nthen #3\n```\n#4\n```\nand #5"
-        result = self._run_escape(text)
-        self.assertIn("#\u200B1", result)
-        self.assertIn("#\u200B3", result)
-        self.assertIn("#\u200B5", result)
-        self.assertNotIn("#\u200B2", result)
-        self.assertNotIn("#\u200B4", result)
+    def test_markdown_heading_not_escaped(self):
+        self.assertNotIn("\u200B", self._run_escape("## Heading"))
 
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
-    """Verify that hash-avoidance instructions in TS and Python stay in sync."""
+    """Verify that hash-avoidance instructions in TS and Python stay in sync.
+
+    CAVEAT: These tests parse source-code string literal structures via regex.
+    If you change the definition form of HASH_AVOID_ZH/EN (reviewers.ts) or
+    hash_avoid_zh/en (run-github-opencode.py) — e.g. switch to template literals,
+    triple-quoted strings, Array.join, or shared data files — you MUST update
+    the extraction regexes below accordingly.
+    """
 
     def _extract_ts_hash_avoid(self):
         ts_file = REPO_ROOT / "multi-review" / "src" / "reviewers.ts"
