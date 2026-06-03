@@ -148,22 +148,31 @@ function fetchAllGiteaComments(baseUrl: string, token: string): Array<{ id: numb
   return allComments;
 }
 
+// ── Escape #N references ─────────────────────────────────────────────
+
+const HASH_NUM_RE = /(^|\s)#(\d{1,6})(?=[\s:.]|$)/gm;
+
+function escapeHashReferences(text: string): string {
+  return text.replace(HASH_NUM_RE, "$1#&#8203;$2");
+}
+
 // ── Post PR comment (with PR-context guard) ───────────────────────────
 
 export function postPRComment(body: string): void {
+  const escaped = escapeHashReferences(body);
   const prNumber = resolvePRNumber();
   if (!prNumber) {
     console.log("Not in PR context, printing review to stdout:");
     console.log("---");
-    console.log(body);
+    console.log(escaped);
     return;
   }
 
   const platform = detectPlatform();
   if (platform === "github") {
-    postCommentGithub(prNumber, body);
+    postCommentGithub(prNumber, escaped);
   } else {
-    postCommentGitea(prNumber, body);
+    postCommentGitea(prNumber, escaped);
   }
 }
 

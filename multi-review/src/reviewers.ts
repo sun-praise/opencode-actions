@@ -42,9 +42,11 @@ export function loadReviewers(opts: {
   const team = parseTeam(teamStr);
 
   const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
+  const hashAvoidZh = "\n请勿使用 #N 格式（如 #1、#2）编号，GitHub 会自动将其转换为 issue/PR 引用。请使用 1. 2. 3. 或 - 的列表格式。";
+  const hashAvoidEn = "\nNever use #N format (e.g. #1, #2) to number items — GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.";
   const langInstruction = language === "en"
-    ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents."
-    : "\n\n请使用中文回复。所有分析和说明均使用中文。对于 prompt 中列出的判定关键词，使用其中文版本。";
+    ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." + hashAvoidEn
+    : "\n\n请使用中文回复。所有分析和说明均使用中文。对于 prompt 中列出的判定关键词，使用其中文版本。" + hashAvoidZh;
 
   const reviewers: Reviewer[] = [];
   for (const [name, count] of team) {

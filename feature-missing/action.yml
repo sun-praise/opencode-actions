@@ -112,6 +112,8 @@ inputs:
         Minor gaps, nice-to-have features, or documentation discrepancies.
         For each gap: describe what's missing, reference the relevant spec section, and suggest where the implementation should be added.
       - If verdict is "无遗漏" / "NO GAPS", briefly confirm all spec items are covered — do NOT include any severity sections.
+
+      IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false

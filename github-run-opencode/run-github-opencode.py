@@ -458,6 +458,12 @@ def _main() -> int:
     zh_instruction = (
         "\n\n请使用中文回复。所有分析和说明均使用中文。"
         "对于 prompt 中列出的判定关键词，使用其中文版本。"
+        "\n请勿使用 #N 格式（如 #1、#2）编号，GitHub 会自动将其转换为 issue/PR 引用。请使用 1. 2. 3. 或 - 的列表格式。"
+    )
+    en_hash_instruction = (
+        " Never use #N format (e.g. #1, #2) to number items — "
+        "GitHub auto-converts #N to issue/PR references. "
+        "Use 1. 2. 3. or - list format instead."
     )
     if existing_prompt:
         if language == "en":
@@ -466,6 +472,7 @@ def _main() -> int:
                 + "\n\nIMPORTANT: Respond entirely in English. "
                 "Use English for all analysis, explanations, and output. "
                 "For any verdict keywords listed in the prompt, use their English equivalents."
+                + en_hash_instruction
             ))
         elif language == "zh":
             set_env("PROMPT", existing_prompt + zh_instruction)
