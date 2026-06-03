@@ -25,7 +25,7 @@ jobs:
       - name: Run feature missing audit
         uses: sun-praise/opencode-actions/feature-missing@v3.3.0
         with:
-          model: xiaomi-token-plan-cn/mimo-v2.5
+          model: xiaomi-token-plan-cn/mimo-v2.5-pro
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}

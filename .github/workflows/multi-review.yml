@@ -27,7 +27,7 @@ jobs:
       - name: Run multi-review
         uses: sun-praise/opencode-actions/multi-review@v3.3.0
         with:
-          model: xiaomi-token-plan-cn/mimo-v2.5
+          model: xiaomi-token-plan-cn/mimo-v2.5-pro
           default-team: "quality:1,security:1,performance:1,architecture:1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
