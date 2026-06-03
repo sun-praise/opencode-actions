@@ -1,6 +1,6 @@
 name: architecture
 prompt: |
-  Review this pull request from an architecture perspective (read-only mode, DO NOT modify any code).
+  Review this pull request from an architecture perspective (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
 
   Analyze the PR changes for:
   - Coupling: unnecessary dependencies between modules
