@@ -591,9 +591,23 @@ function cleanupErrorCommentsGitea(prNumber: string, repo: string, runId: string
 
 // ── Parse extra env ───────────────────────────────────────────────────
 
+const SENSITIVE_ENV_KEYS = new Set([
+  "GITHUB_TOKEN", "ZHIPU_API_KEY", "OPENCODE_API_KEY",
+  "DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "XIAOMI_API_KEY",
+  "GITEA_TOKEN", "MODEL", "PROMPT", "USE_GITHUB_TOKEN",
+  "OPENCODE_ARGS", "OPENCODE_CONFIG_CONTENT",
+  "OPENCODE_WORKING_DIRECTORY", "OPENCODE_ATTEMPTS",
+  "OPENCODE_RETRY_PROFILE", "OPENCODE_RETRY_ON_REGEX",
+  "OPENCODE_RETRY_DELAY_SECONDS",
+]);
+
 export function parseExtraEnv(): void {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
   if (!raw) return;
+  const allowSensitive = ["true", "1", "yes"].includes(
+    (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase(),
+  );
+  const blockedKeys = new Set<string>();
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -601,6 +615,26 @@ export function parseExtraEnv(): void {
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     const value = trimmed.slice(eqIdx + 1).trim();
-    if (key) process.env[key] = value;
+    if (!key) continue;
+    if (key.startsWith("MULTI_REVIEW_")) {
+      console.log(`::error::extra-env key '${key}' starts with reserved prefix 'MULTI_REVIEW_' and is not allowed`);
+      blockedKeys.add(key);
+      continue;
+    }
+    if (SENSITIVE_ENV_KEYS.has(key)) {
+      if (allowSensitive) {
+        console.log(`::warning::extra-env key '${key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)`);
+      } else {
+        console.log(`::error::extra-env key '${key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow`);
+        blockedKeys.add(key);
+        continue;
+      }
+    }
+    process.env[key] = value;
+  }
+  if (blockedKeys.size > 0) {
+    const sorted = [...blockedKeys].sort();
+    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
+    process.exit(1);
   }
 }

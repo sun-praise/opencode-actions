@@ -4939,7 +4939,9 @@ function loadReviewers(opts) {
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
   const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
-  const langInstruction = language === "en" ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." : "\n\n\u8BF7\u4F7F\u7528\u4E2D\u6587\u56DE\u590D\u3002\u6240\u6709\u5206\u6790\u548C\u8BF4\u660E\u5747\u4F7F\u7528\u4E2D\u6587\u3002\u5BF9\u4E8E prompt \u4E2D\u5217\u51FA\u7684\u5224\u5B9A\u5173\u952E\u8BCD\uFF0C\u4F7F\u7528\u5176\u4E2D\u6587\u7248\u672C\u3002";
+  const hashAvoidZh = "\n\u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\uFF08\u5982 #1\u3001#2\uFF09\u7F16\u53F7\uFF0CGitHub \u4F1A\u81EA\u52A8\u5C06\u5176\u8F6C\u6362\u4E3A issue/PR \u5F15\u7528\u3002\u8BF7\u4F7F\u7528 1. 2. 3. \u6216 - \u7684\u5217\u8868\u683C\u5F0F\u3002";
+  const hashAvoidEn = "\nNever use #N format (e.g. #1, #2) to number items \u2014 GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.";
+  const langInstruction = language === "en" ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents." + hashAvoidEn : "\n\n\u8BF7\u4F7F\u7528\u4E2D\u6587\u56DE\u590D\u3002\u6240\u6709\u5206\u6790\u548C\u8BF4\u660E\u5747\u4F7F\u7528\u4E2D\u6587\u3002\u5BF9\u4E8E prompt \u4E2D\u5217\u51FA\u7684\u5224\u5B9A\u5173\u952E\u8BCD\uFF0C\u4F7F\u7528\u5176\u4E2D\u6587\u7248\u672C\u3002" + hashAvoidZh;
   const reviewers = [];
   for (const [name, count] of team) {
     const persona = personas.get(name);
@@ -4996,7 +4998,9 @@ Your task is to synthesize them into a single deduplicated report.
 - \u7B2C\u4E00\u884C\uFF1A\u6700\u7EC8\u51B3\u7B56\uFF08\u53EF\u5408\u5E76 / CAN MERGE\u3001\u6709\u6761\u4EF6\u5408\u5E76 / CONDITIONAL MERGE\u3001\u4E0D\u53EF\u5408\u5E76 / CANNOT MERGE\uFF09
 - \u7136\u540E\u7B80\u8981\u603B\u7ED3
 - "\u963B\u585E\u9879" / "Blocking Issues"\u5217\u51FA\u5408\u5E76\u524D\u5FC5\u987B\u4FEE\u590D\u7684\u95EE\u9898\uFF1B\u5982\u65E0\uFF0C\u5199"\u963B\u585E\u9879\uFF1A\u65E0" / "Blocking Issues: None"
-- "\u5EFA\u8BAE\u9879" / "Suggestions"\u5217\u51FA\u975E\u963B\u585E\u6539\u8FDB\u5EFA\u8BAE\uFF1B\u5982\u65E0\uFF0C\u5199"\u5EFA\u8BAE\u9879\uFF1A\u65E0" / "Suggestions: None"`;
+- "\u5EFA\u8BAE\u9879" / "Suggestions"\u5217\u51FA\u975E\u963B\u585E\u6539\u8FDB\u5EFA\u8BAE\uFF1B\u5982\u65E0\uFF0C\u5199"\u5EFA\u8BAE\u9879\uFF1A\u65E0" / "Suggestions: None"
+
+IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. \u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\u7F16\u53F7\uFF0CGitHub \u4F1A\u5C06\u5176\u8F6C\u4E3A issue/PR \u5F15\u7528\u3002`;
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
 }
@@ -5250,19 +5254,24 @@ function fetchAllGiteaComments(baseUrl, token) {
   }
   return allComments;
 }
+var HASH_NUM_RE = /(^|\s)#(\d{1,6})(?=[\s:.]|$)/gm;
+function escapeHashReferences(text) {
+  return text.replace(HASH_NUM_RE, "$1#&#8203;$2");
+}
 function postPRComment(body) {
+  const escaped = escapeHashReferences(body);
   const prNumber = resolvePRNumber();
   if (!prNumber) {
     console.log("Not in PR context, printing review to stdout:");
     console.log("---");
-    console.log(body);
+    console.log(escaped);
     return;
   }
   const platform = detectPlatform();
   if (platform === "github") {
-    postCommentGithub(prNumber, body);
+    postCommentGithub(prNumber, escaped);
   } else {
-    postCommentGitea(prNumber, body);
+    postCommentGitea(prNumber, escaped);
   }
 }
 function postCommentGithub(prNumber, body) {
@@ -5586,9 +5595,32 @@ function cleanupErrorCommentsGitea(prNumber, repo, runId) {
     }
   }
 }
+var SENSITIVE_ENV_KEYS = /* @__PURE__ */ new Set([
+  "GITHUB_TOKEN",
+  "ZHIPU_API_KEY",
+  "OPENCODE_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "MINIMAX_API_KEY",
+  "XIAOMI_API_KEY",
+  "GITEA_TOKEN",
+  "MODEL",
+  "PROMPT",
+  "USE_GITHUB_TOKEN",
+  "OPENCODE_ARGS",
+  "OPENCODE_CONFIG_CONTENT",
+  "OPENCODE_WORKING_DIRECTORY",
+  "OPENCODE_ATTEMPTS",
+  "OPENCODE_RETRY_PROFILE",
+  "OPENCODE_RETRY_ON_REGEX",
+  "OPENCODE_RETRY_DELAY_SECONDS"
+]);
 function parseExtraEnv() {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
   if (!raw) return;
+  const allowSensitive = ["true", "1", "yes"].includes(
+    (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase()
+  );
+  const blockedKeys = /* @__PURE__ */ new Set();
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -5596,7 +5628,27 @@ function parseExtraEnv() {
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     const value = trimmed.slice(eqIdx + 1).trim();
-    if (key) process.env[key] = value;
+    if (!key) continue;
+    if (key.startsWith("MULTI_REVIEW_")) {
+      console.log(`::error::extra-env key '${key}' starts with reserved prefix 'MULTI_REVIEW_' and is not allowed`);
+      blockedKeys.add(key);
+      continue;
+    }
+    if (SENSITIVE_ENV_KEYS.has(key)) {
+      if (allowSensitive) {
+        console.log(`::warning::extra-env key '${key}' overrides a sensitive runtime variable (allowed by extra-env-allow-sensitive)`);
+      } else {
+        console.log(`::error::extra-env key '${key}' overrides a sensitive runtime variable; set extra-env-allow-sensitive to 'true' to allow`);
+        blockedKeys.add(key);
+        continue;
+      }
+    }
+    process.env[key] = value;
+  }
+  if (blockedKeys.size > 0) {
+    const sorted = [...blockedKeys].sort();
+    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
+    process.exit(1);
   }
 }
 

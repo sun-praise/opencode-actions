@@ -93,6 +93,15 @@ inputs:
       starting with '#' are ignored.
     required: false
     default: ""
+  extra-env-allow-sensitive:
+    description: >-
+      When false (default), extra-env entries that override sensitive runtime
+      variables (API keys, MODEL, PROMPT, etc.) are blocked with an error.
+      Set to true to allow such overrides (with a warning).
+      Note: entries using the reserved MULTI_REVIEW_ prefix are always
+      blocked regardless of this setting.
+    required: false
+    default: "false"
   cleanup-error-comments:
     description: Automatically delete error comments after a failed run.
     required: false
@@ -231,6 +240,7 @@ runs:
         MULTI_REVIEW_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         MULTI_REVIEW_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
+        MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         MULTI_REVIEW_LANGUAGE: ${{ inputs.language }}
         MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}

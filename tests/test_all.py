@@ -563,6 +563,9 @@ class TestGithubRunOpencode(unittest.TestCase):
             "GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS",
             "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX",
             "GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS",
+            "GITHUB_RUN_OPENCODE_EXTRA_ENV",
+            "GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE",
+            "MY_CUSTOM_VAR",
             "FAKE_OPENCODE_TIMEOUT_MODELS",
             "FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS",
             "FAKE_OPENCODE_ERROR_MODELS",
@@ -705,6 +708,74 @@ class TestGithubRunOpencode(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
+    def test_extra_env_blocks_reserved_prefix(self):
+        """extra-env with GITHUB_RUN_OPENCODE_ prefix should be blocked."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="GITHUB_RUN_OPENCODE_FOO=bar",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved prefix", result.stdout)
+
+    def test_extra_env_blocks_sensitive_key(self):
+        """extra-env overriding a sensitive key should be blocked by default."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sensitive runtime variable", result.stdout)
+
+    def test_extra_env_allows_sensitive_with_flag(self):
+        """extra-env overriding a sensitive key should warn when allow-sensitive is true."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+            GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE="true",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("warning", result.stdout.lower())
+
+    def test_extra_env_normal_key_passes(self):
+        """extra-env with a non-sensitive key should work."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MY_CUSTOM_VAR=hello",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertNotIn("sensitive", result.stdout)
+        self.assertNotIn("reserved", result.stdout)
+
+    def test_extra_env_blocks_even_with_allow_sensitive_for_prefix(self):
+        """Reserved prefix should be blocked even when allow-sensitive is true."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="GITHUB_RUN_OPENCODE_FOO=bar",
+            GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE="true",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved prefix", result.stdout)
+
+    def test_extra_env_deduplicates_blocked_keys(self):
+        """Duplicate sensitive keys should be deduplicated in error output."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=a\nMODEL=b",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        blocked_count = result.stderr.count("blocked")
+        self.assertLessEqual(blocked_count, 1)
+
+    def test_extra_env_allow_sensitive_normalizes(self):
+        """extra-env-allow-sensitive should accept '1' and 'yes'."""
+        self.reset_env()
+        for val in ("1", "yes"):
+            result = self.run_wrapper(
+                GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+                GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE=val,
+            )
+            self.assertEqual(result.returncode, 0, f"stderr for '{val}': {result.stderr}")
 
     def test_global_timeout_zero_disables_timeout(self):
         """timeout-seconds=0 should disable global timeout."""
