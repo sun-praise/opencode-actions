@@ -552,8 +552,9 @@ const SENSITIVE_ENV_KEYS = new Set([
 export function parseExtraEnv(): void {
   const raw = process.env.MULTI_REVIEW_EXTRA_ENV || "";
   if (!raw) return;
-  const allowSensitive = (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false")
-    .trim().toLowerCase() === "true";
+  const allowSensitive = ["true", "1", "yes"].includes(
+    (process.env.MULTI_REVIEW_EXTRA_ENV_ALLOW_SENSITIVE || "false").trim().toLowerCase(),
+  );
   const blockedKeys = new Set<string>();
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
@@ -581,7 +582,7 @@ export function parseExtraEnv(): void {
   }
   if (blockedKeys.size > 0) {
     const sorted = [...blockedKeys].sort();
-    console.error(`extra-env: blocked ${sorted.length} sensitive key override(s): ${sorted.join(", ")}`);
+    console.error(`extra-env: blocked ${sorted.length} disallowed key override(s): ${sorted.join(", ")}`);
     process.exit(1);
   }
 }
