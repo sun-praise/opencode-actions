@@ -1,4 +1,4 @@
-name: OpenCode PR Feature Missing Review
+name: Review (xiaomi test)
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   review:
-    name: AI Code Review
+    name: Review
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
@@ -22,13 +22,9 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.event.pull_request.head.sha }}
 
-      - name: Run feature missing audit
-        uses: sun-praise/opencode-actions/feature-missing@v3.3.0
+      - name: Run review (xiaomi mimo test)
+        uses: sun-praise/opencode-actions/review@v3.3.0
         with:
           model: xiaomi-token-plan-cn/mimo-v2.5-pro
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
