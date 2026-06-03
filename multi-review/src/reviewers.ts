@@ -31,15 +31,23 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   return map;
 }
 
-// Shared hash-number avoidance instruction appended to all reviewer prompts.
-// Content is loaded from shared-prompts/ at runtime.
+// Hash-number avoidance instruction appended to all reviewer prompts.
+// Content is loaded from prompts/ at runtime.
 const HASH_AVOID_FILE = { zh: "hash-avoid-zh.txt", en: "hash-avoid-en.txt" };
 
 function loadHashAvoid(actionPath: string): { zh: string; en: string } {
-  const dir = join(actionPath, "shared-prompts");
-  const zh = readFileSync(join(dir, HASH_AVOID_FILE.zh), "utf-8").trim();
-  const en = readFileSync(join(dir, HASH_AVOID_FILE.en), "utf-8").trim();
-  return { zh: "\n" + zh, en: "\n" + en };
+  const dir = join(actionPath, "prompts");
+  try {
+    const zh = readFileSync(join(dir, HASH_AVOID_FILE.zh), "utf-8").trim();
+    const en = readFileSync(join(dir, HASH_AVOID_FILE.en), "utf-8").trim();
+    return { zh: "\n" + zh, en: "\n" + en };
+  } catch (e) {
+    throw new Error(
+      `Failed to load hash-avoid prompts from ${dir}/. ` +
+      `Ensure the 'prompts' directory is included in the action release. ` +
+      `Original error: ${e instanceof Error ? e.message : e}`,
+    );
+  }
 }
 
 function buildLangInstruction(language: string, hashAvoid: { zh: string; en: string }): string {

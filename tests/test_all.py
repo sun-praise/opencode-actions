@@ -1093,12 +1093,12 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
 
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
-    """Verify that hash-avoidance instructions in TS and Python match
-    the shared prompt files in shared/prompts/.
+    """Verify that hash-avoidance instructions across TS, Python, and
+    shared/prompts/ are all consistent.
 
-    TS loads from multi-review/shared-prompts/ at runtime (no more hardcoded strings).
-    Python still inlines the text (cannot access shared files in CI).
-    Both are verified against the canonical shared/prompts/ files.
+    - shared/prompts/ is the single source of truth.
+    - TS loads from multi-review/prompts/ at runtime (copy of shared/prompts/).
+    - Python loads from shared/prompts/ at runtime (with inline fallback).
     """
 
     @staticmethod
@@ -1107,47 +1107,17 @@ class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
 
     @staticmethod
     def _read_ts_runtime(name: str) -> str:
-        return (REPO_ROOT / "multi-review" / "shared-prompts" / name).read_text().strip("\n")
-
-    @staticmethod
-    def _extract_py_hash_avoid():
-        py_file = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
-        py_content = py_file.read_text()
-
-        py_zh_match = re.search(
-            r'hash_avoid_zh\s*=\s*\((.*?)\)\s*\n',
-            py_content,
-            re.DOTALL,
-        )
-        py_en_match = re.search(
-            r'hash_avoid_en\s*=\s*\((.*?)\)\s*\n',
-            py_content,
-            re.DOTALL,
-        )
-        if py_zh_match is None:
-            raise AssertionError("hash_avoid_zh not found in run-github-opencode.py")
-        if py_en_match is None:
-            raise AssertionError("hash_avoid_en not found in run-github-opencode.py")
-
-        def extract_concat_strings(block: str) -> str:
-            parts = re.findall(r'"((?:[^"\\]|\\.)*)"', block)
-            return "".join(parts).replace("\\n", "\n").lstrip("\n")
-
-        return extract_concat_strings(py_zh_match.group(1)), extract_concat_strings(py_en_match.group(1))
+        return (REPO_ROOT / "multi-review" / "prompts" / name).read_text().strip("\n")
 
     def test_zh_matches_shared_file(self):
         shared = self._read_shared("hash-avoid-zh.txt")
         ts_zh = self._read_ts_runtime("hash-avoid-zh.txt")
-        py_zh, _ = self._extract_py_hash_avoid()
-        self.assertEqual(ts_zh, shared, "TS shared-prompts/ differs from shared/prompts/ for ZH")
-        self.assertEqual(py_zh, shared, "Python hash_avoid_zh differs from shared/prompts/hash-avoid-zh.txt")
+        self.assertEqual(ts_zh, shared, "multi-review/prompts/ ZH differs from shared/prompts/")
 
     def test_en_matches_shared_file(self):
         shared = self._read_shared("hash-avoid-en.txt")
         ts_en = self._read_ts_runtime("hash-avoid-en.txt")
-        _, py_en = self._extract_py_hash_avoid()
-        self.assertEqual(ts_en, shared, "TS shared-prompts/ differs from shared/prompts/ for EN")
-        self.assertEqual(py_en, shared, "Python hash_avoid_en differs from shared/prompts/hash-avoid-en.txt")
+        self.assertEqual(ts_en, shared, "multi-review/prompts/ EN differs from shared/prompts/")
 
 
 if __name__ == "__main__":
