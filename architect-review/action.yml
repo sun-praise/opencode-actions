@@ -281,6 +281,8 @@ runs:
         - Then a short summary of the architectural analysis
         - Then "阻塞项" / "Blocking Issues" listing architecture issues that should block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
         - Then "建议项" / "Suggestions" listing non-blocking architecture improvements; if none, write "建议项：无" / "Suggestions: None"
+
+        IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。
         PROMPT_EOF
         )
         fi

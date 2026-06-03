@@ -28,3 +28,5 @@ prompt: |
   - Then a short summary
   - Then "阻塞项" / "Blocking Issues" listing required fixes for merge; if none, write "阻塞项：无" / "Blocking Issues: None"
   - Then "建议项" / "Suggestions" listing non-blocking improvements; if none, write "建议项：无" / "Suggestions: None"
+
+  IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。

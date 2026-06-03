@@ -124,6 +124,8 @@ inputs:
         Minor gaps — documentation, non-essential features, or nice-to-haves.
         For each gap: quote the spec task verbatim, describe what's missing in the implementation, and suggest which file(s) should be modified.
       - If verdict is "全覆盖" / "FULL COVERAGE", briefly confirm all spec tasks are covered — do NOT include any severity sections.
+
+      IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。
   use-github-token:
     description: Value exported as USE_GITHUB_TOKEN before running `opencode github run`.
     required: false
