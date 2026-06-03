@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [3.3.1] - 2026-06-03
+
+### Fixed
+- fix: add DO NOT use bash to all reviewer prompts (#168)
+
 ## [3.3.0] - 2026-06-03
 
 ### Added
