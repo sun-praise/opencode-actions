@@ -13,6 +13,9 @@ from pathlib import Path
 
 script_dir = Path(__file__).resolve().parent
 
+SUPPORTED_LANGUAGES = {"zh", "en"}
+SENSITIVE_ENV_KEYS = {"GITHUB_TOKEN", "MODEL", "ZHIPU_API_KEY", "OPENCODE_API_KEY", "DEEPSEEK_API_KEY", "PROMPT"}
+
 
 def get_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
@@ -435,6 +438,39 @@ def _main() -> int:
     set_env("MINIMAX_API_KEY", get_env("GITHUB_RUN_OPENCODE_MINIMAX_API_KEY"))
     set_env("XIAOMI_API_KEY", get_env("GITHUB_RUN_OPENCODE_XIAOMI_API_KEY"))
 
+    # Language override: append a language instruction to the prompt.
+    # When PROMPT is empty (e.g. user cleared the default), skip appending
+    # language instructions since there is nothing to respond to.
+    language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
+    existing_prompt = get_env("PROMPT", "")
+    if existing_prompt:
+        if language == "en":
+            set_env("PROMPT", (
+                existing_prompt
+                + "\n\nIMPORTANT: Respond entirely in English. "
+                "Use English for all analysis, explanations, and output. "
+                "For any verdict keywords listed in the prompt, use their English equivalents."
+            ))
+        elif language == "zh":
+            set_env("PROMPT", (
+                existing_prompt
+                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
+                "对于 prompt 中列出的判定关键词，使用其中文版本。"
+            ))
+        elif language in SUPPORTED_LANGUAGES:
+            # Future language — no dedicated instruction yet, default to zh
+            pass
+        else:
+            print(
+                f"::warning::Unsupported language: '{language}', defaulting to Chinese. "
+                f"Supported values are: {', '.join(sorted(SUPPORTED_LANGUAGES))}."
+            )
+            set_env("PROMPT", (
+                existing_prompt
+                + "\n\n请使用中文回复。所有分析和说明均使用中文。"
+                "对于 prompt 中列出的判定关键词，使用其中文版本。"
+            ))
+
     # Extra env vars from extra-env input
     extra_env_raw = get_env("GITHUB_RUN_OPENCODE_EXTRA_ENV")
     if extra_env_raw:
@@ -449,6 +485,10 @@ def _main() -> int:
             key = key.strip()
             value = value.strip()
             if key:
+                if key.startswith("GITHUB_RUN_OPENCODE_"):
+                    print(f"::warning::extra-env key '{key}' starts with reserved prefix 'GITHUB_RUN_OPENCODE_', this may override internal configuration")
+                if key in SENSITIVE_ENV_KEYS:
+                    print(f"::warning::extra-env key '{key}' overrides a sensitive runtime variable")
                 os.environ[key] = value
 
     reasoning_effort = get_env("GITHUB_RUN_OPENCODE_REASONING_EFFORT", "")
@@ -459,7 +499,11 @@ def _main() -> int:
     permission = None
     if permission_raw:
         try:
-            permission = json.loads(permission_raw)
+            parsed = json.loads(permission_raw)
+            if not isinstance(parsed, dict):
+                print(f"GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object, got {type(parsed).__name__}: {permission_raw}", file=sys.stderr)
+                sys.exit(1)
+            permission = parsed
         except json.JSONDecodeError:
             print(f"Invalid JSON in GITHUB_RUN_OPENCODE_PERMISSION: {permission_raw}", file=sys.stderr)
             sys.exit(1)
