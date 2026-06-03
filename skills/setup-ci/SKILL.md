@@ -29,6 +29,17 @@ Configure `sun-praise/opencode-actions` GitHub Actions for a user's repository.
 Users typically combine `review` + `multi-review` + `feature-missing` for full coverage, or use `multi-review` alone for comprehensive parallel review.
 
 
+## Recommended Models
+
+| Model | Provider | Required Secret | Notes |
+| --- | --- | --- | --- |
+| `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Recommended for Chinese-language review output |
+| `deepseek/deepseek-v4-flash` | DeepSeek | `DEEPSEEK_API_KEY` | Fast and cost-effective |
+| `zhipuai-coding-plan/glm-5.1` | Zhipu | `ZHIPU_API_KEY` | General-purpose, good balance of speed and quality |
+| `opencode-go/deepseek-v4-flash` | OpenCode Go | `OPENCODE_GO_API_KEY` | Proxy service, uses DeepSeek under the hood |
+
+Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
+
 ## Architect Review Setup
 
 Generate this in `.github/workflows/opencode-architect-review.yml`:
