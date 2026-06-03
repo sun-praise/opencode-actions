@@ -134,6 +134,22 @@ inputs:
       Appends a language override instruction to the prompt.
     required: false
     default: "zh"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
+  extra-env-allow-sensitive:
+    description: >-
+      When false (default), extra-env entries that override sensitive runtime
+      variables (API keys, MODEL, PROMPT, etc.) are blocked with an error.
+      Set to true to allow such overrides (with a warning).
+      Note: entries using the reserved GITHUB_RUN_OPENCODE_ prefix are always
+      blocked regardless of this setting.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -240,6 +256,8 @@ runs:
         GITHUB_RUN_OPENCODE_PERMISSION: ${{ inputs.permission }}
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

@@ -73,6 +73,8 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
 | `language` | `zh` | Response language: `zh` for Chinese, `en` for English |
+| `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
+| `extra-env-allow-sensitive` | `false` | When `false`, blocks `extra-env` entries that override sensitive runtime variables (API keys, MODEL, etc.); set `true` to allow with warning |
 | `attempts` | `3` | Total attempts before failing |
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |

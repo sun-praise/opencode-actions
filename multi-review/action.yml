@@ -88,8 +88,9 @@ inputs:
     default: ""
   extra-env:
     description: >-
-      Extra environment variables. Multi-line KEY=VALUE pairs, one per line.
-      Empty lines and lines starting with '#' are ignored.
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
     required: false
     default: ""
   cleanup-error-comments:

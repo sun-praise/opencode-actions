@@ -130,6 +130,15 @@ inputs:
       starting with '#' are ignored.
     required: false
     default: ""
+  extra-env-allow-sensitive:
+    description: >-
+      When false (default), extra-env entries that override sensitive runtime
+      variables (API keys, MODEL, PROMPT, etc.) are blocked with an error.
+      Set to true to allow such overrides (with a warning).
+      Note: entries using the reserved GITHUB_RUN_OPENCODE_ prefix are always
+      blocked regardless of this setting.
+    required: false
+    default: "false"
   cleanup-error-comments:
     description: >-
       When true, automatically delete error comments posted by opencode to the PR
@@ -328,6 +337,7 @@ runs:
         GITHUB_RUN_OPENCODE_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         GITHUB_RUN_OPENCODE_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_PERMISSION: >-
