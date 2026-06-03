@@ -11,16 +11,16 @@ prompt: |
   - Concurrency and threading issues
   - Resource utilization (CPU, memory, network, I/O)
 
-  Please respond in Chinese. DO NOT modify any code, only provide review comments.
+  DO NOT modify any code, only provide review comments.
   The first line of your response must be exactly one of:
-  - 性能良好
-  - 性能有疑虑
-  - 性能问题严重
+  - 性能良好 / GOOD
+  - 性能有疑虑 / CONCERNS
+  - 性能问题严重 / CRITICAL
 
   Decision rules:
-  - Use "性能良好" when no performance concerns are found.
-  - Use "性能有疑虑" when non-critical performance issues are found.
-  - Use "性能问题严重" when critical performance regressions are found that should block merge.
+  - Use "性能良好" / "GOOD" when no performance concerns are found.
+  - Use "性能有疑虑" / "CONCERNS" when non-critical performance issues are found.
+  - Use "性能问题严重" / "CRITICAL" when critical performance regressions are found that should block merge.
 
   Review the latest PR HEAD only.
   Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
@@ -28,5 +28,5 @@ prompt: |
   Output format:
   - First line: the decision only
   - Then a short summary of performance analysis
-  - Then "阻塞项" listing performance issues that must block merge; if none, write "阻塞项：无"
-  - Then "建议项" listing non-blocking performance improvements; if none, write "建议项：无"
+  - Then "阻塞项" / "Blocking Issues" listing performance issues that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking performance improvements; if none, write "建议项：无" / "Suggestions: None"

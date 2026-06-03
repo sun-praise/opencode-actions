@@ -41,7 +41,7 @@ npx skills add sun-praise/opencode-actions
 
 ## 语言配置
 
-所有 action 均支持 `language` 输入参数，用于控制 agent 的回复语言：
+所有涉及 agent/prompt 的 action（`review`、`feature-missing`、`spec-coverage`、`github-run-opencode`、`architect-review`、`multi-review`）均支持 `language` 输入参数，用于控制 agent 的回复语言：
 
 - `zh`（默认）：中文回复
 - `en`：英文回复

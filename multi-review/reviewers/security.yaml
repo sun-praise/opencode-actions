@@ -10,16 +10,16 @@ prompt: |
   - Insecure dependencies or APIs
   - OWASP Top 10 compliance
 
-  Please respond in Chinese. DO NOT modify any code, only provide review comments.
+  DO NOT modify any code, only provide review comments.
   The first line of your response must be exactly one of:
-  - 安全无虞
-  - 存在风险
-  - 高危漏洞
+  - 安全无虞 / SECURE
+  - 存在风险 / AT RISK
+  - 高危漏洞 / CRITICAL
 
   Decision rules:
-  - Use "安全无虞" when no security concerns are found.
-  - Use "存在风险" when non-critical security issues are found that should be addressed.
-  - Use "高危漏洞" when critical security vulnerabilities are found that must block merge.
+  - Use "安全无虞" / "SECURE" when no security concerns are found.
+  - Use "存在风险" / "AT RISK" when non-critical security issues are found that should be addressed.
+  - Use "高危漏洞" / "CRITICAL" when critical security vulnerabilities are found that must block merge.
 
   Review the latest PR HEAD only.
   Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
@@ -27,5 +27,5 @@ prompt: |
   Output format:
   - First line: the decision only
   - Then a short summary of security analysis
-  - Then "阻塞项" listing security issues that must block merge; if none, write "阻塞项：无"
-  - Then "建议项" listing non-blocking security improvements; if none, write "建议项：无"
+  - Then "阻塞项" / "Blocking Issues" listing security issues that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking security improvements; if none, write "建议项：无" / "Suggestions: None"
