@@ -73,6 +73,8 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
 | `language` | `zh` | Response language: `zh` for Chinese, `en` for English |
+| `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
+| `extra-env-allow-sensitive` | `false` | When `false`, blocks `extra-env` entries that override sensitive runtime variables (API keys, MODEL, etc.); set `true` to allow with warning |
 | `attempts` | `3` | Total attempts before failing |
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
@@ -131,6 +133,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
+| `extra-env-allow-sensitive` | `false` | When `false`, blocks `extra-env` entries that override sensitive runtime variables; set `true` to allow with warning |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
 
 `multi-review` also accepts all setup-related inputs from `setup-opencode` (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`).
