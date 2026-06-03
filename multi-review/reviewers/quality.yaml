@@ -1,6 +1,6 @@
 name: quality
 prompt: |
-  Review this pull request for code quality (read-only mode, DO NOT modify any code).
+  Review this pull request for code quality (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
 
   Please check:
   - Code quality issues

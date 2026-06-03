@@ -1,6 +1,6 @@
 name: performance
 prompt: |
-  Review this pull request for performance concerns (read-only mode, DO NOT modify any code).
+  Review this pull request for performance concerns (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
 
   Please check:
   - Algorithm complexity and efficiency

@@ -1,6 +1,6 @@
 name: security
 prompt: |
-  Review this pull request for security concerns (read-only mode, DO NOT modify any code).
+  Review this pull request for security concerns (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
 
   Please check:
   - Input validation and sanitization
