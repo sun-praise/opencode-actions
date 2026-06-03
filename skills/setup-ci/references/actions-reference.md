@@ -249,7 +249,6 @@ Outputs:
 
 > **Model compatibility**: MiniMax and Xiaomi MiMo token plans have concurrency limits that are incompatible with multi-review's multi-agent parallel execution. Use DeepSeek (`deepseek/deepseek-v4-flash`), Zhipu, or OpenCode Go instead.
 
-
 ## Required Permissions
 
 ```yaml

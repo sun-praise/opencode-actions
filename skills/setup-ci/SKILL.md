@@ -36,8 +36,8 @@ Users typically combine `review` + `multi-review` + `feature-missing` for full c
 | `deepseek/deepseek-v4-flash` | DeepSeek | `DEEPSEEK_API_KEY` | Fast and cost-effective; recommended for multi-review |
 | `zhipuai-coding-plan/glm-5.1` | Zhipu | `ZHIPU_API_KEY` | General-purpose, good balance of speed and quality |
 | `opencode-go/deepseek-v4-flash` | OpenCode Go | `OPENCODE_GO_API_KEY` | Proxy service, uses DeepSeek under the hood |
-| `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review (token plan limits) |
-| `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review (token plan limits) |
+| `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review (concurrency limits) |
+| `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review (concurrency limits) |
 
 Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
 
