@@ -165,8 +165,8 @@ const HASH_NUM_RE = /(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;�
 /** Matches triple-backtick fenced code blocks. */
 const FENCED_CODE_RE = /```[\s\S]*?```/g;
 
-/** Matches inline code (single backtick). */
-const INLINE_CODE_RE = /`[^`]+`/g;
+/** Matches inline code (single backtick). Does not cross line boundaries. */
+const INLINE_CODE_RE = /`[^`\n]+`/g;
 
 /**
  * Escape hash-number patterns ("#N") in text to prevent GitHub/Gitea from
@@ -179,6 +179,7 @@ const INLINE_CODE_RE = /`[^`]+`/g;
  * - Skips content inside fenced code blocks (```...```) and inline code
  *   (`...`). Does NOT handle unclosed fences/backticks.
  */
+/** @internal Exported for testing only — not a public API. */
 export function escapeHashReferences(text: string): string {
   const segments: string[] = [];
   let lastEnd = 0;
