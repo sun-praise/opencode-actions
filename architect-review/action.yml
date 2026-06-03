@@ -137,6 +137,11 @@ inputs:
       in the "[github run]" link combined with error indicators (fatal:, remote:, 403, etc.).
     required: false
     default: "true"
+  language:
+    description: >-
+      Response language for the agent. `zh` (default) for Chinese, `en` for English.
+    required: false
+    default: "zh"
 
 runs:
   using: composite
@@ -256,16 +261,16 @@ runs:
         - Test coverage suggestions
         - Minor refactoring suggestions unrelated to architecture
 
-        Please respond in Chinese. DO NOT modify any code, only provide architecture review comments.
+        DO NOT modify any code, only provide architecture review comments.
         The first line of your response must be exactly one of:
-        - 架构合理
-        - 架构有疑虑
-        - 架构有问题
+        - 架构合理 / SOUND
+        - 架构有疑虑 / CONCERNS
+        - 架构有问题 / PROBLEMATIC
 
         Decision rules:
-        - Use "架构合理" when the change follows existing architecture patterns and introduces no structural concerns.
-        - Use "架构有疑虑" when there are non-blocking architecture concerns that should be discussed but do not prevent merge.
-        - Use "架构有问题" when the change introduces serious architectural violations that should block merge (e.g., breaking layering, introducing circular dependencies, creating a pattern that would be costly to reverse).
+        - Use "架构合理" / "SOUND" when the change follows existing architecture patterns and introduces no structural concerns.
+        - Use "架构有疑虑" / "CONCERNS" when there are non-blocking architecture concerns that should be discussed but do not prevent merge.
+        - Use "架构有问题" / "PROBLEMATIC" when the change introduces serious architectural violations that should block merge (e.g., breaking layering, introducing circular dependencies, creating a pattern that would be costly to reverse).
 
         Analyze the latest PR HEAD only.
         Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
@@ -274,8 +279,8 @@ runs:
         Output format:
         - First line: the decision only
         - Then a short summary of the architectural analysis
-        - Then "阻塞项" listing architecture issues that should block merge; if none, write "阻塞项：无"
-        - Then "建议项" listing non-blocking architecture improvements; if none, write "建议项：无"
+        - Then "阻塞项" / "Blocking Issues" listing architecture issues that should block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+        - Then "建议项" / "Suggestions" listing non-blocking architecture improvements; if none, write "建议项：无" / "Suggestions: None"
         PROMPT_EOF
         )
         fi
@@ -326,6 +331,7 @@ runs:
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":"deny"}
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
+        GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

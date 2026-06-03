@@ -96,6 +96,11 @@ inputs:
     description: Automatically delete error comments after a failed run.
     required: false
     default: "true"
+  language:
+    description: >-
+      Response language for the agent. `zh` (default) for Chinese, `en` for English.
+    required: false
+    default: "zh"
   reasoning-effort:
     description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
     required: false
@@ -226,6 +231,7 @@ runs:
         MULTI_REVIEW_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
         MULTI_REVIEW_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
+        MULTI_REVIEW_LANGUAGE: ${{ inputs.language }}
         MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}

@@ -41,6 +41,11 @@ export function loadReviewers(opts: {
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
 
+  const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
+  const langInstruction = language === "en"
+    ? "\n\nIMPORTANT: Respond entirely in English. Use English for all analysis, explanations, and output. For any verdict keywords listed in the prompt, use their English equivalents."
+    : "\n\n请使用中文回复。所有分析和说明均使用中文。对于 prompt 中列出的判定关键词，使用其中文版本。";
+
   const reviewers: Reviewer[] = [];
   for (const [name, count] of team) {
     const persona = personas.get(name);
@@ -51,7 +56,7 @@ export function loadReviewers(opts: {
     for (let i = 0; i < count; i++) {
       reviewers.push({
         name: count > 1 ? `${name}-${i + 1}` : name,
-        prompt: persona.prompt,
+        prompt: persona.prompt + langInstruction,
       });
     }
   }

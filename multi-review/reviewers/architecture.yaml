@@ -10,16 +10,16 @@ prompt: |
   - Shotgun surgery: scattered changes vs localized modifications
   - Consistency: alignment with existing architectural patterns
 
-  Please respond in Chinese. DO NOT modify any code, only provide review comments.
+  DO NOT modify any code, only provide review comments.
   The first line of your response must be exactly one of:
-  - 架构合理
-  - 架构有疑虑
-  - 架构有问题
+  - 架构合理 / SOUND
+  - 架构有疑虑 / CONCERNS
+  - 架构有问题 / PROBLEMATIC
 
   Decision rules:
-  - Use "架构合理" when the change follows existing architecture patterns.
-  - Use "架构有疑虑" when there are non-blocking architecture concerns.
-  - Use "架构有问题" when serious architectural violations should block merge.
+  - Use "架构合理" / "SOUND" when the change follows existing architecture patterns.
+  - Use "架构有疑虑" / "CONCERNS" when there are non-blocking architecture concerns.
+  - Use "架构有问题" / "PROBLEMATIC" when serious architectural violations should block merge.
 
   Review the latest PR HEAD only.
   Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
@@ -27,5 +27,5 @@ prompt: |
   Output format:
   - First line: the decision only
   - Then a short summary of architecture analysis
-  - Then "阻塞项" listing architecture issues that must block merge; if none, write "阻塞项：无"
-  - Then "建议项" listing non-blocking architecture improvements; if none, write "建议项：无"
+  - Then "阻塞项" / "Blocking Issues" listing architecture issues that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking architecture improvements; if none, write "建议项：无" / "Suggestions: None"
