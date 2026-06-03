@@ -927,22 +927,35 @@ class TestEscapeHashReferences(unittest.TestCase):
             r"(?:^|(?<=[\s(\[{>:，、：]))(#)(\d{1,6})(?=[\s)\]},:.!?;，。！？、：]|$)",
             re_mod.MULTILINE,
         )
-        CODE_BLOCK_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
+        FENCED_CODE_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
+        INLINE_CODE_RE = re_mod.compile(r"`[^`]+`")
         ZWSP = "\u200B"
 
-        def escape_proper(t: str) -> str:
+        def escape_text(t: str) -> str:
             segments = []
             last_end = 0
-            for m in CODE_BLOCK_RE.finditer(t):
+            for m in FENCED_CODE_RE.finditer(t):
                 pre = t[last_end:m.start()]
-                segments.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), pre))
+                segments.append(_escape_segment(pre))
                 segments.append(m.group())
                 last_end = m.end()
             remaining = t[last_end:]
-            segments.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), remaining))
+            segments.append(_escape_segment(remaining))
             return "".join(segments)
 
-        return escape_proper(text)
+        def _escape_segment(t: str) -> str:
+            parts = []
+            last_end = 0
+            for m in INLINE_CODE_RE.finditer(t):
+                pre = t[last_end:m.start()]
+                parts.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), pre))
+                parts.append(m.group())
+                last_end = m.end()
+            remaining = t[last_end:]
+            parts.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), remaining))
+            return "".join(parts)
+
+        return escape_text(text)
 
     def test_line_start(self):
         self.assertIn("#\u200B1", self._run_escape("#1 issue"))
@@ -971,10 +984,16 @@ class TestEscapeHashReferences(unittest.TestCase):
     def test_after_chinese顿号(self):
         self.assertIn("#\u200B1", self._run_escape("、#1 fix"))
 
-    def test_code_block_not_escaped(self):
+    def test_fenced_code_block_not_escaped(self):
         text = "review\n```python\nprint(#1)\n```\nsee #2"
         result = self._run_escape(text)
         self.assertIn("print(#1)", result)
+        self.assertIn("#\u200B2", result)
+
+    def test_inline_code_not_escaped(self):
+        text = "use `#1` to refer, see #2"
+        result = self._run_escape(text)
+        self.assertIn("`#1`", result)
         self.assertIn("#\u200B2", result)
 
     def test_no_match_in_markdown_heading(self):
@@ -991,7 +1010,7 @@ class TestEscapeHashReferences(unittest.TestCase):
         self.assertIn("#\u200B1,", self._run_escape("see #1, then #2"))
         self.assertIn("#\u200B2", self._run_escape("see #1, then #2"))
 
-    def test_multiple_code_blocks(self):
+    def test_multiple_fenced_code_blocks(self):
         text = "see #1\n```\n#2\n```\nthen #3\n```\n#4\n```\nand #5"
         result = self._run_escape(text)
         self.assertIn("#\u200B1", result)
@@ -999,6 +1018,63 @@ class TestEscapeHashReferences(unittest.TestCase):
         self.assertIn("#\u200B5", result)
         self.assertNotIn("#\u200B2", result)
         self.assertNotIn("#\u200B4", result)
+
+
+class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
+    """Verify that hash-avoidance instructions in TS and Python stay in sync."""
+
+    def _extract_ts_hash_avoid(self):
+        ts_file = REPO_ROOT / "multi-review" / "src" / "reviewers.ts"
+        ts_content = ts_file.read_text()
+
+        ts_zh_match = re.search(
+            r'HASH_AVOID_ZH\s*=\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"',
+            ts_content,
+        )
+        ts_en_match = re.search(
+            r'HASH_AVOID_EN\s*=\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"\s*\+\s*"((?:[^"\\]|\\.)*)"',
+            ts_content,
+        )
+        self.assertIsNotNone(ts_zh_match, "HASH_AVOID_ZH not found in reviewers.ts")
+        self.assertIsNotNone(ts_en_match, "HASH_AVOID_EN not found in reviewers.ts")
+        ts_zh = (ts_zh_match.group(1) + ts_zh_match.group(2)).replace("\\n", "\n")
+        ts_en = (ts_en_match.group(1) + ts_en_match.group(2) + ts_en_match.group(3)).replace("\\n", "\n")
+        return ts_zh, ts_en
+
+    def _extract_py_hash_avoid(self):
+        py_file = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
+        py_content = py_file.read_text()
+
+        py_zh_match = re.search(
+            r'hash_avoid_zh\s*=\s*\((.*?)\)\s*\n',
+            py_content,
+            re.DOTALL,
+        )
+        py_en_match = re.search(
+            r'hash_avoid_en\s*=\s*\((.*?)\)\s*\n',
+            py_content,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(py_zh_match, "hash_avoid_zh not found in run-github-opencode.py")
+        self.assertIsNotNone(py_en_match, "hash_avoid_en not found in run-github-opencode.py")
+
+        def extract_concat_strings(block: str) -> str:
+            parts = re.findall(r'"((?:[^"\\]|\\.)*)"', block)
+            return "".join(parts).replace("\\n", "\n")
+
+        py_zh = extract_concat_strings(py_zh_match.group(1))
+        py_en = extract_concat_strings(py_en_match.group(1))
+        return py_zh, py_en
+
+    def test_zh_instruction_matches(self):
+        ts_zh, _ = self._extract_ts_hash_avoid()
+        py_zh, _ = self._extract_py_hash_avoid()
+        self.assertEqual(ts_zh, py_zh, "ZH hash-avoidance instruction differs between TS and Python")
+
+    def test_en_instruction_matches(self):
+        _, ts_en = self._extract_ts_hash_avoid()
+        _, py_en = self._extract_py_hash_avoid()
+        self.assertEqual(ts_en, py_en, "EN hash-avoidance instruction differs between TS and Python")
 
 
 if __name__ == "__main__":
