@@ -1,5 +1,8 @@
 name: Run OpenCode
 description: Execute OpenCode with optional retry logic.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   args:

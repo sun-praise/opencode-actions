@@ -1,5 +1,8 @@
 name: OpenCode Spec Coverage
 description: Cross-references project spec/task files against a PR's implementation to find planned but unimplemented features.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:

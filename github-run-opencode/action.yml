@@ -1,5 +1,8 @@
 name: GitHub Run OpenCode
 description: Convenience action for setup plus `opencode github run`.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:

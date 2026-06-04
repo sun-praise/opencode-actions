@@ -1,5 +1,8 @@
 name: Setup OpenCode
 description: Install and cache the OpenCode CLI on Linux runners.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:

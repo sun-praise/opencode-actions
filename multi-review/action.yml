@@ -1,5 +1,8 @@
 name: OpenCode Multi-Review
 description: Multi-agent parallel code review using OpenCode SDK with coordinator synthesis.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:
