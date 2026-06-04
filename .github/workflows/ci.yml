@@ -36,6 +36,28 @@ jobs:
             exit 1
           fi
 
+      - name: Verify shared/prompts/ is the sole hash-avoid source
+        run: |
+          # multi-review/prompts/ was removed when TS started reading from
+          # shared/prompts/ directly. Guard against re-introduction, which
+          # would silently re-create the double-copy drift problem.
+          if [[ -d multi-review/prompts ]]; then
+            echo "::error::multi-review/prompts/ must not exist; TS loads from shared/prompts/ (the single source of truth)."
+            exit 1
+          fi
+          for f in hash-avoid-zh.txt hash-avoid-en.txt; do
+            if [[ ! -f "shared/prompts/$f" ]]; then
+              echo "::error::shared/prompts/$f is missing"
+              exit 1
+            fi
+          done
+          # No source file (other than shared/prompts/) should inline the
+          # hash-avoid text — both TS and Python load it at runtime.
+          if git grep -nE 'Never use #N format|请勿使用 #N 格式' -- ':!shared/prompts/'; then
+            echo "::error::hash-avoid text is inlined outside shared/prompts/; load it at runtime instead."
+            exit 1
+          fi
+
   smoke-actions:
     runs-on: ubuntu-latest
     env:
