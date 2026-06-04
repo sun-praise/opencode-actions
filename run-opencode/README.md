@@ -12,9 +12,9 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
   uses: sun-praise/opencode-actions/run-opencode@v3
   with:
     args: github run
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
 ```
 
 In the same-job case, `setup-opencode` already exports `opencode` to `PATH`, so you do not need to pass `opencode-path` to `run-opencode`.
@@ -38,7 +38,7 @@ In the same-job case, `setup-opencode` already exports `opencode` to `PATH`, so 
 | `retry-profile` | empty | Built-in retry preset such as `github-network` |
 | `retry-delay-seconds` | `15` | Base delay used between retries |
 | `opencode-path` | `opencode` | Explicit binary path from `setup-opencode` |
-| `reasoning-effort` | `max` | Reasoning effort for the model agent: `low` / `medium` / `high` / `max` |
+| `reasoning-effort` | `high` | Reasoning effort for the model agent: `low` / `medium` / `high` / `max` |
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 
 ## Related actions in this monorepo
