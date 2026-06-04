@@ -44,6 +44,14 @@ if [[ -n "${FAKE_OPENCODE_ERROR_MODELS:-}" ]] && contains_model "$FAKE_OPENCODE_
   exit 23
 fi
 
+if [[ -n "${FAKE_OPENCODE_PUSH_DENIED_MODELS:-}" ]] && contains_model "$FAKE_OPENCODE_PUSH_DENIED_MODELS" "${MODEL:-}"; then
+  printf 'Pushing to local branch...\n'
+  printf 'Command failed with code 128: git push\n'
+  printf 'remote: Write access to repository not granted.\n'
+  printf 'fatal: unable to access '"'"'https://github.com/example/repo/'"'"': The requested URL returned error: 403\n'
+  exit 128
+fi
+
 printf 'fake opencode %s\n' "$*"
 printf 'MODEL=%s\n' "${MODEL:-}"
 printf 'PROMPT=%s\n' "${PROMPT:-}"
@@ -51,6 +59,7 @@ printf 'USE_GITHUB_TOKEN=%s\n' "${USE_GITHUB_TOKEN:-}"
 printf 'GITHUB_TOKEN=%s\n' "${GITHUB_TOKEN:-}"
 printf 'ZHIPU_API_KEY=%s\n' "${ZHIPU_API_KEY:-}"
 printf 'OPENCODE_API_KEY=%s\n' "${OPENCODE_API_KEY:-}"
+printf 'XIAOMI_API_KEY=%s\n' "${XIAOMI_API_KEY:-}"
 EOF
 
 chmod +x "$target_dir/opencode"

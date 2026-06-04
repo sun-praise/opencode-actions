@@ -1,0 +1,32 @@
+name: quality
+prompt: |
+  Review this pull request for code quality (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+
+  Please check:
+  - Code quality issues
+  - Potential bugs or logic errors
+  - Code style consistency
+  - Error handling completeness
+
+  DO NOT modify any code, only provide review comments.
+  The first line of your response must be exactly one of:
+  - 可合并 / CAN MERGE
+  - 有条件合并 / CONDITIONAL MERGE
+  - 不可合并 / CANNOT MERGE
+
+  Decision rules:
+  - Use "可合并" / "CAN MERGE" only when there are no blocking issues.
+  - Use "有条件合并" / "CONDITIONAL MERGE" when merge is acceptable only after specific issues are fixed.
+  - Use "不可合并" / "CANNOT MERGE" when there are blocking risks, correctness issues, or major concerns that should stop the merge.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+  Verify any blocking claim against the current code and current CI status before listing it.
+
+  Output format:
+  - First line: the decision only
+  - Then a short summary
+  - Then "阻塞项" / "Blocking Issues" listing required fixes for merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking improvements; if none, write "建议项：无" / "Suggestions: None"
+
+  IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。

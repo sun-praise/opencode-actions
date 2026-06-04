@@ -1,5 +1,8 @@
 name: GitHub Run OpenCode
 description: Convenience action for setup plus `opencode github run`.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:
@@ -73,7 +76,7 @@ inputs:
   fallback-on-regex:
     description: Rotate to the next fallback model when output matches this regex.
     required: false
-    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out
+    default: timed out|timeout|deadline exceeded|context deadline exceeded|operation timed out|connection timed out|ProviderModelNotFoundError
   prompt:
     description: Value exported as PROMPT before running `opencode github run`.
     required: false
@@ -98,14 +101,58 @@ inputs:
     description: Value exported as DEEPSEEK_API_KEY before running `opencode github run`.
     required: false
     default: ""
+  minimax-api-key:
+    description: Value exported as MINIMAX_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
+  xiaomi-api-key:
+    description: Value exported as XIAOMI_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
   reasoning-effort:
     description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
     required: false
-    default: "max"
+    default: "high"
   enable-thinking:
     description: Enable thinking mode for the model agent. When true, generates opencode.json with thinking.type=enabled.
     required: false
     default: "true"
+  permission:
+    description: >-
+      JSON object for opencode agent-level permission overrides (merged into opencode.json).
+      See https://opencode.ai/docs/permissions/ for available keys.
+      Example: '{"edit":"deny","bash":{"git commit *":"deny"}}'
+    required: false
+    default: ""
+  cleanup-error-comments:
+    description: >-
+      When true, automatically delete error comments posted by opencode to the PR
+      after a failed run. Error comments are identified by matching the GITHUB_RUN_ID
+      in the "[github run]" link combined with error indicators (fatal:, remote:, 403, etc.).
+    required: false
+    default: "true"
+  language:
+    description: >-
+      Response language for the agent. `zh` (default) for Chinese, `en` for English.
+      Appends a language override instruction to the prompt.
+    required: false
+    default: "zh"
+  extra-env:
+    description: >-
+      Extra environment variables to pass to opencode runtime.
+      Multi-line KEY=VALUE pairs, one per line. Empty lines and lines
+      starting with '#' are ignored.
+    required: false
+    default: ""
+  extra-env-allow-sensitive:
+    description: >-
+      When false (default), extra-env entries that override sensitive runtime
+      variables (API keys, MODEL, PROMPT, etc.) are blocked with an error.
+      Set to true to allow such overrides (with a warning).
+      Note: entries using the reserved GITHUB_RUN_OPENCODE_ prefix are always
+      blocked regardless of this setting.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -205,8 +252,15 @@ runs:
         GITHUB_RUN_OPENCODE_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
         GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        GITHUB_RUN_OPENCODE_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
+        GITHUB_RUN_OPENCODE_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        GITHUB_RUN_OPENCODE_PERMISSION: ${{ inputs.permission }}
+        GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
+        GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+        GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

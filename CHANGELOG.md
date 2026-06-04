@@ -2,6 +2,158 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [Unreleased]
+
+### Fixed
+- fix: review action no longer fails when opencode's internal session-share `git push` is denied (e.g. `contents: read`). Detects the 403 push pattern and exits 0, since the review comment was already posted via API. (#129)
+
+## [3.4.0] - 2026-06-04
+
+### Added
+- feat: add extra-env sensitive key guard to multi-review + regression tests (#177)
+- feat: CI dist consistency check, split blocked key logs, more edge-case tests (#182)
+- feat: add language support to architect-review and multi-review (#170)
+- feat: add bilingual (zh/en) language support to all actions (#170)
+
+### Changed
+- refactor: TS reads hash-avoid prompts from file at runtime (#184)
+- refactor: single-source hash-avoid prompts + official npm registry (#181)
+- refactor: improve hash regex, parseExtraEnv API, test assertions (#180)
+- refactor: address review suggestions from PR #178 (#179)
+- fix: address review issues — dead code, dedup, extra-env, set_env, split README (#170)
+- fix: address remaining review feedback on PR #184 — single-source-of-truth, sanitized errors, new TS unit tests (#186)
+- docs: recommend DeepSeek for multi-review (#169)
+
+### Fixed
+- fix: review polish — test naming, ExtraEnvResult, regex safety, CI filter (#183)
+- fix: address review feedback from PR #176 (#178)
+- fix: address review feedback for hash-reference escaping (#176)
+- fix: prevent #N auto-reference conversion in GitHub comments (#175)
+- fix: complete SENSITIVE_ENV_KEYS to cover all runtime env vars (#172)
+- fix: complete SENSITIVE_ENV_KEYS set to cover all runtime API keys (#171)
+- fix(multi-review): widen opencode server-start timeout to 30s (env configurable) (#185)
+
+## [3.3.1] - 2026-06-03
+
+### Fixed
+- fix: add DO NOT use bash to all reviewer prompts (#168)
+
+## [3.3.0] - 2026-06-03
+
+### Added
+- feat: add XIAOMI_API_KEY support across all actions (#165)
+- docs: add recommended models section to setup-ci skill (#163)
+
+## [3.2.0] - 2026-06-02
+
+### Added
+- feat: add MINIMAX_API_KEY support across all actions (#155)
+
+## [3.1.1] - 2026-05-30
+
+### Changed
+- refactor(multi-review): improve platform.ts code quality (#148)
+
+### Fixed
+- fix(multi-review): address PR #148 review feedback (#149)
+- fix(multi-review): add REST API fallback for comment posting on self-hosted runners (#147)
+
+## [3.1.0] - 2026-05-30
+
+### Added
+- feat(multi-review): deny bash and edit in SDK config
+- feat: fully deny bash in review actions for security
+
+### Changed
+- chore: remove useless smoke-test workflow (#139)
+
+### Fixed
+- fix(multi-review): fallback to GitHub REST API when gh CLI unavailable (#137)
+- fix: use OPENCODE_CONFIG_CONTENT env var instead of writing opencode.json
+
+## [3.0.1] - 2026-05-30
+
+### Added
+- feat(multi-review): add reasoning-effort and enable-thinking inputs (#127)
+
+### Changed
+- docs: add v3.0.0 release notes (#128)
+- docs(setup-ci): add multi-review action and bump to v3
+- chore: remove redundant setup-ci.skill zip
+- chore: add new spec
+
+### Fixed
+- fix: align examples to @v3 and tighten feature-missing permissions
+- fix: use sun-praise owner and local action refs
+- refactor: address review follow-up from PR #119
+- ci: bump feature-missing workflow to v3
+
+## [3.0.0] - 2026-05-27
+
+### Added
+- feat(architect-review): add architecture-level PR review action (#64)
+- feat(multi-review): add multi-agent parallel code review action (#81)
+- feat(multi-review): add collapsible reviewer details to coordinator comment
+- feat(multi-review): add global session cleanup as safety net (#115)
+- feat: add Gitea CI compatibility via platform abstraction layer (#119)
+- feat: rewrite multi-review using OpenCode SDK (#103)
+
+### Changed
+- refactor(multi-review): replace hand-written YAML parser with js-yaml (#111)
+- chore: change default thinking-intensity from max to high (#121)
+- docs: add multi-review to README (#109)
+- docs(setup-ci): add architect-review and multi-review to skill (#91)
+- docs(skills): add missing `permission` input and fix comment-command label (#95)
+- chore: remove multi-review action (#101)
+- chore: ignore serena file
+- chore: add opencode spec
+- Update setup-ci skill: add architect-review and multi-review (#88)
+
+### Fixed
+- fix(github-run-opencode): configure git identity before opencode runs
+- fix: surface opencode errors to CI and catch model-not-found in fallback (#100)
+- fix: deny bare git commands in read-only action permission config (#79)
+- fix(multi-review): ensure sessions are cleaned up on error paths (#114)
+- fix(multi-review): fix CI crashes and clean comment output (#86)
+- fix(multi-review): improve comment noise filtering (#87)
+- fix(multi-review): isolate reviewers in git worktrees (#90)
+- fix: remove unused configPath parameter from loadReviewers() (#113)
+- fix: align multi-review README example model provider name with code default (#112)
+- ci: test multi-review workflow (#107)
+- ci: add multi-review workflow (#84)
+
+## [2.2.0] - 2026-05-18
+
+### Added
+- feat: add setup-ci skill for configuring opencode-actions workflows (#70)
+- feat: auto-delete error comments posted by opencode to PRs after failed runs (#77)
+
+### Changed
+- fix: enforce read-only mode via opencode permission config (#72)
+- docs: add npx skills add command to README (#71)
+- chore: add os spec
+
+## [2.1.1] - 2026-05-13
+
+### Fixed
+- fix(spec-coverage): explicitly forbid git commit/push in prompt
+
+## [2.1.0] - 2026-05-13
+
+### Added
+- feat: add spec-coverage action for cross-referencing spec tasks against PR implementation
+
+### Fixed
+- fix(spec-coverage): add extra-env input and README documentation
+- fix(spec-coverage): treat missing spec files as CRITICAL gap, not graceful exit
+- fix(spec-coverage): remove contradictory NO_SPEC_FOUND verdict
+- fix(spec-coverage): smart spec-need detection and remove gh CLI dependency
+- fix(spec-coverage): simplify spec-need detection to semantic judgment
+
+### Changed
+- chore: ignore local settings
+
 ## [2.0.5] - 2026-05-07
 
 ### Added

@@ -1,0 +1,33 @@
+name: security
+prompt: |
+  Review this pull request for security concerns (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+
+  Please check:
+  - Input validation and sanitization
+  - Authentication and authorization issues
+  - Injection vulnerabilities (SQL, XSS, command injection)
+  - Sensitive data exposure (secrets, tokens, PII)
+  - Insecure dependencies or APIs
+  - OWASP Top 10 compliance
+
+  DO NOT modify any code, only provide review comments.
+  The first line of your response must be exactly one of:
+  - 安全无虞 / SECURE
+  - 存在风险 / AT RISK
+  - 高危漏洞 / CRITICAL
+
+  Decision rules:
+  - Use "安全无虞" / "SECURE" when no security concerns are found.
+  - Use "存在风险" / "AT RISK" when non-critical security issues are found that should be addressed.
+  - Use "高危漏洞" / "CRITICAL" when critical security vulnerabilities are found that must block merge.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+
+  Output format:
+  - First line: the decision only
+  - Then a short summary of security analysis
+  - Then "阻塞项" / "Blocking Issues" listing security issues that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking security improvements; if none, write "建议项：无" / "Suggestions: None"
+
+  IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。

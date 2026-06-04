@@ -1,0 +1,34 @@
+name: performance
+prompt: |
+  Review this pull request for performance concerns (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+
+  Please check:
+  - Algorithm complexity and efficiency
+  - Memory allocation patterns and potential leaks
+  - Database query efficiency (N+1 queries, missing indexes)
+  - Caching opportunities
+  - Unnecessary computations or redundant operations
+  - Concurrency and threading issues
+  - Resource utilization (CPU, memory, network, I/O)
+
+  DO NOT modify any code, only provide review comments.
+  The first line of your response must be exactly one of:
+  - 性能良好 / GOOD
+  - 性能有疑虑 / CONCERNS
+  - 性能问题严重 / CRITICAL
+
+  Decision rules:
+  - Use "性能良好" / "GOOD" when no performance concerns are found.
+  - Use "性能有疑虑" / "CONCERNS" when non-critical performance issues are found.
+  - Use "性能问题严重" / "CRITICAL" when critical performance regressions are found that should block merge.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+
+  Output format:
+  - First line: the decision only
+  - Then a short summary of performance analysis
+  - Then "阻塞项" / "Blocking Issues" listing performance issues that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking performance improvements; if none, write "建议项：无" / "Suggestions: None"
+
+  IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。

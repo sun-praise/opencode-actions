@@ -2,6 +2,7 @@
 """Unified Python test suite for opencode-actions."""
 
 import http.server
+import json
 import os
 import re
 import shutil
@@ -405,6 +406,91 @@ class TestRunOpencode(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, "expected attempts=0 to fail validation")
 
 
+class TestConfigureOpencodeEnv(unittest.TestCase):
+    """Tests for configure_opencode_env() — OPENCODE_CONFIG_CONTENT instead of file write."""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        # Clear leaks from outer env
+        for key in ["OPENCODE_CONFIG_CONTENT"]:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        for key in ["OPENCODE_CONFIG_CONTENT"]:
+            os.environ.pop(key, None)
+
+    def _run_configure(self, **kwargs) -> subprocess.CompletedProcess:
+        """Run configure_opencode_env via subprocess and capture OPENCODE_CONFIG_CONTENT."""
+        script = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
+        reasoning_effort = kwargs.get("reasoning_effort", "")
+        enable_thinking = kwargs.get("enable_thinking", "false")
+        working_directory = kwargs.get("working_directory", str(self.work_dir))
+        permission_json = kwargs.get("permission", "")
+
+        permission_arg = f"json.loads({permission_json!r})" if permission_json else "None"
+        snippet = (
+            "import sys, importlib.util, json, os; "
+            f"spec = importlib.util.spec_from_file_location('m', '{script}'); "
+            "mod = importlib.util.module_from_spec(spec); "
+            "spec.loader.exec_module(mod); "
+            f"mod.configure_opencode_env({reasoning_effort!r}, {enable_thinking!r}, {working_directory!r}, {permission_arg}); "
+            "print(os.environ.get('OPENCODE_CONFIG_CONTENT', ''))"
+        )
+        env = os.environ.copy()
+        env.pop("OPENCODE_CONFIG_CONTENT", None)
+        return subprocess.run(
+            ["python3", "-c", snippet],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_no_file_written(self):
+        """configure_opencode_env should NOT create opencode.json in working directory."""
+        result = self._run_configure(reasoning_effort="high", enable_thinking="true")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config_file = self.work_dir / "opencode.json"
+        self.assertFalse(config_file.exists(), "opencode.json should not be written to working tree")
+
+    def test_config_content_set(self):
+        """OPENCODE_CONFIG_CONTENT should contain agent build options."""
+        result = self._run_configure(reasoning_effort="high", enable_thinking="true")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+        self.assertIn("agent", config)
+        self.assertIn("build", config["agent"])
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "high")
+        self.assertEqual(config["agent"]["build"]["options"]["thinking"], {"type": "enabled"})
+
+    def test_merges_existing_opencode_json(self):
+        """Should read and merge an existing opencode.json from the working tree."""
+        existing = {"provider": {"anthropic": {"options": {"apiKey": "test"}}}}
+        config_file = self.work_dir / "opencode.json"
+        config_file.write_text(json.dumps(existing))
+
+        result = self._run_configure(reasoning_effort="medium")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+
+        # Existing provider config should be preserved
+        self.assertIn("provider", config)
+        self.assertEqual(config["provider"]["anthropic"]["options"]["apiKey"], "test")
+        # Our settings should be added
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "medium")
+
+    def test_permission_merged(self):
+        """Permission should be deep-merged into agent config."""
+        result = self._run_configure(
+            reasoning_effort="low",
+            permission='{"allow": ["bash(npm test)"]}',
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        config = json.loads(result.stdout.strip())
+        self.assertEqual(config["agent"]["build"]["permission"]["allow"], ["bash(npm test)"])
+        self.assertEqual(config["agent"]["build"]["options"]["reasoningEffort"], "low")
+
+
 class TestGithubRunOpencode(unittest.TestCase):
     """Tests for github-run-opencode/run-github-opencode.py"""
 
@@ -470,15 +556,20 @@ class TestGithubRunOpencode(unittest.TestCase):
             "GITHUB_RUN_OPENCODE_GITHUB_TOKEN",
             "GITHUB_RUN_OPENCODE_ZHIPU_API_KEY",
             "GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY",
+            "GITHUB_RUN_OPENCODE_XIAOMI_API_KEY",
             "GITHUB_RUN_OPENCODE_ATTEMPTS",
             "GITHUB_RUN_OPENCODE_RETRY_PROFILE",
             "GITHUB_RUN_OPENCODE_FALLBACK_MODELS",
             "GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS",
             "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX",
             "GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS",
+            "GITHUB_RUN_OPENCODE_EXTRA_ENV",
+            "GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE",
+            "MY_CUSTOM_VAR",
             "FAKE_OPENCODE_TIMEOUT_MODELS",
             "FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS",
             "FAKE_OPENCODE_ERROR_MODELS",
+            "FAKE_OPENCODE_PUSH_DENIED_MODELS",
             "MODEL_NAME",
         ]:
             os.environ.pop(key, None)
@@ -492,6 +583,7 @@ class TestGithubRunOpencode(unittest.TestCase):
             "FAKE_OPENCODE_TIMEOUT_MODELS",
             "FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS",
             "FAKE_OPENCODE_ERROR_MODELS",
+            "FAKE_OPENCODE_PUSH_DENIED_MODELS",
             "MODEL_NAME",
         ]:
             self.env.pop(key, None)
@@ -502,6 +594,7 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.env["GITHUB_RUN_OPENCODE_GITHUB_TOKEN"] = "gh-token"
         self.env["GITHUB_RUN_OPENCODE_ZHIPU_API_KEY"] = "zhipu-token"
         self.env["GITHUB_RUN_OPENCODE_OPENCODE_GO_API_KEY"] = "go-token"
+        self.env["GITHUB_RUN_OPENCODE_XIAOMI_API_KEY"] = "xiaomi-token"
         self.env["GITHUB_RUN_OPENCODE_ATTEMPTS"] = "1"
         self.env["GITHUB_RUN_OPENCODE_RETRY_PROFILE"] = "github-network"
 
@@ -527,6 +620,7 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN=gh-token", result.stdout)
         self.assertIn("ZHIPU_API_KEY=zhipu-token", result.stdout)
         self.assertIn("OPENCODE_API_KEY=go-token", result.stdout)
+        self.assertIn("XIAOMI_API_KEY=xiaomi-token", result.stdout)
         self.assertIn("TIMEOUT_DURATION=600s", result.stdout)
 
     def test_single_model_timeout_override(self):
@@ -592,6 +686,18 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
 
+    def test_xiaomi_key_filtering_skips_model(self):
+        """Should skip xiaomi-prefixed models when XIAOMI_API_KEY is unavailable."""
+        self.reset_env()
+        self.env.pop("GITHUB_RUN_OPENCODE_XIAOMI_API_KEY", None)
+        self.env.pop("XIAOMI_API_KEY", None)
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="xiaomi-token-plan-cn/mimo-v2-pro",
+            GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
     def test_newline_delimited_fallback_models(self):
         """Should support newline-separated fallback-models."""
         self.reset_env()
@@ -605,12 +711,114 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
 
+    def test_extra_env_blocks_reserved_prefix(self):
+        """extra-env with GITHUB_RUN_OPENCODE_ prefix should be blocked."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="GITHUB_RUN_OPENCODE_FOO=bar",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved prefix", result.stdout)
+
+    def test_extra_env_blocks_sensitive_key(self):
+        """extra-env overriding a sensitive key should be blocked by default."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sensitive runtime variable", result.stdout)
+
+    def test_extra_env_allows_sensitive_with_flag(self):
+        """extra-env overriding a sensitive key should warn when allow-sensitive is true."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+            GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE="true",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("warning", result.stdout.lower())
+
+    def test_extra_env_normal_key_passes(self):
+        """extra-env with a non-sensitive key should work."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MY_CUSTOM_VAR=hello",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertNotIn("sensitive", result.stdout)
+        self.assertNotIn("reserved", result.stdout)
+
+    def test_extra_env_blocks_even_with_allow_sensitive_for_prefix(self):
+        """Reserved prefix should be blocked even when allow-sensitive is true."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="GITHUB_RUN_OPENCODE_FOO=bar",
+            GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE="true",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved prefix", result.stdout)
+
+    def test_extra_env_deduplicates_blocked_keys(self):
+        """Duplicate sensitive keys are listed individually per occurrence."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=a\nMODEL=b",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sensitive key override(s)", result.stderr)
+
+    def test_extra_env_allow_sensitive_normalizes(self):
+        """extra-env-allow-sensitive should accept '1' and 'yes'."""
+        self.reset_env()
+        for val in ("1", "yes"):
+            result = self.run_wrapper(
+                GITHUB_RUN_OPENCODE_EXTRA_ENV="MODEL=custom-model",
+                GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE=val,
+            )
+            self.assertEqual(result.returncode, 0, f"stderr for '{val}': {result.stderr}")
+
     def test_global_timeout_zero_disables_timeout(self):
         """timeout-seconds=0 should disable global timeout."""
         self.reset_env()
         result = self.run_wrapper(GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS="0")
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertNotIn("TIMEOUT_DURATION", result.stdout)
+
+    def test_push_denied_treated_as_success(self):
+        """opencode's session-share 'git push' failing with 403 (contents:read)
+        should NOT fail the job — the review comment was already posted."""
+        self.reset_env()
+        result = self.run_wrapper(
+            FAKE_OPENCODE_PUSH_DENIED_MODELS="wrapper-model",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("Command failed with code 128: git push", result.stdout)
+        self.assertIn("Write access to repository not granted", result.stdout)
+        self.assertIn("session-share 'git push' was denied", result.stderr)
+
+    def test_push_denied_with_fallback_skips_fallback(self):
+        """If primary model hits the push-denied pattern, treat as success and
+        do NOT rotate to the fallback model."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="wrapper-model",
+            GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
+            FAKE_OPENCODE_PUSH_DENIED_MODELS="wrapper-model",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("session-share 'git push' was denied", result.stderr)
+        # The fallback model should not have been run
+        self.assertNotIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
+    def test_unrelated_error_not_treated_as_push_denied(self):
+        """A genuine non-push error must still propagate as a failure."""
+        self.reset_env()
+        result = self.run_wrapper(
+            FAKE_OPENCODE_ERROR_MODELS="wrapper-model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("deadline exceeded", result.stdout)
 
 
 class TestExtractDecision(unittest.TestCase):
@@ -824,6 +1032,292 @@ class TestDogfoodWorkflow(unittest.TestCase):
     def test_wires_zhipu_key(self):
         content = self.workflow_file.read_text()
         self.assertIn("zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}", content)
+
+
+class TestCleanupErrorComments(unittest.TestCase):
+    """Tests for the cleanup_error_comments function."""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp())
+        # Import the module to test its functions directly
+        self.script = REPO_ROOT / "github-run-opencode" / "run-github-opencode.py"
+        self.env = os.environ.copy()
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        for key in [
+            "GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS",
+            "GITHUB_REF",
+            "GITHUB_REPOSITORY",
+            "GITHUB_RUN_ID",
+        ]:
+            os.environ.pop(key, None)
+
+    def _run_cleanup_via_subprocess(self, **extra_env) -> subprocess.CompletedProcess:
+        """Run a small Python snippet that calls cleanup_error_comments()."""
+        env = self.env.copy()
+        env.update(extra_env)
+        snippet = (
+            "import sys, importlib.util; "
+            f"spec = importlib.util.spec_from_file_location('m', '{self.script}'); "
+            "mod = importlib.util.module_from_spec(spec); "
+            "spec.loader.exec_module(mod); "
+            "mod.cleanup_error_comments()"
+        )
+        return subprocess.run(
+            ["python3", "-c", snippet],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_skips_when_disabled(self):
+        """Should return immediately when cleanup-error-comments is false."""
+        result = self._run_cleanup_via_subprocess(
+            GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS="false",
+            GITHUB_REF="refs/pull/123/merge",
+            GITHUB_REPOSITORY="owner/repo",
+            GITHUB_RUN_ID="12345",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("cleanup-error-comments", result.stderr)
+
+    def test_skips_non_pr_context(self):
+        """Should skip when not in a PR context (e.g., refs/heads/main)."""
+        result = self._run_cleanup_via_subprocess(
+            GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS="true",
+            GITHUB_REF="refs/heads/main",
+            GITHUB_REPOSITORY="owner/repo",
+            GITHUB_RUN_ID="12345",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("cleanup-error-comments", result.stderr)
+
+    def test_error_pattern_matching(self):
+        """Test that the error indicators regex matches expected patterns."""
+        import re as re_mod
+
+        # Import the module's pattern by running the same regex
+        error_indicators = re_mod.compile(
+            r"(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)",
+            re_mod.IGNORECASE,
+        )
+
+        # Should match
+        self.assertIsNotNone(error_indicators.search("fatal: unable to access"))
+        self.assertIsNotNone(error_indicators.search("remote: Write access not granted"))
+        self.assertIsNotNone(error_indicators.search("error: 403"))
+        self.assertIsNotNone(error_indicators.search("The requested URL returned error: 403"))
+        self.assertIsNotNone(error_indicators.search("Write access to repository"))
+        self.assertIsNotNone(error_indicators.search("permission denied"))
+
+        # Should NOT match legitimate review comments
+        self.assertIsNone(error_indicators.search("This PR looks good, the code is clean."))
+        self.assertIsNone(error_indicators.search("建议项：无"))
+        self.assertIsNone(error_indicators.search("可合并"))
+
+    def test_pr_number_extraction(self):
+        """Test that refs/pull/N/merge correctly extracts PR number."""
+        import re as re_mod
+
+        cases = [
+            ("refs/pull/123/merge", "123"),
+            ("refs/pull/42/merge", "42"),
+            ("refs/heads/main", None),
+            ("refs/tags/v1.0.0", None),
+        ]
+        for ref, expected in cases:
+            match = re_mod.fullmatch(r"refs/pull/(\d+)/merge", ref)
+            if expected is None:
+                self.assertIsNone(match, f"Expected no match for {ref}")
+            else:
+                self.assertIsNotNone(match, f"Expected match for {ref}")
+                self.assertEqual(match.group(1), expected)
+
+    def test_cleanup_input_exists_in_actions(self):
+        """All actions using the Python script should have cleanup-error-comments input."""
+        for action_dir in ["github-run-opencode", "review", "feature-missing", "spec-coverage"]:
+            action_file = REPO_ROOT / action_dir / "action.yml"
+            content = action_file.read_text()
+            self.assertIn(
+                "cleanup-error-comments:",
+                content,
+                f"{action_dir}/action.yml missing cleanup-error-comments input",
+            )
+            self.assertIn(
+                "GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS",
+                content,
+                f"{action_dir}/action.yml missing CLEANUP_ERROR_COMMENTS env var",
+            )
+
+
+class TestEscapeHashReferencesSmoke(unittest.TestCase):
+    """Smoke tests for the Python mirror of escapeHashReferences.
+
+    Comprehensive coverage lives in multi-review/src/platform.test.ts (TS).
+    This class only verifies the Python re-implementation produces consistent
+    results for a few representative cases.
+    """
+
+    def _run_escape(self, text: str) -> str:
+        import re as re_mod
+
+        HASH_NUM_RE = re_mod.compile(
+            r"(?:^|(?<=[\s(\[{<>)（\"'`:，、：]))(#)(\d{1,6})(?=[\s)\]}>）\"'`,.!?;，。！？、：]|$)",
+            re_mod.MULTILINE,
+        )
+        FENCED_CODE_RE = re_mod.compile(r"```[\s\S]*?```", re_mod.MULTILINE)
+        INLINE_CODE_RE = re_mod.compile(r"`[^`\n]+`")
+        ZWSP = "\u200B"
+
+        def escape_text(t: str) -> str:
+            segments = []
+            last_end = 0
+            for m in FENCED_CODE_RE.finditer(t):
+                pre = t[last_end:m.start()]
+                segments.append(_escape_segment(pre))
+                segments.append(m.group())
+                last_end = m.end()
+            remaining = t[last_end:]
+            segments.append(_escape_segment(remaining))
+            return "".join(segments)
+
+        def _escape_segment(t: str) -> str:
+            parts = []
+            last_end = 0
+            for m in INLINE_CODE_RE.finditer(t):
+                pre = t[last_end:m.start()]
+                parts.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), pre))
+                parts.append(m.group())
+                last_end = m.end()
+            remaining = t[last_end:]
+            parts.append(HASH_NUM_RE.sub(lambda _: _.group(1) + ZWSP + _.group(2), remaining))
+            return "".join(parts)
+
+        return escape_text(text)
+
+    def test_basic_escape(self):
+        self.assertIn("#\u200B2", self._run_escape("see #2 for details"))
+
+    def test_fenced_code_skipped(self):
+        text = "review\n```python\nprint(#1)\n```\nsee #2"
+        result = self._run_escape(text)
+        self.assertIn("print(#1)", result)
+        self.assertIn("#\u200B2", result)
+
+    def test_inline_code_skipped(self):
+        text = "use `#1` to refer, see #2"
+        result = self._run_escape(text)
+        self.assertIn("`#1`", result)
+        self.assertIn("#\u200B2", result)
+
+    def test_inline_code_with_newline_not_matched(self):
+        text = "see `#1\n#2` then #3"
+        result = self._run_escape(text)
+        self.assertIn("#\u200B1", result)
+        self.assertIn("#\u200B2", result)
+        self.assertIn("#\u200B3", result)
+
+    def test_markdown_heading_not_escaped(self):
+        self.assertNotIn("\u200B", self._run_escape("## Heading"))
+
+    def test_after_fullwidth_paren(self):
+        result = self._run_escape("（#123）")
+        self.assertIn("#\u200B123", result)
+
+    def test_after_single_quote(self):
+        result = self._run_escape("see '#42'")
+        self.assertIn("#\u200B42", result)
+
+    def test_after_double_quote(self):
+        result = self._run_escape('ref "#99"')
+        self.assertIn("#\u200B99", result)
+
+    def test_after_angle_bracket(self):
+        result = self._run_escape("<#7>")
+        self.assertIn("#\u200B7", result)
+
+    def test_comma_separated(self):
+        result = self._run_escape("(#1, #2)")
+        self.assertIn("#\u200B1", result)
+        self.assertIn("#\u200B2", result)
+
+    def test_no_match_adjacent_letter(self):
+        result = self._run_escape("see #1abc")
+        self.assertNotIn("\u200B", result)
+
+    def test_match_html_attribute(self):
+        result = self._run_escape('<a href="#1">link</a>')
+        self.assertIn("#\u200B1", result)
+
+    def test_match_markdown_link(self):
+        result = self._run_escape("[text](#1)")
+        self.assertIn("#\u200B1", result)
+
+    def test_empty_string(self):
+        result = self._run_escape("")
+        self.assertEqual(result, "")
+
+    def test_no_hash_numbers(self):
+        result = self._run_escape("no references here")
+        self.assertEqual(result, "no references here")
+
+
+class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
+    """Verify that the hash-avoidance instruction has a single source of truth
+    (`shared/prompts/`) and is consumed consistently by every runtime.
+
+    - TS loads from `actionPath/../shared/prompts/` (multi-review/src/reviewers.ts).
+    - Python loads from `script_dir.parent/shared/prompts/` (run-github-opencode.py).
+    - No inline fallback strings are allowed in source code; missing files
+      must surface as a hard failure (fail-loud), not silent drift.
+    """
+
+    @staticmethod
+    def _shared(name: str) -> str:
+        return (REPO_ROOT / "shared" / "prompts" / name).read_text().strip("\n")
+
+    def test_shared_zh_exists(self):
+        text = self._shared("hash-avoid-zh.txt")
+        self.assertIn("请勿使用 #N 格式", text)
+
+    def test_shared_en_exists(self):
+        text = self._shared("hash-avoid-en.txt")
+        self.assertIn("Never use #N format", text)
+
+    def test_no_multi_review_prompts_directory(self):
+        """The legacy per-action copy (multi-review/prompts/) was eliminated
+        when TS started reading from shared/prompts/ directly. If this
+        directory reappears it almost certainly means someone reintroduced
+        the double-copy / drift problem."""
+        legacy = REPO_ROOT / "multi-review" / "prompts"
+        self.assertFalse(
+            legacy.exists(),
+            f"{legacy} must not exist; TS reads from shared/prompts/ instead",
+        )
+
+    def test_no_inline_hash_avoid_in_ts_source(self):
+        """The reviewer prompt must not carry an inline copy of the
+        hash-avoid text. The bundle is loaded at runtime from shared/prompts/."""
+        reviewers = (REPO_ROOT / "multi-review" / "src" / "reviewers.ts").read_text()
+        self.assertNotIn("Never use #N format", reviewers)
+        self.assertNotIn("请勿使用 #N 格式", reviewers)
+
+    def test_no_inline_hash_avoid_in_python_source(self):
+        """The Python script must not carry an inline fallback for the
+        hash-avoid text. A missing file is a hard error, not a silent
+        drift back to a hardcoded copy."""
+        script = (REPO_ROOT / "github-run-opencode" / "run-github-opencode.py").read_text()
+        self.assertNotIn("Never use #N format", script)
+        self.assertNotIn("请勿使用 #N 格式", script)
+
+    def test_python_script_uses_shared_prompts_dir(self):
+        """The Python script's path expression for hash-avoid prompts must
+        resolve to shared/prompts/ — the same location TS reads from."""
+        script = (REPO_ROOT / "github-run-opencode" / "run-github-opencode.py").read_text()
+        self.assertIn('shared" / "prompts"', script.replace("'", '"'))
+        # The old "inline fallback" branch must be gone.
+        self.assertNotIn("using inline fallback", script)
 
 
 if __name__ == "__main__":

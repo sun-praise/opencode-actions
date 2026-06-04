@@ -9,6 +9,63 @@ permissions:
   contents: read
 
 jobs:
+  dist-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: multi-review
+
+      - name: Rebuild dist
+        run: npm run build
+        working-directory: multi-review
+
+      - name: Verify dist is up to date
+        run: |
+          if ! git diff --quiet -- multi-review/dist/; then
+            echo "::error::multi-review/dist/ is out of date. Run 'npm run build' in multi-review/ and commit the result."
+            git diff -- multi-review/dist/
+            exit 1
+          fi
+
+      - name: Verify shared/prompts/ is the sole hash-avoid source
+        run: |
+          # multi-review/prompts/ was removed when TS started reading from
+          # shared/prompts/ directly. Guard against re-introduction, which
+          # would silently re-create the double-copy drift problem.
+          if [[ -d multi-review/prompts ]]; then
+            echo "::error::multi-review/prompts/ must not exist; TS loads from shared/prompts/ (the single source of truth)."
+            exit 1
+          fi
+          for f in hash-avoid-zh.txt hash-avoid-en.txt; do
+            if [[ ! -f "shared/prompts/$f" ]]; then
+              echo "::error::shared/prompts/$f is missing"
+              exit 1
+            fi
+          done
+          # The two files refactored to load the hash-avoid text at runtime
+          # (multi-review/src/reviewers.ts, github-run-opencode/run-github-opencode.py)
+          # must NOT carry an inline copy. Other locations
+          # (action.yml of other actions, reviewer YAMLs, orchestrator prompt)
+          # legitimately embed their own text because they don't have a
+          # runtime loader — they are out of scope for this SSOT enforcement.
+          offenders=$(git grep -nE 'Never use #N format|请勿使用 #N 格式' \
+            -- 'multi-review/src/reviewers.ts' \
+               'github-run-opencode/run-github-opencode.py' || true)
+          if [[ -n "$offenders" ]]; then
+            echo "::error::hash-avoid text is inlined in a file that should load it at runtime:"
+            echo "$offenders"
+            exit 1
+          fi
+
   smoke-actions:
     runs-on: ubuntu-latest
     env:
@@ -58,6 +115,26 @@ jobs:
           cache: false
           install-attempts: 1
           attempts: 1
+          github-token: smoke-gh-token
+          zhipu-api-key: smoke-zhipu-token
+
+      - name: Run architect-review convenience action
+        uses: ./architect-review
+        with:
+          install-url: http://127.0.0.1:8765/fake-installer.sh
+          cache: false
+          install-attempts: 1
+          attempts: 1
+          github-token: smoke-gh-token
+          zhipu-api-key: smoke-zhipu-token
+
+      - name: Run multi-review convenience action
+        uses: ./multi-review
+        continue-on-error: true
+        with:
+          install-url: http://127.0.0.1:8765/fake-installer.sh
+          cache: false
+          install-attempts: 1
           github-token: smoke-gh-token
           zhipu-api-key: smoke-zhipu-token
 
