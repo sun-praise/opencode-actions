@@ -32,25 +32,30 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
 }
 
 // Hash-number avoidance instruction appended to all reviewer prompts.
-// Content is loaded from prompts/ at runtime.
+// Loaded from shared/prompts/ at runtime (the single source of truth shared
+// with github-run-opencode via the action checkout layout: actionPath/../shared/prompts/).
 const HASH_AVOID_FILE = { zh: "hash-avoid-zh.txt", en: "hash-avoid-en.txt" };
 
-function loadHashAvoid(actionPath: string): { zh: string; en: string } {
-  const dir = join(actionPath, "prompts");
+type HashAvoidBundle = { zh: string; en: string };
+
+function loadHashAvoid(actionPath: string): HashAvoidBundle {
+  if (!actionPath) {
+    throw new Error("loadHashAvoid: actionPath is empty (GITHUB_ACTION_PATH is unset)");
+  }
+  const dir = join(actionPath, "..", "shared", "prompts");
   try {
     const zh = readFileSync(join(dir, HASH_AVOID_FILE.zh), "utf-8").trim();
     const en = readFileSync(join(dir, HASH_AVOID_FILE.en), "utf-8").trim();
     return { zh: "\n" + zh, en: "\n" + en };
   } catch (e) {
+    console.error(`loadHashAvoid: failed to read hash-avoid prompts (see debug log for path)`);
     throw new Error(
-      `Failed to load hash-avoid prompts from ${dir}/. ` +
-      `Ensure the 'prompts' directory is included in the action release. ` +
-      `Original error: ${e instanceof Error ? e.message : e}`,
+      `hash-avoid prompt files missing; ensure shared/prompts/ is bundled with the action`,
     );
   }
 }
 
-function buildLangInstruction(language: string, hashAvoid: { zh: string; en: string }): string {
+function buildLangInstruction(language: string, hashAvoid: HashAvoidBundle): string {
   if (language === "en") {
     return (
       "\n\nIMPORTANT: Respond entirely in English. " +
