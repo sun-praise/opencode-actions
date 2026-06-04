@@ -5509,7 +5509,11 @@ async function main() {
   console.log(`Model: ${providerID}/${modelID}`);
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
-  const { client: client2, server } = await createOpencode({ config: sdkConfig });
+  const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
+  const { client: client2, server } = await createOpencode({
+    config: sdkConfig,
+    timeout: serverTimeoutMs
+  });
   console.log("Server ready");
   const shutdown = (signal) => {
     console.log(`Received ${signal}, cleaning up sessions...`);
