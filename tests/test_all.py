@@ -1047,6 +1047,13 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
         self.assertIn("`#1`", result)
         self.assertIn("#\u200B2", result)
 
+    def test_inline_code_with_newline_not_matched(self):
+        text = "see `#1\n#2` then #3"
+        result = self._run_escape(text)
+        self.assertIn("#\u200B1", result)
+        self.assertIn("#\u200B2", result)
+        self.assertIn("#\u200B3", result)
+
     def test_markdown_heading_not_escaped(self):
         self.assertNotIn("\u200B", self._run_escape("## Heading"))
 
@@ -1075,11 +1082,11 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
         result = self._run_escape("see #1abc")
         self.assertNotIn("\u200B", result)
 
-    def test_no_match_html_attribute(self):
+    def test_match_html_attribute(self):
         result = self._run_escape('<a href="#1">link</a>')
         self.assertIn("#\u200B1", result)
 
-    def test_no_match_markdown_link(self):
+    def test_match_markdown_link(self):
         result = self._run_escape("[text](#1)")
         self.assertIn("#\u200B1", result)
 
