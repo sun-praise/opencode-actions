@@ -136,7 +136,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `minimax-api-key` | empty | MiniMax API key (not compatible with multi-review due to concurrency limits) |
 | `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
-| `openrouter-api-key` | empty | OpenRouter API key |
+| `openrouter-api-key` | empty | OpenRouter API key (recommended for multi-review) |
 | `stepfun-api-key` | empty | StepFun API key |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `extra-env-allow-sensitive` | `false` | When `false`, blocks `extra-env` entries that override sensitive runtime variables; set `true` to allow with warning. The `MULTI_REVIEW_` prefix is always blocked regardless of this setting |

@@ -43,7 +43,7 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `minimax-api-key` | empty | MiniMax API key (not compatible with multi-review due to concurrency limits) |
 | `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
-| `openrouter-api-key` | empty | OpenRouter API key |
+| `openrouter-api-key` | empty | OpenRouter API key (recommended for multi-review) |
 | `stepfun-api-key` | empty | StepFun API key |
 | `language` | `zh` | Response language: `zh` or `en` |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |

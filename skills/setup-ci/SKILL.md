@@ -76,8 +76,6 @@ jobs:
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## Multi-Review Setup
@@ -154,8 +152,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
@@ -194,8 +190,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
@@ -220,8 +214,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
@@ -246,8 +238,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
@@ -333,8 +323,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
