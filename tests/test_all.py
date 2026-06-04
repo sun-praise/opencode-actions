@@ -1100,31 +1100,60 @@ class TestEscapeHashReferencesSmoke(unittest.TestCase):
 
 
 class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
-    """Verify that hash-avoidance instructions across TS, Python, and
-    shared/prompts/ are all consistent.
+    """Verify that the hash-avoidance instruction has a single source of truth
+    (`shared/prompts/`) and is consumed consistently by every runtime.
 
-    - shared/prompts/ is the single source of truth.
-    - TS loads from multi-review/prompts/ at runtime (copy of shared/prompts/).
-    - Python loads from shared/prompts/ at runtime (with inline fallback).
+    - TS loads from `actionPath/../shared/prompts/` (multi-review/src/reviewers.ts).
+    - Python loads from `script_dir.parent/shared/prompts/` (run-github-opencode.py).
+    - No inline fallback strings are allowed in source code; missing files
+      must surface as a hard failure (fail-loud), not silent drift.
     """
 
     @staticmethod
-    def _read_shared(name: str) -> str:
+    def _shared(name: str) -> str:
         return (REPO_ROOT / "shared" / "prompts" / name).read_text().strip("\n")
 
-    @staticmethod
-    def _read_ts_runtime(name: str) -> str:
-        return (REPO_ROOT / "multi-review" / "prompts" / name).read_text().strip("\n")
+    def test_shared_zh_exists(self):
+        text = self._shared("hash-avoid-zh.txt")
+        self.assertIn("请勿使用 #N 格式", text)
 
-    def test_zh_matches_shared_file(self):
-        shared = self._read_shared("hash-avoid-zh.txt")
-        ts_zh = self._read_ts_runtime("hash-avoid-zh.txt")
-        self.assertEqual(ts_zh, shared, "multi-review/prompts/ ZH differs from shared/prompts/")
+    def test_shared_en_exists(self):
+        text = self._shared("hash-avoid-en.txt")
+        self.assertIn("Never use #N format", text)
 
-    def test_en_matches_shared_file(self):
-        shared = self._read_shared("hash-avoid-en.txt")
-        ts_en = self._read_ts_runtime("hash-avoid-en.txt")
-        self.assertEqual(ts_en, shared, "multi-review/prompts/ EN differs from shared/prompts/")
+    def test_no_multi_review_prompts_directory(self):
+        """The legacy per-action copy (multi-review/prompts/) was eliminated
+        when TS started reading from shared/prompts/ directly. If this
+        directory reappears it almost certainly means someone reintroduced
+        the double-copy / drift problem."""
+        legacy = REPO_ROOT / "multi-review" / "prompts"
+        self.assertFalse(
+            legacy.exists(),
+            f"{legacy} must not exist; TS reads from shared/prompts/ instead",
+        )
+
+    def test_no_inline_hash_avoid_in_ts_source(self):
+        """The reviewer prompt must not carry an inline copy of the
+        hash-avoid text. The bundle is loaded at runtime from shared/prompts/."""
+        reviewers = (REPO_ROOT / "multi-review" / "src" / "reviewers.ts").read_text()
+        self.assertNotIn("Never use #N format", reviewers)
+        self.assertNotIn("请勿使用 #N 格式", reviewers)
+
+    def test_no_inline_hash_avoid_in_python_source(self):
+        """The Python script must not carry an inline fallback for the
+        hash-avoid text. A missing file is a hard error, not a silent
+        drift back to a hardcoded copy."""
+        script = (REPO_ROOT / "github-run-opencode" / "run-github-opencode.py").read_text()
+        self.assertNotIn("Never use #N format", script)
+        self.assertNotIn("请勿使用 #N 格式", script)
+
+    def test_python_script_uses_shared_prompts_dir(self):
+        """The Python script's path expression for hash-avoid prompts must
+        resolve to shared/prompts/ — the same location TS reads from."""
+        script = (REPO_ROOT / "github-run-opencode" / "run-github-opencode.py").read_text()
+        self.assertIn('shared" / "prompts"', script.replace("'", '"'))
+        # The old "inline fallback" branch must be gone.
+        self.assertNotIn("using inline fallback", script)
 
 
 if __name__ == "__main__":

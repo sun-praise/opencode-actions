@@ -4673,14 +4673,18 @@ function loadBuiltInReviewers(reviewersDir) {
 }
 var HASH_AVOID_FILE = { zh: "hash-avoid-zh.txt", en: "hash-avoid-en.txt" };
 function loadHashAvoid(actionPath) {
-  const dir = (0, import_node_path.join)(actionPath, "prompts");
+  if (!actionPath) {
+    throw new Error("loadHashAvoid: actionPath is empty (GITHUB_ACTION_PATH is unset)");
+  }
+  const dir = (0, import_node_path.join)(actionPath, "..", "shared", "prompts");
   try {
     const zh = (0, import_node_fs.readFileSync)((0, import_node_path.join)(dir, HASH_AVOID_FILE.zh), "utf-8").trim();
     const en = (0, import_node_fs.readFileSync)((0, import_node_path.join)(dir, HASH_AVOID_FILE.en), "utf-8").trim();
     return { zh: "\n" + zh, en: "\n" + en };
   } catch (e) {
+    console.error(`loadHashAvoid: failed to read hash-avoid prompts (see debug log for path)`);
     throw new Error(
-      `Failed to load hash-avoid prompts from ${dir}/. Ensure the 'prompts' directory is included in the action release. Original error: ${e instanceof Error ? e.message : e}`
+      `hash-avoid prompt files missing; ensure shared/prompts/ is bundled with the action`
     );
   }
 }
@@ -5509,7 +5513,11 @@ async function main() {
   console.log(`Model: ${providerID}/${modelID}`);
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
-  const { client: client2, server } = await createOpencode({ config: sdkConfig });
+  const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
+  const { client: client2, server } = await createOpencode({
+    config: sdkConfig,
+    timeout: serverTimeoutMs
+  });
   console.log("Server ready");
   const shutdown = (signal) => {
     console.log(`Received ${signal}, cleaning up sessions...`);

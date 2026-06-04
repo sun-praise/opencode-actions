@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - refactor: improve hash regex, parseExtraEnv API, test assertions (#180)
 - refactor: address review suggestions from PR #178 (#179)
 - fix: address review issues — dead code, dedup, extra-env, set_env, split README (#170)
+- fix: address remaining review feedback on PR #184 — single-source-of-truth, sanitized errors, new TS unit tests (#186)
 - docs: recommend DeepSeek for multi-review (#169)
 
 ### Fixed
@@ -26,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - fix: prevent #N auto-reference conversion in GitHub comments (#175)
 - fix: complete SENSITIVE_ENV_KEYS to cover all runtime env vars (#172)
 - fix: complete SENSITIVE_ENV_KEYS set to cover all runtime API keys (#171)
+- fix(multi-review): widen opencode server-start timeout to 30s (env configurable) (#185)
 
 ## [3.3.1] - 2026-06-03
 

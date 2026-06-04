@@ -455,23 +455,13 @@ def _main() -> int:
     # language instructions since there is nothing to respond to.
     language = get_env("GITHUB_RUN_OPENCODE_LANGUAGE", "zh").strip().lower()
     existing_prompt = get_env("PROMPT", "")
-    # Hash-number avoidance — loaded from shared prompt files.
+    # Hash-number avoidance — loaded from shared prompt files (the single
+    # source of truth shared with multi-review). Fail loud if missing so a
+    # broken action layout is surfaced immediately instead of silently
+    # diverging from the canonical text.
     _prompts_dir = script_dir.parent / "shared" / "prompts"
-    try:
-        hash_avoid_zh = "\n" + (_prompts_dir / "hash-avoid-zh.txt").read_text().strip()
-        hash_avoid_en = "\n" + (_prompts_dir / "hash-avoid-en.txt").read_text().strip()
-    except FileNotFoundError:
-        print(f"::warning::Hash-avoid prompt files not found in {_prompts_dir}, using inline fallback")
-        hash_avoid_zh = (
-            "\n请勿使用 #N 格式（如 #1、#2）编号，"
-            "GitHub 会自动将其转换为 issue/PR 引用。"
-            "请使用 1. 2. 3. 或 - 的列表格式。"
-        )
-        hash_avoid_en = (
-            "\nNever use #N format (e.g. #1, #2) to number items — "
-            "GitHub auto-converts #N to issue/PR references. "
-            "Use 1. 2. 3. or - list format instead."
-        )
+    hash_avoid_zh = "\n" + (_prompts_dir / "hash-avoid-zh.txt").read_text().strip()
+    hash_avoid_en = "\n" + (_prompts_dir / "hash-avoid-en.txt").read_text().strip()
     zh_instruction = (
         "\n\n请使用中文回复。所有分析和说明均使用中文。"
         "对于 prompt 中列出的判定关键词，使用其中文版本。"
