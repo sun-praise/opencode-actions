@@ -1,5 +1,8 @@
 name: OpenCode Feature Missing
 description: Compares PR implementation against the linked issue spec to find missing or incomplete features before merge.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:

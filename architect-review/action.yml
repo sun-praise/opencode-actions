@@ -1,5 +1,8 @@
 name: OpenCode Architect Review
 description: Architecture-level review of PR changes focusing on coupling, layering, and structural concerns.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:

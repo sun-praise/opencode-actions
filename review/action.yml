@@ -1,5 +1,8 @@
 name: OpenCode Review
 description: Opinionated review wrapper with built-in defaults for `opencode github run`.
+branding:
+  icon: 'code'
+  color: 'orange'
 
 inputs:
   install-url:
