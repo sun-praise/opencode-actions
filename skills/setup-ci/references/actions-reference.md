@@ -277,7 +277,7 @@ Outputs:
 ## Secrets 配置
 
 在仓库 Settings → Secrets and variables → Actions 中添加：
-- 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 、`XIAOMI_API_KEY`、`OPENROUTER_API_KEY` 或 `STEPFUN_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY` 或 `OPENROUTER_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
+- 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 、`XIAOMI_API_KEY`、`OPENROUTER_API_KEY` 或 `STEPFUN_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
 - `GITHUB_TOKEN` 自动提供，无需手动配置
 
 ## Model Constraints

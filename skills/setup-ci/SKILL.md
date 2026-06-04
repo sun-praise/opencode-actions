@@ -38,7 +38,7 @@ Users typically combine `review` + `multi-review` + `feature-missing` for full c
 | `opencode-go/deepseek-v4-flash` | OpenCode Go | `OPENCODE_GO_API_KEY` | Proxy service, uses DeepSeek under the hood |
 | `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
 | `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
-| `openrouter/deepseek/deepseek-v4-flash` | OpenRouter | `OPENROUTER_API_KEY` | Access multiple providers through OpenRouter; recommended for multi-review |
+| `openrouter/deepseek/deepseek-v4-flash` | OpenRouter | `OPENROUTER_API_KEY` | Access multiple providers through OpenRouter |
 | `stepfun/step-1r-flash` | StepFun | `STEPFUN_API_KEY` | StepFun Step reasoning model |
 
 Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
