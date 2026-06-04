@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### Fixed
+- fix: review action no longer fails when opencode's internal session-share `git push` is denied (e.g. `contents: read`). Detects the 403 push pattern and exits 0, since the review comment was already posted via API. (#129)
+
 ## [3.4.0] - 2026-06-04
 
 ### Added

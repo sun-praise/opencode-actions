@@ -569,6 +569,7 @@ class TestGithubRunOpencode(unittest.TestCase):
             "FAKE_OPENCODE_TIMEOUT_MODELS",
             "FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS",
             "FAKE_OPENCODE_ERROR_MODELS",
+            "FAKE_OPENCODE_PUSH_DENIED_MODELS",
             "MODEL_NAME",
         ]:
             os.environ.pop(key, None)
@@ -582,6 +583,7 @@ class TestGithubRunOpencode(unittest.TestCase):
             "FAKE_OPENCODE_TIMEOUT_MODELS",
             "FAKE_OPENCODE_TIMEOUT_SLEEP_SECONDS",
             "FAKE_OPENCODE_ERROR_MODELS",
+            "FAKE_OPENCODE_PUSH_DENIED_MODELS",
             "MODEL_NAME",
         ]:
             self.env.pop(key, None)
@@ -782,6 +784,41 @@ class TestGithubRunOpencode(unittest.TestCase):
         result = self.run_wrapper(GITHUB_RUN_OPENCODE_TIMEOUT_SECONDS="0")
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertNotIn("TIMEOUT_DURATION", result.stdout)
+
+    def test_push_denied_treated_as_success(self):
+        """opencode's session-share 'git push' failing with 403 (contents:read)
+        should NOT fail the job — the review comment was already posted."""
+        self.reset_env()
+        result = self.run_wrapper(
+            FAKE_OPENCODE_PUSH_DENIED_MODELS="wrapper-model",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("Command failed with code 128: git push", result.stdout)
+        self.assertIn("Write access to repository not granted", result.stdout)
+        self.assertIn("session-share 'git push' was denied", result.stderr)
+
+    def test_push_denied_with_fallback_skips_fallback(self):
+        """If primary model hits the push-denied pattern, treat as success and
+        do NOT rotate to the fallback model."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="wrapper-model",
+            GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
+            FAKE_OPENCODE_PUSH_DENIED_MODELS="wrapper-model",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("session-share 'git push' was denied", result.stderr)
+        # The fallback model should not have been run
+        self.assertNotIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
+    def test_unrelated_error_not_treated_as_push_denied(self):
+        """A genuine non-push error must still propagate as a failure."""
+        self.reset_env()
+        result = self.run_wrapper(
+            FAKE_OPENCODE_ERROR_MODELS="wrapper-model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("deadline exceeded", result.stdout)
 
 
 class TestReviewAction(unittest.TestCase):
