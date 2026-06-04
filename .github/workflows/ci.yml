@@ -51,10 +51,18 @@ jobs:
               exit 1
             fi
           done
-          # No source file (other than shared/prompts/) should inline the
-          # hash-avoid text — both TS and Python load it at runtime.
-          if git grep -nE 'Never use #N format|请勿使用 #N 格式' -- ':!shared/prompts/'; then
-            echo "::error::hash-avoid text is inlined outside shared/prompts/; load it at runtime instead."
+          # The two files refactored to load the hash-avoid text at runtime
+          # (multi-review/src/reviewers.ts, github-run-opencode/run-github-opencode.py)
+          # must NOT carry an inline copy. Other locations
+          # (action.yml of other actions, reviewer YAMLs, orchestrator prompt)
+          # legitimately embed their own text because they don't have a
+          # runtime loader — they are out of scope for this SSOT enforcement.
+          offenders=$(git grep -nE 'Never use #N format|请勿使用 #N 格式' \
+            -- 'multi-review/src/reviewers.ts' \
+               'github-run-opencode/run-github-opencode.py' || true)
+          if [[ -n "$offenders" ]]; then
+            echo "::error::hash-avoid text is inlined in a file that should load it at runtime:"
+            echo "$offenders"
             exit 1
           fi
 
