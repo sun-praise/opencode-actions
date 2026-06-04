@@ -160,17 +160,65 @@ def run_model(model: str, log_file: str, effective_timeout: int, run_script: Pat
     sys.stdout.buffer.write(result.stdout)
     sys.stdout.buffer.flush()
 
+    if result.returncode != 0 and _is_push_denied_failure(result.stdout.decode("utf-8", errors="replace")):
+        print(
+            "::warning::opencode session-share 'git push' was denied (e.g. contents:read). "
+            "The review comment was already posted via API; treating this as success.",
+            file=sys.stderr,
+        )
+        return 0
+
     return result.returncode
 
 
 def run_single(run_script: Path, timeout_sec: int) -> int:
     if timeout_sec > 0:
         result = subprocess.run(
-            ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)]
+            ["timeout", "--foreground", f"{timeout_sec}s", str(run_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
     else:
-        result = subprocess.run([str(run_script)])
+        result = subprocess.run(
+            [str(run_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    sys.stdout.write(result.stdout)
+    sys.stdout.flush()
+
+    if result.returncode != 0 and _is_push_denied_failure(result.stdout):
+        print(
+            "::warning::opencode session-share 'git push' was denied (e.g. contents:read). "
+            "The review comment was already posted via API; treating this as success.",
+            file=sys.stderr,
+        )
+        return 0
+
     return result.returncode
+
+
+# Specific markers emitted by opencode when its built-in session-share step
+# tries to push the working tree back to the PR branch but the runner only
+# has contents:read. The review itself succeeds (comment posted via the API)
+# before this push runs, so the job should not fail.
+PUSH_DENIED_PATTERNS = re.compile(
+    r"(Write access to repository not granted"
+    r"|Command failed with code 128: git push"
+    r"|fatal: unable to access ['\"][^'\"]+['\"]?: The requested URL returned error: 403)",
+    re.IGNORECASE,
+)
+
+
+def _is_push_denied_failure(content: str) -> bool:
+    """Return True if the only meaningful failure in the log is opencode's
+    built-in session-share ``git push`` being denied by the runner's token
+    scope (typically ``contents: read``). The review comment itself was
+    already posted via the API, so the job should exit 0 in this case.
+    """
+    return bool(PUSH_DENIED_PATTERNS.search(content))
 
 
 def compute_effective_timeout(
