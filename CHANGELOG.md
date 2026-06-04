@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 
 
+## [3.4.0] - 2026-06-04
+
+### Added
+- feat: add extra-env sensitive key guard to multi-review + regression tests (#177)
+- feat: CI dist consistency check, split blocked key logs, more edge-case tests (#182)
+- feat: add language support to architect-review and multi-review (#170)
+- feat: add bilingual (zh/en) language support to all actions (#170)
+
+### Changed
+- refactor: TS reads hash-avoid prompts from file at runtime (#184)
+- refactor: single-source hash-avoid prompts + official npm registry (#181)
+- refactor: improve hash regex, parseExtraEnv API, test assertions (#180)
+- refactor: address review suggestions from PR #178 (#179)
+- fix: address review issues — dead code, dedup, extra-env, set_env, split README (#170)
+- fix: address remaining review feedback on PR #184 — single-source-of-truth, sanitized errors, new TS unit tests (#186)
+- docs: recommend DeepSeek for multi-review (#169)
+
+### Fixed
+- fix: review polish — test naming, ExtraEnvResult, regex safety, CI filter (#183)
+- fix: address review feedback from PR #176 (#178)
+- fix: address review feedback for hash-reference escaping (#176)
+- fix: prevent #N auto-reference conversion in GitHub comments (#175)
+- fix: complete SENSITIVE_ENV_KEYS to cover all runtime env vars (#172)
+- fix: complete SENSITIVE_ENV_KEYS set to cover all runtime API keys (#171)
+- fix(multi-review): widen opencode server-start timeout to 30s (env configurable) (#185)
+
 ## [3.3.1] - 2026-06-03
 
 ### Fixed
