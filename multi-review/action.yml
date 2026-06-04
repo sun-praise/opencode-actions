@@ -89,6 +89,14 @@ inputs:
     description: Xiaomi MiMo API key.
     required: false
     default: ""
+  openrouter-api-key:
+    description: OpenRouter API key.
+    required: false
+    default: ""
+  stepfun-api-key:
+    description: StepFun API key.
+    required: false
+    default: ""
   extra-env:
     description: >-
       Extra environment variables to pass to opencode runtime.
@@ -240,6 +248,8 @@ runs:
         MULTI_REVIEW_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
         MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
         MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
+        MULTI_REVIEW_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+        MULTI_REVIEW_STEPFUN_API_KEY: ${{ inputs.stepfun-api-key }}
         MULTI_REVIEW_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         MULTI_REVIEW_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         MULTI_REVIEW_EXTRA_ENV: ${{ inputs.extra-env }}
@@ -256,6 +266,8 @@ runs:
         DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+        STEPFUN_API_KEY: ${{ inputs.stepfun-api-key }}
         GITHUB_REF: ${{ github.ref }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}

@@ -118,6 +118,14 @@ inputs:
     description: Value exported as XIAOMI_API_KEY before running `opencode github run`.
     required: false
     default: ""
+  openrouter-api-key:
+    description: Value exported as OPENROUTER_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
+  stepfun-api-key:
+    description: Value exported as STEPFUN_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
   reasoning-effort:
     description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
     required: false
@@ -339,6 +347,8 @@ runs:
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         GITHUB_RUN_OPENCODE_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         GITHUB_RUN_OPENCODE_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
+        GITHUB_RUN_OPENCODE_OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+        GITHUB_RUN_OPENCODE_STEPFUN_API_KEY: ${{ inputs.stepfun-api-key }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}

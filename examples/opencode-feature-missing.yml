@@ -25,6 +25,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           # Optional: override reasoning effort and thinking mode defaults
           # reasoning-effort: max
           # enable-thinking: true

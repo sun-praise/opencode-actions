@@ -105,6 +105,8 @@ jobs:
           prompt: smoke prompt
           github-token: smoke-gh-token
           zhipu-api-key: smoke-zhipu-token
+          openrouter-api-key: smoke-openrouter-token
+          stepfun-api-key: smoke-stepfun-token
         env:
           FAKE_OPENCODE_VERSION: 2.0.1
 

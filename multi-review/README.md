@@ -14,6 +14,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
     timeout-seconds: "900"
     coordinator-timeout-seconds: "300"
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+    openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+    stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## What it does
@@ -41,6 +43,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `minimax-api-key` | empty | MiniMax API key (not compatible with multi-review due to concurrency limits) |
 | `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `language` | `zh` | Response language: `zh` or `en` |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `extra-env-allow-sensitive` | `false` | Allow `extra-env` to override sensitive runtime variables (with warning) |

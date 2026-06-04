@@ -38,6 +38,8 @@ Users typically combine `review` + `multi-review` + `feature-missing` for full c
 | `opencode-go/deepseek-v4-flash` | OpenCode Go | `OPENCODE_GO_API_KEY` | Proxy service, uses DeepSeek under the hood |
 | `minimax-cn-coding-plan/MiniMax-M3` | MiniMax | `MINIMAX_API_KEY` | Chinese-language review; not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
 | `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
+| `openrouter/deepseek/deepseek-v4-flash` | OpenRouter | `OPENROUTER_API_KEY` | Access multiple providers through OpenRouter; recommended for multi-review |
+| `stepfun/step-1r-flash` | StepFun | `STEPFUN_API_KEY` | StepFun Step reasoning model |
 
 Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
 
@@ -74,6 +76,8 @@ jobs:
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## Multi-Review Setup
@@ -109,6 +113,8 @@ jobs:
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           # Optional: override default reviewer team (default: quality:1,security:1,performance:1)
           # default-team: "quality:2,security:1,architecture:1"
           # Optional: increase timeout for large PRs (default: 900s)
@@ -148,8 +154,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## Full Audit Setup (Review + Feature-Missing + Spec-Coverage)
@@ -184,8 +194,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
   feature-missing:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -206,8 +220,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 
   spec-coverage:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
@@ -228,8 +246,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## Comment Command Setup
@@ -311,15 +333,19 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          stepfun-api-key: ${{ secrets.STEPFUN_API_KEY }}
 ```
 
 ## Customization Checklist
 
 When generating workflows, remind the user about:
 
-1. **API Key**: At least one of `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `OPENCODE_GO_API_KEY`, `MINIMAX_API_KEY`, or `XIAOMI_API_KEY` must be configured in repository Secrets. For multi-review, `DEEPSEEK_API_KEY` is recommended — see [Model Constraints](references/actions-reference.md#model-constraints) for details.
+1. **API Key**: At least one of `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `OPENCODE_GO_API_KEY`, `MINIMAX_API_KEY`, `XIAOMI_API_KEY`, `OPENROUTER_API_KEY`, or `STEPFUN_API_KEY` must be configured in repository Secrets. For multi-review, `DEEPSEEK_API_KEY` or `OPENROUTER_API_KEY` is recommended — see [Model Constraints](references/actions-reference.md#model-constraints) for details.
 2. **Model override**: Set `model:` input or `MODEL_NAME` env var to change the default model
 3. **Fallback models**: Use `fallback-models:` for timeout-driven model rotation
 4. **Timeout**: Default is 600s (10 min); adjust via `timeout-seconds:`

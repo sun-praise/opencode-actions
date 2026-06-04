@@ -19,6 +19,7 @@ SENSITIVE_ENV_KEYS = {
     "GITHUB_TOKEN", "ZHIPU_API_KEY", "OPENCODE_API_KEY",
     "DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "XIAOMI_API_KEY",
     "GITEA_TOKEN",
+    "OPENROUTER_API_KEY", "STEPFUN_API_KEY",
     # Core runtime config
     "MODEL", "PROMPT", "USE_GITHUB_TOKEN",
     # Internal opencode runtime (set by this script)
@@ -63,6 +64,10 @@ def supports_model_with_available_key(model: str) -> bool:
         return bool(os.environ.get("MINIMAX_API_KEY"))
     if model.startswith("xiaomi"):
         return bool(os.environ.get("XIAOMI_API_KEY"))
+    if model.startswith("openrouter"):
+        return bool(os.environ.get("OPENROUTER_API_KEY"))
+    if model.startswith("stepfun"):
+        return bool(os.environ.get("STEPFUN_API_KEY"))
     return True
 
 
@@ -497,6 +502,8 @@ def _main() -> int:
     set_env("DEEPSEEK_API_KEY", get_env("GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY"))
     set_env("MINIMAX_API_KEY", get_env("GITHUB_RUN_OPENCODE_MINIMAX_API_KEY"))
     set_env("XIAOMI_API_KEY", get_env("GITHUB_RUN_OPENCODE_XIAOMI_API_KEY"))
+    set_env("OPENROUTER_API_KEY", get_env("GITHUB_RUN_OPENCODE_OPENROUTER_API_KEY"))
+    set_env("STEPFUN_API_KEY", get_env("GITHUB_RUN_OPENCODE_STEPFUN_API_KEY"))
 
     # Language override: append a language instruction to the prompt.
     # When PROMPT is empty (e.g. user cleared the default), skip appending

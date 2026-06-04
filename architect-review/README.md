@@ -34,6 +34,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `deepseek-api-key` | empty | Exported as `DEEPSEEK_API_KEY` |
 | `minimax-api-key` | empty | Exported as `MINIMAX_API_KEY` |
 | `xiaomi-api-key` | empty | Exported as `XIAOMI_API_KEY` |
+| `openrouter-api-key` | empty | Exported as `OPENROUTER_API_KEY` |
+| `stepfun-api-key` | empty | Exported as `STEPFUN_API_KEY` |
 | `language` | `zh` | Response language: `zh` or `en` |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
 | `attempts` | `3` | Total attempts before failing |

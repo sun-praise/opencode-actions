@@ -106,6 +106,8 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -135,6 +137,8 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
 ### spec-coverage
@@ -163,6 +167,8 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`，空行和 `#` 注释忽略） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -193,6 +199,8 @@ Outputs:
 | `minimax-api-key` | empty | MiniMax API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `extra-env` | empty | 额外环境变量 |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -222,6 +230,8 @@ Outputs:
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `permission` | empty | JSON 对象，opencode agent 级别权限覆盖（合并进 opencode.json） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -244,6 +254,8 @@ Outputs:
 | `minimax-api-key` | empty | MiniMax API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
+| `openrouter-api-key` | empty | OpenRouter API key |
+| `stepfun-api-key` | empty | StepFun API key |
 | `extra-env` | empty | 额外环境变量（多行 `KEY=VALUE`） |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
@@ -265,7 +277,7 @@ Outputs:
 ## Secrets 配置
 
 在仓库 Settings → Secrets and variables → Actions 中添加：
-- 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 或 `XIAOMI_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
+- 至少配置一个 API key：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY`、`OPENCODE_GO_API_KEY`、`MINIMAX_API_KEY` 、`XIAOMI_API_KEY`、`OPENROUTER_API_KEY` 或 `STEPFUN_API_KEY`。使用 multi-review 时推荐 `DEEPSEEK_API_KEY` 或 `OPENROUTER_API_KEY`（MiniMax 和小米 token plan 的并发限制不兼容多 agent 并行审查）。
 - `GITHUB_TOKEN` 自动提供，无需手动配置
 
 ## Model Constraints
