@@ -31,29 +31,38 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   return map;
 }
 
-// Shared hash-number avoidance instruction appended to all reviewer prompts.
-// Keep in sync with github-run-opencode/run-github-opencode.py.
-const HASH_AVOID_ZH =
-  "\n请勿使用 #N 格式（如 #1、#2）编号，GitHub 会自动将其转换为 issue/PR 引用。" +
-  "请使用 1. 2. 3. 或 - 的列表格式。";
-const HASH_AVOID_EN =
-  "\nNever use #N format (e.g. #1, #2) to number items — " +
-  "GitHub auto-converts #N to issue/PR references. " +
-  "Use 1. 2. 3. or - list format instead.";
+// Hash-number avoidance instruction appended to all reviewer prompts.
+// Content is loaded from prompts/ at runtime.
+const HASH_AVOID_FILE = { zh: "hash-avoid-zh.txt", en: "hash-avoid-en.txt" };
 
-function buildLangInstruction(language: string): string {
+function loadHashAvoid(actionPath: string): { zh: string; en: string } {
+  const dir = join(actionPath, "prompts");
+  try {
+    const zh = readFileSync(join(dir, HASH_AVOID_FILE.zh), "utf-8").trim();
+    const en = readFileSync(join(dir, HASH_AVOID_FILE.en), "utf-8").trim();
+    return { zh: "\n" + zh, en: "\n" + en };
+  } catch (e) {
+    throw new Error(
+      `Failed to load hash-avoid prompts from ${dir}/. ` +
+      `Ensure the 'prompts' directory is included in the action release. ` +
+      `Original error: ${e instanceof Error ? e.message : e}`,
+    );
+  }
+}
+
+function buildLangInstruction(language: string, hashAvoid: { zh: string; en: string }): string {
   if (language === "en") {
     return (
       "\n\nIMPORTANT: Respond entirely in English. " +
       "Use English for all analysis, explanations, and output. " +
       "For any verdict keywords listed in the prompt, use their English equivalents." +
-      HASH_AVOID_EN
+      hashAvoid.en
     );
   }
   return (
     "\n\n请使用中文回复。所有分析和说明均使用中文。" +
     "对于 prompt 中列出的判定关键词，使用其中文版本。" +
-    HASH_AVOID_ZH
+    hashAvoid.zh
   );
 }
 
@@ -67,8 +76,9 @@ export function loadReviewers(opts: {
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
 
+  const hashAvoid = loadHashAvoid(opts.actionPath);
   const language = (env("MULTI_REVIEW_LANGUAGE") || "zh").trim().toLowerCase();
-  const langInstruction = buildLangInstruction(language);
+  const langInstruction = buildLangInstruction(language, hashAvoid);
 
   const reviewers: Reviewer[] = [];
   for (const [name, count] of team) {
