@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
+import { filterDiff } from "./diff-filter.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
@@ -80,6 +81,13 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  // Filter lock files and auto-generated files to keep LLM request size manageable
+  const { filtered: reviewDiff, removedFiles: excludedFiles } = filterDiff(prDiff);
+  if (excludedFiles.length > 0) {
+    console.log(`Excluded ${excludedFiles.length} lock/auto-generated files from diff: ${excludedFiles.join(", ")}`);
+  }
+  const diffForReview = reviewDiff;
+
   // 2. Load reviewers
   const reviewers = loadReviewers({ actionPath });
   if (reviewers.length === 0) {
@@ -122,7 +130,7 @@ async function main(): Promise<number> {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
 
-    const reviews = await runParallelReviewers(client, reviewers, prDiff, {
+    const reviews = await runParallelReviewers(client, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1000,
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
