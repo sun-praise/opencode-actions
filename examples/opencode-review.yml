@@ -25,6 +25,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          # Optional: output format (text or json, default: text)
+          # output-format: text
+          # Optional: pass level (strict or standard, default: strict)
+          #   strict — 有条件合并 is not passing
+          #   standard — only 不可合并 is not passing
+          # pass-level: strict
           # Optional: override reasoning effort and thinking mode defaults
           # reasoning-effort: max
           # enable-thinking: true

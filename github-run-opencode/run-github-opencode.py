@@ -142,6 +142,57 @@ def configure_opencode_env(
     os.environ["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, ensure_ascii=False)
 
 
+def extract_decision(output_text: str, output_format: str) -> str:
+    if output_format == "json":
+        cleaned = re.sub(r"```(?:json)?\s*|\s*```\s*$", "", output_text)
+        # Fast path: try direct parse first; fall back to incremental decoder for text with surrounding content
+        try:
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict) and obj.get("decision") in ("可合并", "有条件合并", "不可合并"):
+                return obj["decision"]
+            # Parsed successfully but not a valid decision dict — no point retrying raw_decode on same text
+            return ""
+        except json.JSONDecodeError:
+            pass
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(cleaned):
+            brace_idx = cleaned.find("{", pos)
+            if brace_idx < 0:
+                break
+            try:
+                obj, end = decoder.raw_decode(cleaned, brace_idx)
+                if isinstance(obj, dict) and "decision" in obj:
+                    if obj["decision"] in ("可合并", "有条件合并", "不可合并"):
+                        return obj["decision"]
+                    pos = end
+                else:
+                    pos = end
+            except json.JSONDecodeError:
+                pos = brace_idx + 1
+        return ""
+    for line in output_text.split("\n"):
+        stripped = line.strip()
+        for decision in ("\u53ef\u5408\u5e76", "\u6709\u6761\u4ef6\u5408\u5e76", "\u4e0d\u53ef\u5408\u5e76"):
+            if stripped == decision or stripped.startswith(decision):
+                return decision
+    return ""
+
+
+def _should_override_exit_code(output_format: str, pass_level: str) -> bool:
+    return output_format == "json" or pass_level != "strict"
+
+
+def _apply_pass_level(decision: str, pass_level: str) -> int | None:
+    if decision == "\u53ef\u5408\u5e76":
+        return 0
+    if decision == "\u6709\u6761\u4ef6\u5408\u5e76":
+        return 0 if pass_level == "standard" else 1
+    if decision == "\u4e0d\u53ef\u5408\u5e76":
+        return 1
+    return None
+
+
 def run_model(model: str, log_file: str, effective_timeout: int, run_script: Path) -> int:
     env = os.environ.copy()
     env["MODEL"] = model
@@ -167,6 +218,16 @@ def run_model(model: str, log_file: str, effective_timeout: int, run_script: Pat
             file=sys.stderr,
         )
         return 0
+
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+    if _should_override_exit_code(output_format, pass_level):
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        decision = extract_decision(content, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
 
     return result.returncode
 
@@ -196,6 +257,14 @@ def run_single(run_script: Path, timeout_sec: int) -> int:
             file=sys.stderr,
         )
         return 0
+
+    output_format = get_env("GITHUB_RUN_OPENCODE_OUTPUT_FORMAT", "text")
+    pass_level = get_env("GITHUB_RUN_OPENCODE_PASS_LEVEL", "strict")
+    if _should_override_exit_code(output_format, pass_level):
+        decision = extract_decision(result.stdout, output_format)
+        override = _apply_pass_level(decision, pass_level)
+        if override is not None:
+            return override
 
     return result.returncode
 
