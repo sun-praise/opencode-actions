@@ -5447,6 +5447,43 @@ function parseExtraEnv() {
   return { blockedKeys: allBlocked, prefixBlocked, sensitiveBlocked };
 }
 
+// src/diff-filter.ts
+var LOCK_PATTERNS = [
+  // All *.lock and *.lockb files
+  /\.lockb?$/,
+  // Specific well-known lock files (catches alternate naming)
+  /^(pnpm-lock|package-lock|yarn|bun)\.(yaml|json|lock|lockb)$/,
+  // Python / Rust / Ruby / PHP / Go ecosystem lock files
+  /^(uv|poetry|Gemfile|Cargo|composer)\.lock$/,
+  /^go\.sum$/,
+  /^(Pipfile|requirements)\.lock$/,
+  // Nix flake lock
+  /^flake\.lock$/
+];
+function filterDiff(diff) {
+  if (!diff) return { filtered: "", removedFiles: [] };
+  const sections = diff.split(/(?=^diff --git )/m);
+  const kept = [];
+  const removed = [];
+  for (const section of sections) {
+    if (!section) continue;
+    const newlineIdx = section.indexOf("\n");
+    const header = newlineIdx >= 0 ? section.slice(0, newlineIdx) : section;
+    const pathMatch = header.match(/^diff --git a\/.* b\/(.+?)(?:\s|$)/);
+    const basename = pathMatch ? (() => {
+      const p = pathMatch[1];
+      const lastSlash = p.lastIndexOf("/");
+      return lastSlash >= 0 ? p.slice(lastSlash + 1) : p;
+    })() : null;
+    if (basename && LOCK_PATTERNS.some((re) => re.test(basename))) {
+      removed.push(basename);
+    } else {
+      kept.push(section);
+    }
+  }
+  return { filtered: kept.join(""), removedFiles: removed };
+}
+
 // src/index.ts
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
@@ -5503,6 +5540,11 @@ async function main() {
     console.log("PR diff is empty or unavailable \u2014 skipping review");
     return 0;
   }
+  const { filtered: reviewDiff, removedFiles: excludedFiles } = filterDiff(prDiff);
+  if (excludedFiles.length > 0) {
+    console.log(`Excluded ${excludedFiles.length} lock/auto-generated files from diff: ${excludedFiles.join(", ")}`);
+  }
+  const diffForReview = reviewDiff;
   const reviewers = loadReviewers({ actionPath });
   if (reviewers.length === 0) {
     console.error("No reviewers configured");
@@ -5532,7 +5574,7 @@ async function main() {
   try {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
-    const reviews = await runParallelReviewers(client2, reviewers, prDiff, {
+    const reviews = await runParallelReviewers(client2, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
