@@ -5,8 +5,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-06-07
+
+### Added
+- feat(review): add tiered feedback with warning level, output-format and pass-level inputs (#62)
+- feat: add opencode.db cleanup and migration failure auto-recovery (#202)
+- chore(marketplace): add per-action README and branding metadata (#192)
+
+### Changed
+- test: add unit tests for extract_decision function
+- test: verify v3.4.0 tag with multi-review and feature-missing actions
+
 ### Fixed
-- fix: review action no longer fails when opencode's internal session-share `git push` is denied (e.g. `contents: read`). Detects the 403 push pattern and exits 0, since the review comment was already posted via API. (#129)
+- fix: review action no longer fails on opencode session-share push denial (#129, #190)
+- fix(multi-review): filter lock files from PR diff to prevent LLM context overflow (#195)
+- fix(multi-review): add local git diff fallback for PRs exceeding 20000 lines (#204)
+- fix(multi-review): add configurable diff exclusion and size-based truncation (#196)
+- fix(run-opencode): correct env level and reasoning-effort default in README
+- fix: address review feedback and YAML parse errors for tiered feedback feature
+- fix: avoid redundant JSON re-parse when json.loads succeeds without decision key
 
 ## [3.4.0] - 2026-06-04
 
