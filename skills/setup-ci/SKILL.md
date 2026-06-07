@@ -225,6 +225,8 @@ jobs:
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
+          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
 ```
 
 ## Full Audit Setup (Review + Feature-Missing + Regression-Test-Missing + Test-Value-Detector + Spec-Coverage)
@@ -327,6 +329,8 @@ jobs:
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
+          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
 
   spec-coverage:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
