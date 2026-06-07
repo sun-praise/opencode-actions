@@ -85,7 +85,7 @@ async function main(): Promise<number> {
   const excludeRaw = env("MULTI_REVIEW_DIFF_EXCLUDE");
   const excludePatterns = excludeRaw ? excludeRaw.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
   const maxDiffKb = intEnv("MULTI_REVIEW_DIFF_MAX_SIZE_KB", 0);
-  const { filtered: reviewDiff, removedFiles: excludedFiles, truncated, originalBytes } = filterDiff(prDiff, {
+  const { filtered: reviewDiff, removedFiles: excludedFiles, truncated, filteredBytes } = filterDiff(prDiff, {
     excludePatterns,
     maxSizeBytes: maxDiffKb > 0 ? maxDiffKb * 1024 : undefined,
   });
@@ -93,7 +93,7 @@ async function main(): Promise<number> {
     console.log(`Excluded ${excludedFiles.length} lock/auto-generated files from diff: ${excludedFiles.join(", ")}`);
   }
   if (truncated) {
-    console.log(`Diff truncated to fit size limit: ${Math.round((originalBytes ?? 0) / 1024)} KB original, showing first sections`);
+    console.log(`Diff truncated to fit size limit: ${Math.round((filteredBytes ?? 0) / 1024)} KB after filtering, showing first sections`);
   }
   const diffForReview = reviewDiff;
 

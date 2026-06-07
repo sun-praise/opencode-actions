@@ -33,21 +33,43 @@ export interface FilterDiffResult {
   filtered: string;
   removedFiles: string[];
   truncated?: boolean;
-  originalBytes?: number;
+  filteredBytes?: number;
 }
 
 /**
  * Convert a simple glob pattern to a RegExp.
-   Supports *, ?, and ** (globstar).
+ * Supports *, ?, and ** (globstar).
+ * Globstar at the start matches zero or more leading segments (including top-level).
+ * Globstar at the end matches zero or more trailing segments (including the directory itself).
+ * Globstar in the middle matches zero or more middle segments.
  */
 function globToRegex(pattern: string): RegExp {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
     .replace(/\*\*/g, "{{GLOBSTAR}}")
     .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, "[^/]")
-    .replace(/\{\{GLOBSTAR\}\}/g, ".*");
-  return new RegExp("^" + escaped + "$");
+    .replace(/\?/g, "[^/]");
+
+  // Replace GLOBSTAR placeholders contextually:
+  // Leading **/  → zero or more leading path segments
+  // Trailing /** → zero or more trailing path segments
+  // Middle /**/  → zero or more middle path segments
+  const replaced = escaped.replace(
+    /\{\{GLOBSTAR\}\}(\/)?|(\/)?\{\{GLOBSTAR\}\}/g,
+    (match, trailingSlash, leadingSlash) => {
+      if (match.startsWith("{{GLOBSTAR}}") && trailingSlash !== undefined) {
+        // Leading **/
+        return "(.+/)?";
+      }
+      if (leadingSlash !== undefined && match.endsWith("{{GLOBSTAR}}")) {
+        // Trailing /**
+        return "(/.+)?";
+      }
+      // Standalone or middle ** (shouldn't reach here with current patterns)
+      return ".*";
+    },
+  );
+  return new RegExp("^" + replaced + "$");
 }
 
 /** Pre-parsed exclusion rule: regex + whether to match against full path or basename. */
@@ -120,24 +142,24 @@ export function filterDiff(
       kept.push(section);
     }
   }
-
   let filtered = kept.join("");
   let truncated: boolean | undefined;
-  const originalBytes = Buffer.byteLength(filtered, "utf-8");
+  const filteredBytes = Buffer.byteLength(filtered, "utf-8");
 
-  if (maxBytes && originalBytes > maxBytes) {
-    // Truncate: keep whole sections from the start until budget exhausted
+  if (maxBytes && filteredBytes > maxBytes) {
+    // Truncate: keep whole sections from the start until budget exhausted.
+    // Always keep at least the first section so we never send an empty diff.
     const truncatedKept: string[] = [];
     let budget = maxBytes;
     for (const section of kept) {
       const size = Buffer.byteLength(section, "utf-8");
-      if (size > budget) break;
+      if (truncatedKept.length > 0 && size > budget) break;
       truncatedKept.push(section);
       budget -= size;
     }
     const shownCount = truncatedKept.length;
     const totalCount = kept.length;
-    const notice = `\n[Diff truncated: ${shownCount} of ${totalCount} file sections shown — ${Math.round(originalBytes / 1024)} KB total after lock-file filtering]\n`;
+    const notice = `\n[Diff truncated: ${shownCount} of ${totalCount} file sections shown — ${Math.round(filteredBytes / 1024)} KB total after filtering]\n`;
     filtered = truncatedKept.join("") + notice;
     truncated = true;
   }
@@ -145,7 +167,7 @@ export function filterDiff(
   const result: FilterDiffResult = { filtered, removedFiles: removed };
   if (truncated) {
     result.truncated = true;
-    result.originalBytes = originalBytes;
+    result.filteredBytes = filteredBytes;
   }
   return result;
 }

@@ -126,7 +126,9 @@ inputs:
     description: >-
       Comma-separated glob patterns for additional files to exclude from the
       review diff (e.g. "*.generated.ts,vendor/**"). Lock files are always
-      excluded automatically. Patterns are matched against the full file path.
+      excluded automatically. Patterns without "/" match against the file
+      basename; patterns with "/" match against the full file path (gitignore
+      convention).
     required: false
     default: ""
   diff-max-size-kb:
