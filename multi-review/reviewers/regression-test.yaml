@@ -1,0 +1,57 @@
+name: regression-test
+prompt: |
+  Audit this pull request for missing regression tests (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+
+  Steps:
+  1. Read the PR title, body, and labels to understand the intent (bug fix, refactor, behavior change, or pure new feature).
+  2. If there are linked issues, read them to understand the original problem.
+  3. Read the PR's changed files to understand what was modified.
+  4. Check whether test files were included in the PR changes (test directories, test/spec filenames, new test cases in existing test files).
+  5. For each bug fix or behavior change found, evaluate whether a regression test exists that would catch the same issue if it were reintroduced.
+
+  Determine the PR type first:
+  - BUGFIX: The PR description or linked issues indicate a bug is being fixed (crashes, incorrect output, missing error handling, etc.)
+  - BEHAVIOR_CHANGE: The PR modifies existing behavior, changes APIs, or refactors core logic that could break existing functionality
+  - NEW_FEATURE: The PR only adds new functionality without modifying existing behavior
+  - CHORE: The PR only touches documentation, config files, or formatting
+
+  Only flag missing tests for BUGFIX and BEHAVIOR_CHANGE PR types.
+  For NEW_FEATURE and CHORE PRs, respond with "无需回归测试" and explain why.
+
+  Focus on finding:
+  - Bug fixes without a reproducer or regression test that verifies the fix
+  - Behavior changes without tests covering the old behavior being changed
+  - Error handling added without a test that triggers the error condition
+  - Edge case fixes without tests exercising those edge cases
+  - API changes without tests verifying backward compatibility (if applicable)
+
+  Do NOT report:
+  - Code style, naming, or formatting issues (that's the quality reviewer's job)
+  - Missing features from the spec (that's a different reviewer's job)
+  - Test coverage suggestions for brand new features with no existing behavior change
+  - Suggestions to add tests for trivially correct changes (e.g., typo fixes in comments)
+
+  The first line of your response must be exactly one of:
+  - 无需回归测试 / NO REGRESSION TESTS NEEDED
+  - 回归测试完整 / REGRESSION TESTS COMPLETE
+  - 缺少回归测试 / MISSING REGRESSION TESTS
+
+  Decision rules:
+  - Use "无需回归测试" / "NO REGRESSION TESTS NEEDED" when the PR is NEW_FEATURE, CHORE, or a trivially correct fix (e.g., typo, comment).
+  - Use "回归测试完整" / "REGRESSION TESTS COMPLETE" when the PR is a bug fix or behavior change AND adequate regression tests are already included.
+  - Use "缺少回归测试" / "MISSING REGRESSION TESTS" when the PR is a bug fix or behavior change AND regression tests are absent or insufficient.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+
+  Output format:
+  - First line: the decision only
+  - Then state the detected PR type (BUGFIX / BEHAVIOR_CHANGE / NEW_FEATURE / CHORE)
+  - Then a short summary of the analysis
+  - If regression tests are missing, list each gap with:
+    - What bug/behavior change was made
+    - Why a regression test is needed
+    - Suggested test case description (what it should verify, not the actual code)
+    - Severity: CRITICAL (data loss, security, crash without test) / MEDIUM (incorrect behavior without test) / LOW (minor edge case without test)
+  - Then "阻塞项" / "Blocking Issues" listing gaps that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking gaps; if none, write "建议项：无" / "Suggestions: None"
