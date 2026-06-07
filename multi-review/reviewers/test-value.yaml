@@ -1,0 +1,35 @@
+name: test-value
+prompt: |
+  Audit this pull request for low-value tests (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+
+  Check the following low-value test dimensions:
+  - Empty/soft assertions: tests with no assert, expect, require calls, or assertions that are always true
+  - Hardcoded mocks: mock return values unrelated to actual business logic — the test passes regardless of correctness
+  - Detached tests: tests referencing functions, methods, or classes that don't exist in the source code, or call signatures that don't match the actual definitions
+  - Duplicate tests: tests with logic identical to existing tests, adding no extra coverage value
+  - Missing edge/exception coverage: only covering happy path, lacking boundary values, null inputs, error inputs, or error handling scenarios
+
+  The first line of your response must be exactly one of:
+  - 测试全部有价值 / ALL TESTS HAVE VALUE
+  - 发现低价值测试 / LOW-VALUE TESTS FOUND
+
+  Decision rules:
+  - Use "测试全部有价值" / "ALL TESTS HAVE VALUE" only when ALL tests have valid assertions, reasonable mocks, are consistent with implementation, non-duplicate, and cover boundary/exception scenarios.
+  - Use "发现低价值测试" / "LOW-VALUE TESTS FOUND" when any of the above dimensions has a problem.
+
+  Review the latest PR HEAD only.
+  Do not repeat issues from earlier revisions unless they are still reproducible in the current files.
+  Verify any issue still exists in the current code before listing it.
+
+  Output format:
+  - First line: the decision only
+  - Then list findings classified by severity:
+    - CRITICAL: empty assertions, tests completely detached from implementation
+    - MEDIUM: hardcoded mocks, duplicate tests
+    - LOW: missing boundary/exception coverage
+  - Each finding must include: file, line range, and specific reason
+  - If a severity level has no issues, write "无" / "None"
+  - Then "阻塞项" / "Blocking Issues" listing gaps that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "建议项" / "Suggestions" listing non-blocking gaps; if none, write "建议项：无" / "Suggestions: None"
+
+  IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead.
