@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import type { Reviewer } from "./types.js";
@@ -27,6 +27,39 @@ function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
       const parsed = yaml.load(raw) as PersonaYAML;
       if (parsed.name && parsed.prompt) map.set(parsed.name, { name: parsed.name, prompt: parsed.prompt });
     } catch { /* skip missing files */ }
+  }
+  return map;
+}
+
+const CUSTOM_REVIEWERS_DIR = ".github/reviewers";
+
+/**
+ * Load custom reviewer personas from the target repo's .github/reviewers/ directory.
+ * Custom personas with the same name as a built-in override the built-in.
+ * Returns the map of loaded custom personas (does NOT mutate the built-in map).
+ */
+function loadCustomReviewers(repoDir: string): Map<string, PersonaYAML> {
+  const map = new Map<string, PersonaYAML>();
+  const dir = join(repoDir, CUSTOM_REVIEWERS_DIR);
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return map; // directory does not exist — opt-in, skip silently
+  }
+  for (const file of entries) {
+    if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
+    try {
+      const raw = readFileSync(join(dir, file), "utf-8");
+      const parsed = yaml.load(raw) as PersonaYAML;
+      if (parsed.name && parsed.prompt) {
+        map.set(parsed.name, { name: parsed.name, prompt: parsed.prompt });
+      } else {
+        console.warn(`Warning: custom reviewer "${file}" missing required fields (name, prompt), skipping`);
+      }
+    } catch (e) {
+      console.warn(`Warning: failed to load custom reviewer "${file}": ${e}`);
+    }
   }
   return map;
 }
@@ -74,9 +107,20 @@ function buildLangInstruction(language: string, hashAvoid: HashAvoidBundle): str
 export function loadReviewers(opts: {
   actionPath: string;
   team?: string;
+  repoDir?: string;
 }): Reviewer[] {
   const builtInDir = join(opts.actionPath, "reviewers");
   const personas = loadBuiltInReviewers(builtInDir);
+
+  // Merge custom personas from target repo — overrides built-in on name collision
+  const repoDir = opts.repoDir || process.cwd();
+  const custom = loadCustomReviewers(repoDir);
+  for (const [name, persona] of custom) {
+    if (personas.has(name)) {
+      console.log(`Custom reviewer "${name}" overrides built-in persona`);
+    }
+    personas.set(name, persona);
+  }
 
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
