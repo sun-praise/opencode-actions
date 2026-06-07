@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { escapeHashReferences } from "./platform.js";
+import { fetchPRDiff, escapeHashReferences } from "./platform.js";
 
 describe("escapeHashReferences", () => {
   it("escapes #N after space", () => {
@@ -78,5 +78,31 @@ describe("escapeHashReferences", () => {
       escapeHashReferences("fix #1 and #2 and #3"),
       "fix #\u200B1 and #\u200B2 and #\u200B3",
     );
+  });
+});
+
+describe("fetchPRDiff git fallback", () => {
+  it("returns via git fallback when API methods unavailable", () => {
+    // Simulate self-hosted runner: no gh CLI, no GitHub token.
+    const prevGh = process.env.GITHUB_TOKEN;
+    const prevMRGh = process.env.MULTI_REVIEW_GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.MULTI_REVIEW_GITHUB_TOKEN;
+    try {
+      // Should not throw — git fallback handles the missing API methods
+      const diff = fetchPRDiff("3760");
+      // If the current branch has diverged from origin/main, diff is non-empty;
+      // otherwise (e.g. on a clean main checkout) it may be empty. Both are valid.
+      assert.ok(typeof diff === "string", "git fallback should return a string");
+      if (diff.length > 0) {
+        assert.ok(
+          diff.startsWith("diff --git") || diff.includes("diff --git"),
+          `expected git diff output, got: ${diff.slice(0, 200)}`,
+        );
+      }
+    } finally {
+      if (prevGh !== undefined) process.env.GITHUB_TOKEN = prevGh;
+      if (prevMRGh !== undefined) process.env.MULTI_REVIEW_GITHUB_TOKEN = prevMRGh;
+    }
   });
 });

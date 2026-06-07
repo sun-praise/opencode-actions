@@ -5186,25 +5186,42 @@ function fetchDiffGithub(prNumber) {
     }
   }
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
-  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
-  if (!token) {
-    throw new Error("gh CLI unavailable and no GitHub token for REST API fallback");
+  if (token) {
+    const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+    const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
+    const headerFile = writeAuthHeader(token, "diff");
+    const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff", "-H", `@${headerFile}`, url];
+    try {
+      return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+        timeout: 3e4,
+        stdio: "pipe",
+        maxBuffer: 10 * 1024 * 1024
+      }).toString("utf-8");
+    } catch (err) {
+      console.warn(`REST API failed, falling back to local git diff: ${formatError(err)}`);
+    } finally {
+      try {
+        (0, import_node_fs2.unlinkSync)(headerFile);
+      } catch (e) {
+        console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
+      }
+    }
+  } else {
+    console.warn("gh CLI unavailable and no GitHub token \u2014 trying local git diff");
   }
-  const headerFile = writeAuthHeader(token, "diff");
-  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff", "-H", `@${headerFile}`, url];
   try {
-    return (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
+    const baseRef = process.env.GITHUB_BASE_REF || "main";
+    (0, import_node_child_process2.execFileSync)("git", ["fetch", "origin", baseRef, "--depth=1"], {
+      timeout: 3e4,
+      stdio: "pipe"
+    });
+    return (0, import_node_child_process2.execFileSync)("git", ["diff", `origin/${baseRef}..HEAD`], {
       timeout: 3e4,
       stdio: "pipe",
-      maxBuffer: 10 * 1024 * 1024
+      maxBuffer: 50 * 1024 * 1024
     }).toString("utf-8");
-  } finally {
-    try {
-      (0, import_node_fs2.unlinkSync)(headerFile);
-    } catch (e) {
-      console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
-    }
+  } catch (err) {
+    throw new Error(`All diff methods failed (gh, REST API, local git): ${formatError(err)}`);
   }
 }
 function fetchDiffGitea(prNumber) {
@@ -5537,8 +5554,11 @@ async function main() {
     }
   }
   if (!prDiff.trim()) {
-    console.log("PR diff is empty or unavailable \u2014 skipping review");
-    return 0;
+    const prNumber = resolvePRNumber();
+    console.error(
+      `PR diff is empty or unavailable (PR #${prNumber || "?"}) \u2014 skipping review. All diff methods failed: gh CLI, REST API, and local git diff.`
+    );
+    return 1;
   }
   const { filtered: reviewDiff, removedFiles: excludedFiles } = filterDiff(prDiff);
   if (excludedFiles.length > 0) {

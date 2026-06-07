@@ -77,8 +77,12 @@ async function main(): Promise<number> {
   }
 
   if (!prDiff.trim()) {
-    console.log("PR diff is empty or unavailable — skipping review");
-    return 0;
+    const prNumber = resolvePRNumber();
+    console.error(
+      `PR diff is empty or unavailable (PR #${prNumber || "?"}) — skipping review. ` +
+      "All diff methods failed: gh CLI, REST API, and local git diff.")
+    ;
+    return 1;
   }
 
   // Filter lock files and auto-generated files to keep LLM request size manageable
