@@ -28,7 +28,7 @@ jobs:
         uses: sun-praise/opencode-actions/multi-review@v3.6.0
         with:
           model: ${{ vars.MODEL_NAME }}
-          default-team: "quality:1,security:1,performance:1,architecture:1"
+          default-team: "quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
