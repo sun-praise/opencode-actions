@@ -153,6 +153,20 @@ inputs:
       blocked regardless of this setting.
     required: false
     default: "false"
+  cleanup-db:
+    description: >-
+      Delete opencode.db before running if it exceeds a size threshold.
+      Prevents migration failures on self-hosted runners with large stale databases.
+      Set to "true" to enable with the default 50MB threshold, or a number
+      (e.g. "100") for a custom threshold in MB, or "false" to disable.
+    required: false
+    default: "true"
+  db-path:
+    description: >-
+      Path to opencode.db. Defaults to ~/.local/share/opencode/opencode.db.
+      Used by the cleanup-db step and migration recovery logic to locate the database.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -234,6 +248,20 @@ runs:
         OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
       run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
 
+    - if: ${{ inputs.cleanup-db != 'false' && inputs.cleanup-db != '0' }}
+      shell: bash
+      env:
+        INPUT_CLEANUP_DB: ${{ inputs.cleanup-db }}
+        OPENCODE_DB_PATH: ${{ inputs.db-path }}
+      run: |
+        set -uo pipefail
+        cleanup_val="$INPUT_CLEANUP_DB"
+        export OPENCODE_DB_MAX_SIZE_MB="50"
+        if [[ "$cleanup_val" != "true" ]] && [[ "$cleanup_val" =~ ^[0-9]+$ ]]; then
+          export OPENCODE_DB_MAX_SIZE_MB="$cleanup_val"
+        fi
+        ${{ github.action_path }}/../shared/cleanup-db.sh
+
     - shell: bash
       env:
         GITHUB_RUN_OPENCODE_WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -261,6 +289,7 @@ runs:
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
+        OPENCODE_DB_PATH: ${{ inputs.db-path }}
       run: |
         if ! command -v python3 >/dev/null 2>&1; then
           printf 'python3 is required but not installed on this runner\n' >&2

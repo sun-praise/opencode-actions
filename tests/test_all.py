@@ -1320,5 +1320,210 @@ class TestCrossLanguageHashInstructionConsistency(unittest.TestCase):
         self.assertNotIn("using inline fallback", script)
 
 
+class TestCleanupDb(unittest.TestCase):
+    """Tests for shared/cleanup-db.sh"""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp(dir=os.environ.get("HOME", "/tmp")))
+        self.db_path = self.work_dir / "opencode.db"
+        self.env = os.environ.copy()
+        self.env["OPENCODE_DB_PATH"] = str(self.db_path)
+        self.env.pop("OPENCODE_DB_MAX_SIZE_MB", None)
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+
+    def run_cleanup(self, **extra_env) -> subprocess.CompletedProcess:
+        env = self.env.copy()
+        env.update(extra_env)
+        return subprocess.run(
+            [str(REPO_ROOT / "shared" / "cleanup-db.sh")],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_no_db_file_is_noop(self):
+        """If db file does not exist, script exits 0 silently."""
+        result = self.run_cleanup()
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "")
+
+    def test_small_db_is_kept(self):
+        """Db under threshold is kept."""
+        self.db_path.write_bytes(b"\x00" * 1024)  # 1KB
+        result = self.run_cleanup(OPENCODE_DB_MAX_SIZE_MB="50")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(self.db_path.exists())
+        self.assertIn("within threshold", result.stdout)
+
+    def test_large_db_is_deleted(self):
+        """Db over threshold is deleted."""
+        # Write ~1MB to keep test fast
+        self.db_path.write_bytes(b"\x00" * (1024 * 1024))
+        result = self.run_cleanup(OPENCODE_DB_MAX_SIZE_MB="1")
+        self.assertEqual(result.returncode, 0)
+        self.assertFalse(self.db_path.exists())
+        self.assertIn("deleting", result.stdout)
+
+    def test_zero_threshold_disables_cleanup(self):
+        """Threshold of 0 means disable cleanup — db is kept."""
+        self.db_path.write_bytes(b"\x00" * (1024 * 1024))
+        result = self.run_cleanup(OPENCODE_DB_MAX_SIZE_MB="0")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(self.db_path.exists())
+        self.assertIn("disabled", result.stdout)
+
+    def test_custom_threshold_respected(self):
+        """Custom MB threshold is respected."""
+        self.db_path.write_bytes(b"\x00" * (2 * 1024 * 1024))  # 2MB
+        result = self.run_cleanup(OPENCODE_DB_MAX_SIZE_MB="1")
+        self.assertEqual(result.returncode, 0)
+        self.assertFalse(self.db_path.exists())
+
+    def test_default_threshold_is_50(self):
+        """Default threshold is 50MB — a 5MB file is kept."""
+        self.db_path.write_bytes(b"\x00" * (5 * 1024 * 1024))
+        result = self.run_cleanup()
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(self.db_path.exists())
+        self.assertIn("within threshold", result.stdout)
+
+    def test_path_outside_home_is_rejected(self):
+        """db-path pointing into system dirs is rejected for safety."""
+        result = self.run_cleanup(OPENCODE_DB_PATH="/etc/opencode/opencode.db")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("/etc", result.stderr)
+
+    def test_dotdot_traversal_is_rejected(self):
+        """db-path with .. traversal into system dirs is rejected."""
+        result = self.run_cleanup(OPENCODE_DB_PATH="/nonexistent/../etc/opencode/opencode.db")
+        self.assertNotEqual(result.returncode, 0)
+
+
+class TestMigrationRecovery(unittest.TestCase):
+    """Tests for migration failure auto-recovery in run-opencode.sh."""
+
+    def setUp(self):
+        self.work_dir = Path(tempfile.mkdtemp(dir=os.environ.get("HOME", "/tmp")))
+        self.db_dir = self.work_dir / "db"
+        self.db_dir.mkdir()
+        self.db_path = self.db_dir / "opencode.db"
+        self.db_path.write_text("fake db content")
+
+        self.fake_opencode = self.work_dir / "opencode"
+        self.fake_opencode.write_text(
+            '#!/bin/bash\n'
+            'echo "some output"\n'
+            'echo "duplicate column name: foo" >&2\n'
+            'exit 1\n'
+        )
+        self.fake_opencode.chmod(0o755)
+
+        self.env = os.environ.copy()
+        self.env["PATH"] = f"{self.work_dir}:{os.environ.get('PATH', '')}"
+        self.env["OPENCODE_ARGS"] = "github run"
+        self.env["OPENCODE_ATTEMPTS"] = "3"
+        self.env["OPENCODE_RETRY_DELAY_SECONDS"] = "0"
+        self.env["OPENCODE_RETRY_PROFILE"] = ""
+        self.env["OPENCODE_DB_PATH"] = str(self.db_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+
+    def test_migration_error_triggers_recovery(self):
+        """duplicate column name error triggers db deletion and retry."""
+        # Second invocation succeeds
+        attempt_file = self.work_dir / "attempt"
+        self.fake_opencode.write_text(
+            '#!/bin/bash\n'
+            'afile="${FAKE_OPENCODE_ATTEMPT_FILE:?}"\n'
+            'attempt=0\n'
+            'if [[ -f "$afile" ]]; then attempt=$(<"$afile"); fi\n'
+            'attempt=$((attempt + 1))\n'
+            'printf "%s" "$attempt" >"$afile"\n'
+            'if (( attempt == 1 )); then\n'
+            '  echo "duplicate column name: session_id" >&2\n'
+            '  exit 1\n'
+            'fi\n'
+            'echo "success"\n'
+        )
+        self.env["FAKE_OPENCODE_ATTEMPT_FILE"] = str(attempt_file)
+
+        result = subprocess.run(
+            [str(REPO_ROOT / "run-opencode" / "run-opencode.sh")],
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertFalse(self.db_path.exists(), "db should be deleted after migration error")
+        self.assertIn("success", result.stdout)
+
+    def test_non_migration_error_does_not_trigger_recovery(self):
+        """Non-migration errors do not delete db."""
+        self.fake_opencode.write_text(
+            '#!/bin/bash\n'
+            'echo "some other error" >&2\n'
+            'exit 1\n'
+        )
+        result = subprocess.run(
+            [str(REPO_ROOT / "run-opencode" / "run-opencode.sh")],
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.db_path.exists(), "db should NOT be deleted for non-migration errors")
+
+    def test_recovery_only_once(self):
+        """Recovery only happens once — second migration error exits normally."""
+        self.fake_opencode.write_text(
+            '#!/bin/bash\n'
+            'echo "duplicate column name: foo" >&2\n'
+            'exit 1\n'
+        )
+        result = subprocess.run(
+            [str(REPO_ROOT / "run-opencode" / "run-opencode.sh")],
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        # Recovery warning appears exactly once (first failure triggers recovery,
+        # second failure exits normally without a second recovery).
+        warning_count = result.stdout.count("::warning::opencode.db migration failed")
+        self.assertEqual(warning_count, 1, f"expected exactly 1 recovery warning, got {warning_count}")
+
+
+
+    def test_recovery_respects_attempts_limit(self):
+        """With attempts=1, recovery still counts and exits after the retry."""
+        attempt_file = self.work_dir / "attempt"
+        self.fake_opencode.write_text(
+            '#!/bin/bash\n'
+            'afile="${FAKE_OPENCODE_ATTEMPT_FILE:?}"\n'
+            'attempt=0\n'
+            'if [[ -f "$afile" ]]; then attempt=$(<"$afile"); fi\n'
+            'attempt=$((attempt + 1))\n'
+            'printf "%s" "$attempt" >"$afile"\n'
+            'echo "duplicate column name: session_id" >&2\n'
+            'exit 1\n'
+        )
+        self.env["FAKE_OPENCODE_ATTEMPT_FILE"] = str(attempt_file)
+        self.env["OPENCODE_ATTEMPTS"] = "1"
+
+        result = subprocess.run(
+            [str(REPO_ROOT / "run-opencode" / "run-opencode.sh")],
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        # opencode should have been called at most 1 time (the initial attempt),
+        # since attempts=1 and recovery increments attempt to 2 which exceeds limit.
+        actual_attempts = int(attempt_file.read_text().strip())
+        self.assertLessEqual(actual_attempts, 1, f"expected at most 1 attempt with OPENCODE_ATTEMPTS=1, got {actual_attempts}")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

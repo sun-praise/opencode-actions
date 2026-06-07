@@ -130,6 +130,7 @@ if [[ -n "$OPENCODE_ARGS" ]]; then
 fi
 
 attempt=1
+migration_recovery_done=false
 while [[ "$attempt" -le "$OPENCODE_ATTEMPTS" ]]; do
   log_file="$(mktemp)"
 
@@ -141,6 +142,53 @@ while [[ "$attempt" -le "$OPENCODE_ATTEMPTS" ]]; do
   if [[ "$status" -eq 0 ]]; then
     rm -f "$log_file"
     exit 0
+  fi
+
+  # Auto-recover from SQLite migration failures: delete the stale db and retry once.
+  # Recovery counts toward OPENCODE_ATTEMPTS — the attempt is incremented before
+  # continue so that recovery does not exceed the user-configured limit.
+  # Recovery skips OPENCODE_RETRY_DELAY_SECONDS: after deleting the stale db,
+  # retrying immediately is the correct behavior (no need to wait).
+  if [[ "$migration_recovery_done" == "false" ]] && grep -qim1 "duplicate column name" "$log_file" 2>/dev/null; then
+    _resolve_script="$(cd "$(dirname "$0")" && pwd)/../shared/resolve-db-path.sh"
+    db_path=""
+    if [[ -f "$_resolve_script" ]]; then
+      if ! source "$_resolve_script" 2>/dev/null || ! resolve_db_path 2>/dev/null; then
+        printf '::warning::migration recovery: resolve_db_path failed, attempting default path\n'
+      else
+        db_path="$RESOLVED_DB_PATH"
+      fi
+    else
+      printf '::warning::migration recovery: resolve-db-path.sh not found at %s\n' "$_resolve_script"
+    fi
+    if [[ -z "$db_path" ]]; then
+      # If user explicitly set OPENCODE_DB_PATH but resolve failed, don't guess — skip recovery.
+      if [[ -n "${OPENCODE_DB_PATH:-}" ]]; then
+        printf '::warning::migration recovery skipped: db-path validation failed for OPENCODE_DB_PATH=%s\n' "$OPENCODE_DB_PATH"
+        migration_recovery_done=true
+        rm -f "$log_file"
+        continue
+      fi
+      # Fallback: unset OPENCODE_DB_PATH so resolve_db_path uses its safe default,
+      # then re-run validation to get a sanitized path.
+      if [[ -f "$_resolve_script" ]]; then
+        OPENCODE_DB_PATH="" resolve_db_path 2>/dev/null && db_path="$RESOLVED_DB_PATH"
+      fi
+      if [[ -z "$db_path" ]]; then
+        migration_recovery_done=true
+        rm -f "$log_file"
+        continue
+      fi
+    fi
+    printf '::warning::opencode.db migration failed (duplicate column name), deleting %s and retrying\n' "$db_path"
+    rm -f -- "$db_path" "$db_path-wal" "$db_path-shm" "$db_path-journal"
+    migration_recovery_done=true
+    attempt="$((attempt + 1))"
+    rm -f "$log_file"
+    if [[ "$attempt" -gt "$OPENCODE_ATTEMPTS" ]]; then
+      exit "$status"
+    fi
+    continue
   fi
 
   if [[ -z "$OPENCODE_RETRY_ON_REGEX" ]] || ! grep -Eiq "$OPENCODE_RETRY_ON_REGEX" "$log_file"; then
