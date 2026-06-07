@@ -43,7 +43,7 @@
 - **用途**: 检测 PR 中新增或修改的低价值测试（空断言、硬编码 mock、脱节测试、重复测试、缺少边界覆盖）
 - **触发**: `pull_request` (opened, synchronize, reopened, ready_for_review)
 - **输出语言**: 中文（默认），首行给出判定（测试全部有价值 / 发现低价值测试）
-- **特有输入**: `permission`
+- **特有输入**: `permission`、`language`
 
 
 ### setup-opencode — 安装 OpenCode CLI
@@ -302,11 +302,14 @@ Outputs:
 | `prompt` | 内置低价值测试检测模板 | 自定义 prompt |
 | `reasoning-effort` | `max` | 推理强度 |
 | `enable-thinking` | `true` | 启用 thinking 模式 |
+| `language` | `zh` | 输出语言：`zh`（中文）或 `en`（英文） |
 | `permission` | edit:deny + git 危险操作:deny（默认只读权限策略） | JSON 权限覆盖，留空使用默认策略 |
 | `github-token` | empty | GitHub token |
 | `zhipu-api-key` | empty | 智谱 API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
+| `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
 ## Required Permissions
