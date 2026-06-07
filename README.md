@@ -218,11 +218,7 @@ Use this to automatically detect low-value tests in pull requests — tests that
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
 
-<<<<<<< HEAD
 ### How the review actions differ
-=======
-### How the four review actions differ
->>>>>>> 515040a (fix: address review feedback for test-value-detector)
 
 | Action | Scope source | What it catches |
 | --- | --- | --- |
@@ -231,11 +227,7 @@ Use this to automatically detect low-value tests in pull requests — tests that
 | `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
 | `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
 | `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
-<<<<<<< HEAD
 | `test-value-detector` | PR diff (test files) | Low-value tests, missing coverage |
-=======
-| `test-value-detector` | PR test code | Low-value test patterns (empty assertions, hardcoded mocks, detached tests, duplicates, missing edge-case coverage) |
->>>>>>> 515040a (fix: address review feedback for test-value-detector)
 
 ### Customization
 
