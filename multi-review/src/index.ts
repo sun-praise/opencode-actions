@@ -64,8 +64,9 @@ async function main(): Promise<number> {
     // File doesn't exist or unreadable, try platform fetch below
   }
 
+  const prNumber = resolvePRNumber();
+
   if (!prDiff.trim()) {
-    const prNumber = resolvePRNumber();
     if (prNumber) {
       try {
         prDiff = fetchPRDiff(prNumber);
@@ -77,8 +78,10 @@ async function main(): Promise<number> {
   }
 
   if (!prDiff.trim()) {
-    console.log("PR diff is empty or unavailable — skipping review");
-    return 0;
+    console.error(
+      `PR diff is empty or unavailable (PR #${prNumber || "?"}) — skipping review. ` +
+      "All diff methods failed: gh CLI, REST API, and local git diff.");
+    return 1;
   }
 
   // Filter lock files and auto-generated files to keep LLM request size manageable
