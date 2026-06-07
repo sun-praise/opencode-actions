@@ -283,6 +283,7 @@ Outputs:
 | `github-token` | empty | GitHub token |
 | `gitea-token` | empty | Gitea API token |
 | `zhipu-api-key` | empty | 智谱 API key |
+| `opencode-go-api-key` | empty | OpenCode Go API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
 | `minimax-api-key` | empty | MiniMax API key |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key |
@@ -301,11 +302,13 @@ Outputs:
 | `prompt` | 内置低价值测试检测模板 | 自定义 prompt |
 | `reasoning-effort` | `max` | 推理强度 |
 | `enable-thinking` | `true` | 启用 thinking 模式 |
-| `permission` | deny-all | JSON 权限覆盖（默认只读） |
+| `permission` | deny-all | JSON 权限覆盖（默认禁止所有文件写入和 shell 操作） |
 | `github-token` | empty | GitHub token |
 | `zhipu-api-key` | empty | 智谱 API key |
 | `opencode-go-api-key` | empty | OpenCode Go API key |
 | `deepseek-api-key` | empty | DeepSeek API key |
+| `minimax-api-key` | empty | MiniMax API key |
+| `xiaomi-api-key` | empty | Xiaomi MiMo API key |
 | `cleanup-error-comments` | `true` | 自动删除失败评论 |
 
 ## Required Permissions
