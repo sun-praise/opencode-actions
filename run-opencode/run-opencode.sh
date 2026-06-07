@@ -130,6 +130,7 @@ if [[ -n "$OPENCODE_ARGS" ]]; then
 fi
 
 attempt=1
+migration_recovery_done=false
 while [[ "$attempt" -le "$OPENCODE_ATTEMPTS" ]]; do
   log_file="$(mktemp)"
 
@@ -141,6 +142,17 @@ while [[ "$attempt" -le "$OPENCODE_ATTEMPTS" ]]; do
   if [[ "$status" -eq 0 ]]; then
     rm -f "$log_file"
     exit 0
+  fi
+
+  # Auto-recover from SQLite migration failures: delete the stale db and retry once.
+  if [[ "$migration_recovery_done" == "false" ]] && grep -qi "duplicate column name" "$log_file"; then
+    db_path="${OPENCODE_DB_PATH:-$HOME/.local/share/opencode/opencode.db}"
+    printf '::warning::opencode.db migration failed (duplicate column name), deleting %s and retrying\n' "$db_path"
+    rm -f "$db_path"
+    migration_recovery_done=true
+    rm -f "$log_file"
+    printf 'migration recovery: deleted %s, retrying immediately\n' "$db_path"
+    continue
   fi
 
   if [[ -z "$OPENCODE_RETRY_ON_REGEX" ]] || ! grep -Eiq "$OPENCODE_RETRY_ON_REGEX" "$log_file"; then
