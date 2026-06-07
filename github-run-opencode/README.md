@@ -16,6 +16,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 ## What it does
 
 - Installs and caches OpenCode (delegates to `setup-opencode`)
+- Cleans up oversized `opencode.db` before running (prevents migration failures on self-hosted runners)
+- Auto-recovers from SQLite migration errors by deleting the stale database and retrying
 - Runs `opencode github run` with optional retry logic for flaky GitHub network failures
 - Skips forked pull requests by default (no secrets exposed)
 - English / Chinese output controlled by the `language` input
@@ -45,6 +47,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `retry-profile` | `github-network` | Built-in retry preset for common GitHub failures |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
 | `working-directory` | empty | Optional working directory before running OpenCode |
+| `cleanup-db` | `true` | Delete `opencode.db` if it exceeds size threshold before running; `"true"` (50MB default), a number for custom MB threshold, `"0"` or `"false"` to disable. Note: `db-path` is validated against system directories; on macOS `/var` resolves to `/private/var` and is allowed |
+| `db-path` | empty | Custom path to `opencode.db`; defaults to `~/.local/share/opencode/opencode.db` |
 
 All setup-related inputs from [`setup-opencode`](https://github.com/sun-praise/opencode-actions/tree/main/setup-opencode) (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`) are also accepted.
 
