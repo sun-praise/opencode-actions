@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-06-07
+
+### Added
+- feat: add regression-test-missing composite action (#211)
+- feat: add test-value-detector action (#49)
+- feat(multi-review): add regression-test reviewer persona (#212)
+- feat(multi-review): support custom reviewer personas from target repo (#214)
 ## [3.5.0] - 2026-06-07
 
 ### Added
