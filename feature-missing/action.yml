@@ -298,7 +298,7 @@ runs:
         GITHUB_RUN_OPENCODE_FALLBACK_MODELS: ${{ inputs.fallback-models }}
         GITHUB_RUN_OPENCODE_MODEL_TIMEOUT_SECONDS: ${{ inputs.model-timeout-seconds }}
         GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX: ${{ inputs.fallback-on-regex }}
-        GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
+
         GITHUB_RUN_OPENCODE_PERMISSION: >-
           {"edit":"deny","bash":"deny"}
         GITHUB_RUN_OPENCODE_CLEANUP_ERROR_COMMENTS: ${{ inputs.cleanup-error-comments }}
