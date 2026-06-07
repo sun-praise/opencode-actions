@@ -24,7 +24,6 @@ In the same-job case, `setup-opencode` already exports `opencode` to `PATH`, so 
 - Runs `opencode` with space-delimited `args` and an optional `working-directory`
 - Built-in retry preset for common GitHub network failures (`retry-profile: github-network`)
 - Optional `retry-on-regex` for custom retry conditions
-- Auto-recovers from SQLite migration errors (`duplicate column name`) by deleting the stale database and retrying once
 - Provider secrets and model selection are intentionally kept in workflow `env:` so the action stays generic
 - Sets `reasoning-effort` and `enable-thinking` for the model agent
 

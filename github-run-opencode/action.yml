@@ -153,14 +153,6 @@ inputs:
       blocked regardless of this setting.
     required: false
     default: "false"
-  cleanup-db:
-    description: >-
-      Delete opencode.db before running if it exceeds a size threshold.
-      Prevents migration failures on self-hosted runners with large stale databases.
-      Set to "true" to enable with the default 50MB threshold, or a number
-      (e.g. "100") for a custom threshold in MB, or "false" to disable.
-    required: false
-    default: "true"
 
 runs:
   using: composite
@@ -241,20 +233,6 @@ runs:
         OPENCODE_ALLOW_PREINSTALLED: ${{ inputs.allow-preinstalled }}
         OPENCODE_MIN_VERSION: ${{ steps.version.outputs.version }}
       run: ${{ github.action_path }}/../setup-opencode/install-opencode.sh
-
-    - if: ${{ inputs.cleanup-db != 'false' }}
-      shell: bash
-      env:
-        INPUT_CLEANUP_DB: ${{ inputs.cleanup-db }}
-      run: |
-        set -euo pipefail
-        cleanup_val="$INPUT_CLEANUP_DB"
-        if [[ "$cleanup_val" == "false" ]]; then exit 0; fi
-        export OPENCODE_DB_MAX_SIZE_MB="50"
-        if [[ "$cleanup_val" != "true" ]] && [[ "$cleanup_val" =~ ^[0-9]+$ ]]; then
-          export OPENCODE_DB_MAX_SIZE_MB="$cleanup_val"
-        fi
-        ${{ github.action_path }}/../shared/cleanup-db.sh
 
     - shell: bash
       env:
