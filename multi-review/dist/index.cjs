@@ -5549,8 +5549,8 @@ async function main() {
     }
   } catch {
   }
+  const prNumber = resolvePRNumber();
   if (!prDiff.trim()) {
-    const prNumber = resolvePRNumber();
     if (prNumber) {
       try {
         prDiff = fetchPRDiff(prNumber);
@@ -5561,7 +5561,6 @@ async function main() {
     }
   }
   if (!prDiff.trim()) {
-    const prNumber = resolvePRNumber();
     console.error(
       `PR diff is empty or unavailable (PR #${prNumber || "?"}) \u2014 skipping review. All diff methods failed: gh CLI, REST API, and local git diff.`
     );

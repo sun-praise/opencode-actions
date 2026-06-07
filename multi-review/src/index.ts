@@ -64,8 +64,9 @@ async function main(): Promise<number> {
     // File doesn't exist or unreadable, try platform fetch below
   }
 
+  const prNumber = resolvePRNumber();
+
   if (!prDiff.trim()) {
-    const prNumber = resolvePRNumber();
     if (prNumber) {
       try {
         prDiff = fetchPRDiff(prNumber);
@@ -77,11 +78,9 @@ async function main(): Promise<number> {
   }
 
   if (!prDiff.trim()) {
-    const prNumber = resolvePRNumber();
     console.error(
       `PR diff is empty or unavailable (PR #${prNumber || "?"}) — skipping review. ` +
-      "All diff methods failed: gh CLI, REST API, and local git diff.")
-    ;
+      "All diff methods failed: gh CLI, REST API, and local git diff.");
     return 1;
   }
 
