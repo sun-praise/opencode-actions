@@ -201,12 +201,12 @@ describe("filterDiff", () => {
 
     // Set max to fit only section1
     const section1Bytes = Buffer.byteLength(section1, "utf-8");
-    const { filtered, truncated, originalBytes } = filterDiff(diff, {
+    const { filtered, truncated, filteredBytes } = filterDiff(diff, {
       maxSizeBytes: section1Bytes + 10, // a bit more than section1
     });
 
     assert.equal(truncated, true);
-    assert.ok(originalBytes! > 0);
+    assert.ok(filteredBytes! > 0);
     assert.ok(filtered.includes("src/a.ts"));
     assert.ok(!filtered.includes("src/c.ts"));
     assert.ok(filtered.includes("Diff truncated"));
@@ -247,5 +247,30 @@ describe("filterDiff", () => {
     assert.ok(removedFiles.includes("src/api.generated.ts"));
     // realSection is small enough to fit
     assert.ok(filtered.includes("src/main.ts"));
+  });
+
+  it("**/pattern matches top-level file (gitignore semantics)", () => {
+    const diff =
+      diffSection("vendor", "@@ -1,1 +1,1 @@\n...\n") +
+      diffSection("subdir/vendor", "@@ -1,1 +1,1 @@\n...\n") +
+      diffSection("src/app.go", "@@ -1,1 +1,2 @@\n+fix\n");
+    const { filtered, removedFiles } = filterDiff(diff, {
+      excludePatterns: ["**/vendor"],
+    });
+    // **/vendor should match both top-level "vendor" and "subdir/vendor"
+    assert.deepEqual(removedFiles.sort(), ["subdir/vendor", "vendor"]);
+    assert.ok(filtered.includes("src/app.go"));
+  });
+
+  it("keeps at least the first section when it exceeds maxSizeBytes", () => {
+    // One very large section that exceeds the budget
+    const bigSection = diffSection("src/huge.ts", "@@ -1,1 +1,2 @@\n+" + "x".repeat(5000) + "\n");
+    const { filtered, truncated } = filterDiff(bigSection, {
+      maxSizeBytes: 100, // way smaller than the section
+    });
+    assert.equal(truncated, true);
+    // Must still contain the first section — never send empty diff
+    assert.ok(filtered.includes("src/huge.ts"));
+    assert.ok(filtered.includes("Diff truncated"));
   });
 });
