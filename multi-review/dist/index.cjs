@@ -4671,6 +4671,32 @@ function loadBuiltInReviewers(reviewersDir) {
   }
   return map;
 }
+var CUSTOM_REVIEWERS_DIR = ".github/reviewers";
+function loadCustomReviewers(repoDir) {
+  const map = /* @__PURE__ */ new Map();
+  const dir = (0, import_node_path.join)(repoDir, CUSTOM_REVIEWERS_DIR);
+  let entries;
+  try {
+    entries = (0, import_node_fs.readdirSync)(dir);
+  } catch {
+    return map;
+  }
+  for (const file of entries) {
+    if (!file.endsWith(".yaml") && !file.endsWith(".yml")) continue;
+    try {
+      const raw = (0, import_node_fs.readFileSync)((0, import_node_path.join)(dir, file), "utf-8");
+      const parsed = index_vite_proxy_tmp_default.load(raw);
+      if (parsed.name && parsed.prompt) {
+        map.set(parsed.name, { name: parsed.name, prompt: parsed.prompt });
+      } else {
+        console.warn(`Warning: custom reviewer "${file}" missing required fields (name, prompt), skipping`);
+      }
+    } catch (e) {
+      console.warn(`Warning: failed to load custom reviewer "${file}": ${e}`);
+    }
+  }
+  return map;
+}
 var HASH_AVOID_FILE = { zh: "hash-avoid-zh.txt", en: "hash-avoid-en.txt" };
 function loadHashAvoid(actionPath) {
   if (!actionPath) {
@@ -4697,6 +4723,14 @@ function buildLangInstruction(language, hashAvoid) {
 function loadReviewers(opts) {
   const builtInDir = (0, import_node_path.join)(opts.actionPath, "reviewers");
   const personas = loadBuiltInReviewers(builtInDir);
+  const repoDir = opts.repoDir || process.cwd();
+  const custom = loadCustomReviewers(repoDir);
+  for (const [name, persona] of custom) {
+    if (personas.has(name)) {
+      console.log(`Custom reviewer "${name}" overrides built-in persona`);
+    }
+    personas.set(name, persona);
+  }
   const teamStr = opts.team || env("MULTI_REVIEW_DEFAULT_TEAM") || DEFAULT_TEAM;
   const team = parseTeam(teamStr);
   const hashAvoid = loadHashAvoid(opts.actionPath);
@@ -5635,7 +5669,8 @@ async function main() {
     console.log(`Diff truncated to fit size limit: ${Math.round((filteredBytes ?? 0) / 1024)} KB after filtering, showing first sections`);
   }
   const diffForReview = reviewDiff;
-  const reviewers = loadReviewers({ actionPath });
+  const repoDir = env("GITHUB_WORKSPACE") || process.cwd();
+  const reviewers = loadReviewers({ actionPath, repoDir });
   if (reviewers.length === 0) {
     console.error("No reviewers configured");
     return 1;

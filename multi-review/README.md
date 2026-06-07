@@ -19,11 +19,28 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 ## What it does
 
 - Spawns N reviewer sessions in parallel via `@opencode-ai/sdk`
-- Built-in reviewer personas: quality, security, performance, architecture
+- Built-in reviewer personas: quality, security, performance, architecture, regression-test
 - A coordinator session reads all reviewer outputs and produces a deduplicated synthesis
 - Each reviewer's full output is included in a collapsible `<details>` block
 - Single `opencode serve` instance shared across sessions (one MCP cold start)
 - Skips forked pull requests by default (no secrets exposed)
+
+## Custom reviewer personas
+
+You can add your own reviewer personas by placing `.yaml` or `.yml` files in the target repository's `.github/reviewers/` directory. Each file must contain `name` and `prompt` fields:
+
+```yaml
+# .github/reviewers/accessibility.yaml
+name: accessibility
+prompt: |
+  Review this PR for accessibility issues...
+```
+
+- Custom personas are loaded automatically when the directory exists (opt-in, no error if missing)
+- A custom persona with the same `name` as a built-in persona **overrides** the built-in
+- Reference custom personas in `default-team` just like built-in ones: `"accessibility:1,quality:1"`
+- YAML files missing `name` or `prompt` are skipped with a warning
+
 
 ## Inputs
 

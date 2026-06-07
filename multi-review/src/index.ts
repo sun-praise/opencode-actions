@@ -100,8 +100,9 @@ async function main(): Promise<number> {
   }
   const diffForReview = reviewDiff;
 
-  // 2. Load reviewers
-  const reviewers = loadReviewers({ actionPath });
+  // 2. Load reviewers (repoDir = workspace root for custom persona loading)
+  const repoDir = env("GITHUB_WORKSPACE") || process.cwd();
+  const reviewers = loadReviewers({ actionPath, repoDir });
   if (reviewers.length === 0) {
     console.error("No reviewers configured");
     return 1;
