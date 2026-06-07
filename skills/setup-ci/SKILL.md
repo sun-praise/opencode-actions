@@ -1,6 +1,6 @@
 ---
 name: setup-ci
-description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, feature-missing audit, spec-coverage audit, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
+description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, multi-review, feature-missing audit, regression-test-missing, test-value-detector, spec-coverage audit, architect-review, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
 ---
 
 # Setup opencode-actions CI
@@ -23,6 +23,8 @@ Configure `sun-praise/opencode-actions` GitHub Actions for a user's repository.
 | Multi-agent review | `multi-review` | Parallel reviewer personas + coordinator synthesis |
 | PR scope audit | `feature-missing` | Missing features vs linked issue spec |
 | Spec coverage | `spec-coverage` | Missing features vs project spec files |
+| Regression test audit | `regression-test-missing` | Missing regression tests for bug fixes |
+| Test value audit | `test-value-detector` | Low-value tests: empty assertions, hardcoded mocks, duplicates |
 | Custom command | `github-run-opencode` | Flexible, user-defined prompt |
 | Manual setup | `setup-opencode` + `run-opencode` | Full control over install and run |
 
@@ -109,8 +111,8 @@ jobs:
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          # Optional: override default reviewer team (default: quality:1,security:1,performance:1)
-          # default-team: "quality:2,security:1,architecture:1"
+          # Optional: override default reviewer team (default: quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1)
+          # default-team: "quality:2,security:1,architecture:1,test-value:1"
           # Optional: increase timeout for large PRs (default: 900s)
           # timeout-seconds: "1200"
 ```
