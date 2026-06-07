@@ -1,6 +1,6 @@
 ---
 name: setup-ci
-description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, feature-missing audit, spec-coverage audit, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
+description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, multi-review, feature-missing audit, regression-test-missing, test-value-detector, spec-coverage audit, architect-review, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
 ---
 
 # Setup opencode-actions CI
@@ -23,6 +23,8 @@ Configure `sun-praise/opencode-actions` GitHub Actions for a user's repository.
 | Multi-agent review | `multi-review` | Parallel reviewer personas + coordinator synthesis |
 | PR scope audit | `feature-missing` | Missing features vs linked issue spec |
 | Spec coverage | `spec-coverage` | Missing features vs project spec files |
+| Regression test audit | `regression-test-missing` | Missing regression tests for bug fixes |
+| Test value audit | `test-value-detector` | Low-value tests: empty assertions, hardcoded mocks, duplicates |
 | Custom command | `github-run-opencode` | Flexible, user-defined prompt |
 | Manual setup | `setup-opencode` + `run-opencode` | Full control over install and run |
 
@@ -109,8 +111,14 @@ jobs:
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          # Optional: override default reviewer team (default: quality:1,security:1,performance:1)
-          # default-team: "quality:2,security:1,architecture:1"
+          # Optional: override default reviewer team (default: quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1)
+          # default-team: "quality:2,security:1,architecture:1,test-value:1"
+          # Optional: exclude files from diff (e.g. "*.lock,*.snap")
+          # diff-exclude: "*.lock,*.snap"
+          # Optional: truncate diff over N KB (default: 0 = disabled)
+          # diff-max-size-kb: "200"
+          # Optional: response language: "zh" (default) or "en"
+          # language: "zh"
           # Optional: increase timeout for large PRs (default: 900s)
           # timeout-seconds: "1200"
 ```
@@ -150,9 +158,76 @@ jobs:
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+## Regression Test Missing Setup
+
+Generate this in `.github/workflows/opencode-regression-test-missing.yml`:
+
+```yaml
+name: OpenCode Regression Test Missing
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  regression-test-missing:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Run regression test missing audit
+        uses: sun-praise/opencode-actions/regression-test-missing@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
 ```
 
-## Full Audit Setup (Review + Feature-Missing + Spec-Coverage)
+## Test Value Detector Setup
+
+Generate this in `.github/workflows/opencode-test-value-detector.yml`:
+
+```yaml
+name: OpenCode Test Value Detector
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  test-value-detector:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Run test value detector
+        uses: sun-praise/opencode-actions/test-value-detector@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+## Full Audit Setup (Review + Feature-Missing + Regression-Test-Missing + Test-Value-Detector + Spec-Coverage)
 
 Generate this in `.github/workflows/opencode-audit.yml`:
 
@@ -186,6 +261,7 @@ jobs:
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+
   feature-missing:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -208,6 +284,49 @@ jobs:
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+
+  regression-test-missing:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Run regression test missing audit
+        uses: sun-praise/opencode-actions/regression-test-missing@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
+
+  test-value-detector:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Run test value detector
+        uses: sun-praise/opencode-actions/test-value-detector@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
+          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
 
   spec-coverage:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
