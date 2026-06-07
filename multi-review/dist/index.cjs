@@ -4650,7 +4650,7 @@ var { Type, Schema, FAILSAFE_SCHEMA, JSON_SCHEMA, CORE_SCHEMA, DEFAULT_SCHEMA, l
 var index_vite_proxy_tmp_default = import_js_yaml.default;
 
 // src/reviewers.ts
-var DEFAULT_TEAM = "quality:1,security:1,performance:1,architecture:1,regression-test:1";
+var DEFAULT_TEAM = "quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1";
 function parseTeam(teamStr) {
   const result = /* @__PURE__ */ new Map();
   for (const entry of teamStr.split(",")) {
@@ -4661,7 +4661,7 @@ function parseTeam(teamStr) {
 }
 function loadBuiltInReviewers(reviewersDir) {
   const map = /* @__PURE__ */ new Map();
-  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml"]) {
+  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml"]) {
     try {
       const raw = (0, import_node_fs.readFileSync)((0, import_node_path.join)(reviewersDir, file), "utf-8");
       const parsed = index_vite_proxy_tmp_default.load(raw);
