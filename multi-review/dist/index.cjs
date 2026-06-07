@@ -5460,8 +5460,40 @@ var LOCK_PATTERNS = [
   // Nix flake lock
   /^flake\.lock$/
 ];
-function filterDiff(diff) {
+function globToRegex(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "{{GLOBSTAR}}").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]");
+  const replaced = escaped.replace(
+    /\{\{GLOBSTAR\}\}(\/)?|(\/)?\{\{GLOBSTAR\}\}/g,
+    (match, trailingSlash, leadingSlash) => {
+      if (match.startsWith("{{GLOBSTAR}}") && trailingSlash !== void 0) {
+        return "(.+/)?";
+      }
+      if (leadingSlash !== void 0 && match.endsWith("{{GLOBSTAR}}")) {
+        return "(/.+)?";
+      }
+      return ".*";
+    }
+  );
+  return new RegExp("^" + replaced + "$");
+}
+function buildExcludeRules(patterns) {
+  return patterns.map((p) => ({
+    regex: globToRegex(p),
+    full: p.includes("/")
+  }));
+}
+function parseDiffPath(header) {
+  const m = header.match(/^diff --git a\/.* b\/(.+?)(?:\s|$)/);
+  return m ? m[1] : null;
+}
+function basenameOf(path) {
+  const idx = path.lastIndexOf("/");
+  return idx >= 0 ? path.slice(idx + 1) : path;
+}
+function filterDiff(diff, options) {
   if (!diff) return { filtered: "", removedFiles: [] };
+  const excludeRules = buildExcludeRules(options?.excludePatterns ?? []);
+  const maxBytes = options?.maxSizeBytes;
   const sections = diff.split(/(?=^diff --git )/m);
   const kept = [];
   const removed = [];
@@ -5469,19 +5501,42 @@ function filterDiff(diff) {
     if (!section) continue;
     const newlineIdx = section.indexOf("\n");
     const header = newlineIdx >= 0 ? section.slice(0, newlineIdx) : section;
-    const pathMatch = header.match(/^diff --git a\/.* b\/(.+?)(?:\s|$)/);
-    const basename = pathMatch ? (() => {
-      const p = pathMatch[1];
-      const lastSlash = p.lastIndexOf("/");
-      return lastSlash >= 0 ? p.slice(lastSlash + 1) : p;
-    })() : null;
-    if (basename && LOCK_PATTERNS.some((re) => re.test(basename))) {
-      removed.push(basename);
+    const filePath = parseDiffPath(header);
+    const base = filePath ? basenameOf(filePath) : null;
+    const isLock = base && LOCK_PATTERNS.some((re) => re.test(base));
+    const isExcluded = base && excludeRules.some((r) => !r.full && r.regex.test(base)) || filePath && excludeRules.some((r) => r.full && r.regex.test(filePath));
+    if (isLock || isExcluded) {
+      removed.push(filePath || base || "unknown");
     } else {
       kept.push(section);
     }
   }
-  return { filtered: kept.join(""), removedFiles: removed };
+  let filtered = kept.join("");
+  let truncated;
+  const filteredBytes = Buffer.byteLength(filtered, "utf-8");
+  if (maxBytes && filteredBytes > maxBytes) {
+    const truncatedKept = [];
+    let budget = maxBytes;
+    for (const section of kept) {
+      const size = Buffer.byteLength(section, "utf-8");
+      if (truncatedKept.length > 0 && size > budget) break;
+      truncatedKept.push(section);
+      budget -= size;
+    }
+    const shownCount = truncatedKept.length;
+    const totalCount = kept.length;
+    const notice = `
+[Diff truncated: ${shownCount} of ${totalCount} file sections shown \u2014 ${Math.round(filteredBytes / 1024)} KB total after filtering]
+`;
+    filtered = truncatedKept.join("") + notice;
+    truncated = true;
+  }
+  const result = { filtered, removedFiles: removed };
+  if (truncated) {
+    result.truncated = true;
+    result.filteredBytes = filteredBytes;
+  }
+  return result;
 }
 
 // src/index.ts
@@ -5540,9 +5595,18 @@ async function main() {
     console.log("PR diff is empty or unavailable \u2014 skipping review");
     return 0;
   }
-  const { filtered: reviewDiff, removedFiles: excludedFiles } = filterDiff(prDiff);
+  const excludeRaw = env("MULTI_REVIEW_DIFF_EXCLUDE");
+  const excludePatterns = excludeRaw ? excludeRaw.split(",").map((s) => s.trim()).filter(Boolean) : void 0;
+  const maxDiffKb = intEnv("MULTI_REVIEW_DIFF_MAX_SIZE_KB", 0);
+  const { filtered: reviewDiff, removedFiles: excludedFiles, truncated, filteredBytes } = filterDiff(prDiff, {
+    excludePatterns,
+    maxSizeBytes: maxDiffKb > 0 ? maxDiffKb * 1024 : void 0
+  });
   if (excludedFiles.length > 0) {
     console.log(`Excluded ${excludedFiles.length} lock/auto-generated files from diff: ${excludedFiles.join(", ")}`);
+  }
+  if (truncated) {
+    console.log(`Diff truncated to fit size limit: ${Math.round((filteredBytes ?? 0) / 1024)} KB after filtering, showing first sections`);
   }
   const diffForReview = reviewDiff;
   const reviewers = loadReviewers({ actionPath });
