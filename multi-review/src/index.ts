@@ -85,9 +85,18 @@ async function main(): Promise<number> {
   }
 
   // Filter lock files and auto-generated files to keep LLM request size manageable
-  const { filtered: reviewDiff, removedFiles: excludedFiles } = filterDiff(prDiff);
+  const excludeRaw = env("MULTI_REVIEW_DIFF_EXCLUDE");
+  const excludePatterns = excludeRaw ? excludeRaw.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+  const maxDiffKb = intEnv("MULTI_REVIEW_DIFF_MAX_SIZE_KB", 0);
+  const { filtered: reviewDiff, removedFiles: excludedFiles, truncated, filteredBytes } = filterDiff(prDiff, {
+    excludePatterns,
+    maxSizeBytes: maxDiffKb > 0 ? maxDiffKb * 1024 : undefined,
+  });
   if (excludedFiles.length > 0) {
     console.log(`Excluded ${excludedFiles.length} lock/auto-generated files from diff: ${excludedFiles.join(", ")}`);
+  }
+  if (truncated) {
+    console.log(`Diff truncated to fit size limit: ${Math.round((filteredBytes ?? 0) / 1024)} KB after filtering, showing first sections`);
   }
   const diffForReview = reviewDiff;
 

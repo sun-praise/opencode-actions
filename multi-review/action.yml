@@ -122,6 +122,22 @@ inputs:
     description: Enable thinking mode for the model agent. When true, configures the SDK with thinking.type=enabled.
     required: false
     default: "true"
+  diff-exclude:
+    description: >-
+      Comma-separated glob patterns for additional files to exclude from the
+      review diff (e.g. "*.generated.ts,vendor/**"). Lock files are always
+      excluded automatically. Patterns without "/" match against the file
+      basename; patterns with "/" match against the full file path (gitignore
+      convention).
+    required: false
+    default: ""
+  diff-max-size-kb:
+    description: >-
+      Maximum diff size in kilobytes after filtering. If exceeded, only the
+      leading file sections are kept and a truncation notice is appended.
+      Set to 0 (default) to disable truncation.
+    required: false
+    default: "0"
 
 runs:
   using: composite
@@ -256,6 +272,8 @@ runs:
         MULTI_REVIEW_LANGUAGE: ${{ inputs.language }}
         MULTI_REVIEW_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
+        MULTI_REVIEW_DIFF_EXCLUDE: ${{ inputs.diff-exclude }}
+        MULTI_REVIEW_DIFF_MAX_SIZE_KB: ${{ inputs.diff-max-size-kb }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         GITEA_TOKEN: ${{ inputs.gitea-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
