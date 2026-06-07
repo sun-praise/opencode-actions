@@ -5153,6 +5153,13 @@ function fallbackStdout(body) {
   console.log("--- Review (fallback to stdout) ---");
   console.log(body);
 }
+var GIT_REF_RE = /^[a-zA-Z0-9_\/.\-]+$/;
+function validateGitRef(ref) {
+  if (!GIT_REF_RE.test(ref)) {
+    throw new Error(`Invalid git ref: "${ref}" contains disallowed characters`);
+  }
+  return ref;
+}
 function fetchPRDiff(prNumber) {
   if (detectPlatform() === "github") {
     return fetchDiffGithub(prNumber);
@@ -5209,8 +5216,8 @@ function fetchDiffGithub(prNumber) {
   } else {
     console.warn("gh CLI unavailable and no GitHub token \u2014 trying local git diff");
   }
+  const baseRef = validateGitRef(process.env.GITHUB_BASE_REF || "main");
   try {
-    const baseRef = process.env.GITHUB_BASE_REF || "main";
     (0, import_node_child_process2.execFileSync)("git", ["fetch", "origin", baseRef, "--depth=1"], {
       timeout: 3e4,
       stdio: "pipe"

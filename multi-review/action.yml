@@ -224,8 +224,10 @@ runs:
           # git fallback: bypass GitHub API 20000-line limit with local diff
           if [ ! -s "${RUNNER_TEMP}/.pr-diff.txt" ]; then
             base_ref="${GITHUB_BASE_REF:-main}"
-            git fetch origin "$base_ref" --depth=1 2>/dev/null || true
-            git diff "origin/${base_ref}..HEAD" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || true
+            if [[ "$base_ref" =~ ^[a-zA-Z0-9_\/.\-]+$ ]]; then
+              git fetch origin "$base_ref" --depth=1 2>/dev/null || true
+              git diff "origin/${base_ref}..HEAD" > "${RUNNER_TEMP}/.pr-diff.txt" 2>/dev/null || true
+            fi
           fi
           echo "pr_number=$pr" >> "$GITHUB_OUTPUT"
           echo "Found PR #$pr"

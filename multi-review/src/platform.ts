@@ -325,6 +325,15 @@ function fallbackStdout(body: string): void {
   console.log(body);
 }
 
+// ── Git ref validation ─────────────────────────────────────────────────
+const GIT_REF_RE = /^[a-zA-Z0-9_\/.\-]+$/;
+/** Validate a git ref name to prevent shell injection. Only alphanumeric, slash, dot, hyphen, underscore allowed. */
+export function validateGitRef(ref: string): string {
+  if (!GIT_REF_RE.test(ref)) {
+    throw new Error(`Invalid git ref: "${ref}" contains disallowed characters`);
+  }
+  return ref;
+}
 // ── Fetch PR diff ──────────────────────────────────────────────────────
 
 export function fetchPRDiff(prNumber: string): string {
@@ -364,28 +373,42 @@ function fetchDiffGithub(prNumber: string): string {
       console.warn(`gh CLI failed, falling back to REST API: ${formatError(err)}`);
     }
   }
-
-  // Fallback: GitHub REST API via curl (works on self-hosted runners without gh)
+  // Fallback 2: GitHub REST API via curl (works on self-hosted runners without gh)
   // Write auth header to a temp file to avoid exposing token in /proc/<pid>/cmdline
   const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
-  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
-
-  if (!token) {
-    throw new Error("gh CLI unavailable and no GitHub token for REST API fallback");
+  if (token) {
+    const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+    const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/pulls/${prNumber}.diff`;
+    const headerFile = writeAuthHeader(token, "diff");
+    const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff", "-H", `@${headerFile}`, url];
+    try {
+      return execFileSync("curl", curlArgs, {
+        timeout: 30_000,
+        stdio: "pipe",
+        maxBuffer: 10 * 1024 * 1024,
+      }).toString("utf-8");
+    } catch (err) {
+      console.warn(`REST API failed, falling back to local git diff: ${formatError(err)}`);
+    } finally {
+      try { unlinkSync(headerFile); } catch (e) { console.debug(`Failed to delete temp auth header: ${formatError(e)}`); }
+    }
+  } else {
+    console.warn("gh CLI unavailable and no GitHub token \u2014 trying local git diff");
   }
-
-  const headerFile = writeAuthHeader(token, "diff");
-  const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github.v3.diff", "-H", `@${headerFile}`, url];
-
+  // Fallback 3: local git fetch + diff (bypasses GitHub API 20000-line limit)
+  const baseRef = validateGitRef(process.env.GITHUB_BASE_REF || "main");
   try {
-    return execFileSync("curl", curlArgs, {
+    execFileSync("git", ["fetch", "origin", baseRef, "--depth=1"], {
       timeout: 30_000,
       stdio: "pipe",
-      maxBuffer: 10 * 1024 * 1024,
+    });
+    return execFileSync("git", ["diff", `origin/${baseRef}..HEAD`], {
+      timeout: 30_000,
+      stdio: "pipe",
+      maxBuffer: 50 * 1024 * 1024,
     }).toString("utf-8");
-  } finally {
-    try { unlinkSync(headerFile); } catch (e) { console.debug(`Failed to delete temp auth header: ${formatError(e)}`); }
+  } catch (err) {
+    throw new Error(`All diff methods failed (gh, REST API, local git): ${formatError(err)}`);
   }
 }
 
@@ -656,4 +679,3 @@ export function parseExtraEnv(): ExtraEnvResult {
   }
   return { blockedKeys: allBlocked, prefixBlocked, sensitiveBlocked };
 }
-// test change for git fallback
