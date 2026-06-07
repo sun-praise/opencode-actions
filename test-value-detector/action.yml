@@ -127,6 +127,7 @@ inputs:
   deepseek-api-key:
     description: Value exported as DEEPSEEK_API_KEY before running `opencode github run`.
     required: false
+    default: ""
   minimax-api-key:
     description: Value exported as MINIMAX_API_KEY before running `opencode github run`.
     required: false
