@@ -21,7 +21,7 @@ function parseTeam(teamStr: string): Map<string, number> {
 
 function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   const map = new Map<string, PersonaYAML>();
-  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml"]) {
+  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml", "spec-coverage.yaml"]) {
     try {
       const raw = readFileSync(join(reviewersDir, file), "utf-8");
       const parsed = yaml.load(raw) as PersonaYAML;
