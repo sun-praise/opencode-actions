@@ -4661,7 +4661,7 @@ function parseTeam(teamStr) {
 }
 function loadBuiltInReviewers(reviewersDir) {
   const map = /* @__PURE__ */ new Map();
-  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml"]) {
+  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml", "spec-coverage.yaml"]) {
     try {
       const raw = (0, import_node_fs.readFileSync)((0, import_node_path.join)(reviewersDir, file), "utf-8");
       const parsed = index_vite_proxy_tmp_default.load(raw);
