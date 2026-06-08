@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - feat(multi-review): add spec-coverage reviewer persona (#225)
+- feat: add litellm-url and litellm-api-key support across all actions (#228)
 
 ## [3.6.0] - 2026-06-07
 
