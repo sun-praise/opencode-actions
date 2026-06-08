@@ -11,6 +11,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
 
 ## What it does
@@ -37,6 +39,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `deepseek-api-key` | empty | Exported as `DEEPSEEK_API_KEY` |
 | `minimax-api-key` | empty | Exported as `MINIMAX_API_KEY` |
 | `xiaomi-api-key` | empty | Exported as `XIAOMI_API_KEY` |
+| `litellm-url` | empty | Base URL for LiteLLM proxy endpoint |
+| `litellm-api-key` | empty | API key for LiteLLM provider (exported as `LITELLM_API_KEY`) |
 | `reasoning-effort` | `max` | Reasoning effort for the model agent: `low` / `medium` / `high` / `max` |
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` |
