@@ -110,11 +110,11 @@ inputs:
     required: false
     default: ""
   litellm-url:
-    description: Base URL for LiteLLM proxy endpoint (exported as LITELLM_URL).
+    description: Value exported as LITELLM_URL before running `opencode github run`.
     required: false
     default: ""
   litellm-api-key:
-    description: API key for LiteLLM provider (exported as LITELLM_API_KEY).
+    description: Value exported as LITELLM_API_KEY before running `opencode github run`.
     required: false
     default: ""
   reasoning-effort:

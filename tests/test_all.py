@@ -698,6 +698,28 @@ class TestGithubRunOpencode(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
 
+    def test_litellm_key_filtering_skips_model(self):
+        """Should skip litellm-prefixed models when LITELLM_API_KEY is unavailable."""
+        self.reset_env()
+        self.env.pop("GITHUB_RUN_OPENCODE_LITELLM_API_KEY", None)
+        self.env.pop("LITELLM_API_KEY", None)
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="litellm/anthropic/claude-sonnet-4-20250514",
+            GITHUB_RUN_OPENCODE_FALLBACK_MODELS="opencode-go/gemini-2.5-pro",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("MODEL=opencode-go/gemini-2.5-pro", result.stdout)
+
+    def test_litellm_model_with_key_available(self):
+        """Should use litellm-prefixed model when LITELLM_API_KEY is available."""
+        self.reset_env()
+        result = self.run_wrapper(
+            GITHUB_RUN_OPENCODE_MODEL="litellm/anthropic/claude-sonnet-4-20250514",
+            GITHUB_RUN_OPENCODE_LITELLM_API_KEY="test-litellm-key",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("MODEL=litellm/anthropic/claude-sonnet-4-20250514", result.stdout)
+
     def test_newline_delimited_fallback_models(self):
         """Should support newline-separated fallback-models."""
         self.reset_env()

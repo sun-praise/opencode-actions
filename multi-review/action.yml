@@ -89,6 +89,14 @@ inputs:
     description: Xiaomi MiMo API key.
     required: false
     default: ""
+  litellm-url:
+    description: Value exported as LITELLM_URL before running `opencode github run`.
+    required: false
+    default: ""
+  litellm-api-key:
+    description: Value exported as LITELLM_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
   extra-env:
     description: >-
       Extra environment variables to pass to opencode runtime.
@@ -262,6 +270,8 @@ runs:
         MULTI_REVIEW_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         MULTI_REVIEW_GITHUB_TOKEN: ${{ inputs.github-token }}
         MULTI_REVIEW_ZHIPU_API_KEY: ${{ inputs.zhipu-api-key }}
+        MULTI_REVIEW_LITELLM_URL: ${{ inputs.litellm-url }}
+        MULTI_REVIEW_LITELLM_API_KEY: ${{ inputs.litellm-api-key }}
         MULTI_REVIEW_OPENCODE_GO_API_KEY: ${{ inputs.opencode-go-api-key }}
         MULTI_REVIEW_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MULTI_REVIEW_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
@@ -282,6 +292,8 @@ runs:
         DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
+        LITELLM_URL: ${{ inputs.litellm-url }}
+        LITELLM_API_KEY: ${{ inputs.litellm-api-key }}
         GITHUB_REF: ${{ github.ref }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
