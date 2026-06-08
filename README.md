@@ -20,6 +20,8 @@ Write this in your CI.yaml
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
     xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
 ```
@@ -71,6 +73,8 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 | `opencode-go-api-key` | empty | Exported as `OPENCODE_GO_API_KEY` before `opencode github run` |
 | `minimax-api-key` | empty | Exported as `MINIMAX_API_KEY` before `opencode github run` |
 | `xiaomi-api-key` | empty | Exported as `XIAOMI_API_KEY` before `opencode github run` |
+| `litellm-url` | empty | Base URL for LiteLLM proxy endpoint |
+| `litellm-api-key` | empty | API key for LiteLLM provider (exported as `LITELLM_API_KEY`) |
 | `reasoning-effort` | `max` | Reasoning effort level for the model agent (`low`, `medium`, `high`, `max`) |
 | `enable-thinking` | `true` | Enable thinking mode for the model agent |
 | `use-github-token` | `true` | Exported as `USE_GITHUB_TOKEN` before `opencode github run` |
@@ -134,6 +138,8 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `minimax-api-key` | empty | MiniMax API key (not compatible with multi-review due to concurrency limits) |
 | `deepseek-api-key` | empty | DeepSeek API key (recommended for multi-review) |
 | `xiaomi-api-key` | empty | Xiaomi MiMo API key (not compatible with multi-review due to concurrency limits) |
+| `litellm-url` | empty | Base URL for LiteLLM proxy endpoint |
+| `litellm-api-key` | empty | API key for LiteLLM provider (exported as `LITELLM_API_KEY`) |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `extra-env-allow-sensitive` | `false` | When `false`, blocks `extra-env` entries that override sensitive runtime variables; set `true` to allow with warning. The `MULTI_REVIEW_` prefix is always blocked regardless of this setting |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |

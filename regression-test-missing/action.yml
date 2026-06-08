@@ -156,6 +156,14 @@ inputs:
     description: Value exported as XIAOMI_API_KEY before running `opencode github run`.
     required: false
     default: ""
+  litellm-url:
+    description: Value exported as LITELLM_URL before running `opencode github run`.
+    required: false
+    default: ""
+  litellm-api-key:
+    description: Value exported as LITELLM_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
   reasoning-effort:
     description: Reasoning effort level for the model agent. Allowed values are low, medium, high, max.
     required: false
@@ -295,6 +303,8 @@ runs:
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         GITHUB_RUN_OPENCODE_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         GITHUB_RUN_OPENCODE_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
+        GITHUB_RUN_OPENCODE_LITELLM_URL: ${{ inputs.litellm-url }}
+        GITHUB_RUN_OPENCODE_LITELLM_API_KEY: ${{ inputs.litellm-api-key }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV: ${{ inputs.extra-env }}
         GITHUB_RUN_OPENCODE_EXTRA_ENV_ALLOW_SENSITIVE: ${{ inputs.extra-env-allow-sensitive }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}

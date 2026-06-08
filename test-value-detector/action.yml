@@ -136,6 +136,14 @@ inputs:
     description: Value exported as XIAOMI_API_KEY before running `opencode github run`.
     required: false
     default: ""
+  litellm-url:
+    description: Value exported as LITELLM_URL before running `opencode github run`.
+    required: false
+    default: ""
+  litellm-api-key:
+    description: Value exported as LITELLM_API_KEY before running `opencode github run`.
+    required: false
+    default: ""
   language:
     description: >-
       Response language for the agent. `zh` (default) for Chinese, `en` for English.
@@ -267,6 +275,8 @@ runs:
         GITHUB_RUN_OPENCODE_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         GITHUB_RUN_OPENCODE_MINIMAX_API_KEY: ${{ inputs.minimax-api-key }}
         GITHUB_RUN_OPENCODE_XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
+        GITHUB_RUN_OPENCODE_LITELLM_URL: ${{ inputs.litellm-url }}
+        GITHUB_RUN_OPENCODE_LITELLM_API_KEY: ${{ inputs.litellm-api-key }}
         GITHUB_RUN_OPENCODE_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_RUN_OPENCODE_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         GITHUB_RUN_OPENCODE_LANGUAGE: ${{ inputs.language }}

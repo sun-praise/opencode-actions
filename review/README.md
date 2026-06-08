@@ -16,6 +16,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
     xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
 
 ## What it does
@@ -40,6 +42,8 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 | `deepseek-api-key` | empty | Exported as `DEEPSEEK_API_KEY` |
 | `minimax-api-key` | empty | Exported as `MINIMAX_API_KEY` |
 | `xiaomi-api-key` | empty | Exported as `XIAOMI_API_KEY` |
+| `litellm-url` | empty | Base URL for LiteLLM proxy endpoint |
+| `litellm-api-key` | empty | API key for LiteLLM provider (exported as `LITELLM_API_KEY`) |
 | `language` | `zh` | Response language: `zh` or `en` |
 | `timeout-seconds` | `600` | Maximum execution time for `opencode github run`; `0` disables it |
 | `attempts` | `3` | Total attempts before failing |

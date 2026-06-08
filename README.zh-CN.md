@@ -20,6 +20,8 @@
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
 
 你将获得一个自动化的 PR 审查机器人（默认中文回复，可通过 `language` 输入切换语言）。
@@ -96,8 +98,9 @@ npx skills add sun-praise/opencode-actions
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
-
 ## spec-coverage
 
 配合 `review` 和 `feature-missing` 使用，审计 PR 是否实现了项目规格/任务文件中的全部计划。
@@ -116,6 +119,8 @@ npx skills add sun-praise/opencode-actions
     github-token: ${{ secrets.GITHUB_TOKEN }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
 
 ## 使用方式
