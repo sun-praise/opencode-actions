@@ -3,7 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [3.6.1] - 2026-06-08
+
+### Added
+- feat(multi-review): add spec-coverage reviewer persona (#225)
 
 ## [3.6.0] - 2026-06-07
 
