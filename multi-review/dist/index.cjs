@@ -4957,14 +4957,10 @@ async function cleanupAllSessions(client2) {
 }
 
 // src/cost-formatter.ts
-function getLang() {
-  const raw = process.env.MULTI_REVIEW_LANGUAGE?.trim().toLowerCase();
-  return raw === "en" ? "en" : "zh";
-}
 var tokFmt = new Intl.NumberFormat("en");
-var fmtCost = (n, lang) => {
+var fmtCost = (n) => {
   const safe = Number.isFinite(n) ? n : 0;
-  return lang === "zh" ? `\xA5${safe.toFixed(4)}` : `$${safe.toFixed(4)}`;
+  return `$${safe.toFixed(4)}`;
 };
 var fmtTok = (n) => tokFmt.format(Number.isFinite(n) ? n : 0);
 function formatCostTable(reviews, coordinatorResult) {
@@ -5003,17 +4999,14 @@ function formatCostTable(reviews, coordinatorResult) {
     }),
     { role: "**Total**", costX10000: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }
   );
-  const lang = getLang();
-  const costLabel = lang === "zh" ? "\u82B1\u8D39 (CNY)" : "Cost (USD)";
-  const summaryText = lang === "zh" ? "\u{1F4B0} \u5BA1\u67E5\u82B1\u8D39" : "\u{1F4B0} Review Cost";
-  const header = `| Role | ${costLabel} | Input | Output | Reasoning | Cache Read | Cache Write |`;
+  const header = "| Role | Cost (USD) | Input | Output | Reasoning | Cache Read | Cache Write |";
   const divider = "| --- | --- | --- | --- | --- | --- | --- |";
   const body = rows.map(
-    (r) => `| ${r.role} | ${fmtCost(r.costX10000 / 1e4, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`
+    (r) => `| ${r.role} | ${fmtCost(r.costX10000 / 1e4)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`
   ).join("\n");
-  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 1e4, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
+  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 1e4)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
   return `<details>
-<summary>${summaryText} \u2014 ${fmtCost(total.costX10000 / 1e4, lang)}</summary>
+<summary>\u{1F4B0} Review Cost \u2014 ${fmtCost(total.costX10000 / 1e4)}</summary>
 
 ${header}
 ${divider}

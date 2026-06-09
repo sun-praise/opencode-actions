@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { formatCostTable } from "./cost-formatter.js";
 import type { ReviewResult, CoordinatorResult } from "./types.js";
 
@@ -18,12 +18,8 @@ describe("formatCostTable", () => {
     cache: { read: 3000, write: 800 },
   };
 
-  afterEach(() => {
-    delete process.env.MULTI_REVIEW_LANGUAGE;
-  });
-
   it("includes all reviewer rows, coordinator row, and total with correct formatting", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({
         reviewer: "security",
@@ -78,7 +74,7 @@ describe("formatCostTable", () => {
   });
 
   it("omits coordinator row when coordinator is undefined", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({ reviewer: "r1", cost: 1.0, tokens: fullTokens }),
       makeReview({ reviewer: "r2", cost: 2.0, tokens: fullTokens }),
@@ -106,7 +102,7 @@ describe("formatCostTable", () => {
   });
 
   it("formats cost with 4 decimal places and tokens with thousands separators", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({ reviewer: "fmt", cost: 0.1, tokens: { input: 1000, output: 500, reasoning: 0, cache: { read: 0, write: 0 } } }),
     ];
@@ -136,7 +132,7 @@ describe("formatCostTable", () => {
   });
 
   it("total row sums correctly across multiple reviewers", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({
         reviewer: "a",
@@ -175,37 +171,9 @@ describe("formatCostTable", () => {
     expect(result).toContain("1,050");
   });
 
-  it("shows CNY (¥) when language is zh", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "zh";
-    const reviews: ReviewResult[] = [
-      makeReview({ reviewer: "quality", cost: 1.5, tokens: fullTokens }),
-    ];
-
-    const result = formatCostTable(reviews);
-
-    expect(result).toContain("¥1.5000");
-    expect(result).toContain("花费 (CNY)");
-    expect(result).toContain("审查花费");
-    expect(result).not.toContain("Cost (USD)");
-    expect(result).not.toContain("Review Cost");
-  });
-
-  it("shows USD ($) when language is en", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
-    const reviews: ReviewResult[] = [
-      makeReview({ reviewer: "quality", cost: 1.5, tokens: fullTokens }),
-    ];
-
-    const result = formatCostTable(reviews);
-
-    expect(result).toContain("$1.5000");
-    expect(result).toContain("Cost (USD)");
-    expect(result).toContain("Review Cost");
-    expect(result).not.toContain("花费");
-  });
 
   it("handles cost=0 correctly (zero not filtered out)", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({ reviewer: "free-tier", cost: 0, tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } } }),
     ];
@@ -218,7 +186,7 @@ describe("formatCostTable", () => {
   });
 
   it("handles missing tokens (tokens undefined)", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({ reviewer: "no-tokens", cost: 0.5, tokens: undefined }),
     ];
@@ -232,7 +200,7 @@ describe("formatCostTable", () => {
   });
 
   it("handles coordinator-only cost (no reviewer cost)", () => {
-    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    
     const reviews: ReviewResult[] = [
       makeReview({ reviewer: "failed", cost: undefined, success: false }),
     ];
