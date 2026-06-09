@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { formatCostTable } from "./cost-formatter.js";
-import type { ReviewResult } from "./types.js";
-import type { CoordinatorResult } from "./orchestrator.js";
+import type { ReviewResult, CoordinatorResult } from "./types.js";
 
 function makeReview(overrides: Partial<ReviewResult> = {}): ReviewResult {
   return { reviewer: "test", content: "", success: true, ...overrides };
@@ -203,5 +202,50 @@ describe("formatCostTable", () => {
     expect(result).toContain("Cost (USD)");
     expect(result).toContain("Review Cost");
     expect(result).not.toContain("花费");
+  });
+
+  it("handles cost=0 correctly (zero not filtered out)", () => {
+    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    const reviews: ReviewResult[] = [
+      makeReview({ reviewer: "free-tier", cost: 0, tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } } }),
+    ];
+
+    const result = formatCostTable(reviews);
+
+    expect(result).toContain("free-tier");
+    expect(result).toContain("$0.0000");
+    expect(result).toContain("**Total**");
+  });
+
+  it("handles missing tokens (tokens undefined)", () => {
+    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    const reviews: ReviewResult[] = [
+      makeReview({ reviewer: "no-tokens", cost: 0.5, tokens: undefined }),
+    ];
+
+    const result = formatCostTable(reviews);
+
+    expect(result).toContain("no-tokens");
+    expect(result).toContain("$0.5000");
+    // Token columns should show 0
+    expect(result).toContain("| 0 |");
+  });
+
+  it("handles coordinator-only cost (no reviewer cost)", () => {
+    process.env.MULTI_REVIEW_LANGUAGE = "en";
+    const reviews: ReviewResult[] = [
+      makeReview({ reviewer: "failed", cost: undefined, success: false }),
+    ];
+    const coordinator = makeCoordinator({
+      cost: 0.003,
+      tokens: { input: 5000, output: 2000, reasoning: 1000, cache: { read: 3000, write: 800 } },
+    });
+
+    const result = formatCostTable(reviews, coordinator);
+
+    expect(result).toContain("coordinator");
+    expect(result).toContain("$0.0030");
+    expect(result).not.toContain("failed");
+    expect(result).toContain("**Total**");
   });
 });

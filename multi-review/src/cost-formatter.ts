@@ -1,5 +1,4 @@
-import type { ReviewResult } from "./types.js";
-import type { CoordinatorResult } from "./orchestrator.js";
+import type { ReviewResult, CoordinatorResult } from "./types.js";
 
 /** Read language from env (set by action.yml from `language` input). */
 function getLang(): "zh" | "en" {
@@ -7,13 +6,19 @@ function getLang(): "zh" | "en" {
   return raw === "en" ? "en" : "zh";
 }
 
-const fmtCost = (n: number, lang: "zh" | "en"): string =>
-  lang === "zh" ? `¥${n.toFixed(4)}` : `$${n.toFixed(4)}`;
-const fmtTok = (n: number): string => new Intl.NumberFormat("en-US").format(n);
+/** Module-level singleton to avoid repeated construction. */
+const tokFmt = new Intl.NumberFormat("en");
+
+const fmtCost = (n: number, lang: "zh" | "en"): string => {
+  const safe = Number.isFinite(n) ? n : 0;
+  return lang === "zh" ? `¥${safe.toFixed(4)}` : `$${safe.toFixed(4)}`;
+};
+const fmtTok = (n: number): string => tokFmt.format(Number.isFinite(n) ? n : 0);
 
 interface Row {
   role: string;
-  cost: number;
+  /** Cost in ten-thousandths (multiplied by 10000) to avoid float precision errors. */
+  costX10000: number;
   input: number;
   output: number;
   reasoning: number;
@@ -23,6 +28,9 @@ interface Row {
 
 /**
  * Format review cost data as a markdown table wrapped in `<details>` HTML.
+ *
+ * Cost is accumulated as integer ten-thousandths to avoid floating-point
+ * precision errors in the total row.
  *
  * @param reviews - Individual reviewer results.
  * @param coordinatorResult - Optional coordinator result to include.
@@ -36,7 +44,7 @@ export function formatCostTable(
     .filter((r) => r.success && r.cost !== undefined)
     .map((r) => ({
       role: r.reviewer,
-      cost: r.cost!,
+      costX10000: Math.round((r.cost ?? 0) * 10000),
       input: r.tokens?.input ?? 0,
       output: r.tokens?.output ?? 0,
       reasoning: r.tokens?.reasoning ?? 0,
@@ -54,7 +62,7 @@ export function formatCostTable(
   if (hasCoordinatorCost) {
     rows.push({
       role: "coordinator",
-      cost: coordinatorResult!.cost!,
+      costX10000: Math.round((coordinatorResult!.cost ?? 0) * 10000),
       input: coordinatorResult!.tokens?.input ?? 0,
       output: coordinatorResult!.tokens?.output ?? 0,
       reasoning: coordinatorResult!.tokens?.reasoning ?? 0,
@@ -66,15 +74,16 @@ export function formatCostTable(
   const total: Row = rows.reduce(
     (acc, r) => ({
       role: "**Total**",
-      cost: acc.cost + r.cost,
+      costX10000: acc.costX10000 + r.costX10000,
       input: acc.input + r.input,
       output: acc.output + r.output,
       reasoning: acc.reasoning + r.reasoning,
       cacheRead: acc.cacheRead + r.cacheRead,
       cacheWrite: acc.cacheWrite + r.cacheWrite,
     }),
-    { role: "**Total**", cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    { role: "**Total**", costX10000: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
   );
+
   const lang = getLang();
   const costLabel = lang === "zh" ? "花费 (CNY)" : "Cost (USD)";
   const summaryText = lang === "zh" ? "💰 审查花费" : "💰 Review Cost";
@@ -84,14 +93,14 @@ export function formatCostTable(
   const body = rows
     .map(
       (r) =>
-        `| ${r.role} | ${fmtCost(r.cost, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`,
+        `| ${r.role} | ${fmtCost(r.costX10000 / 10000, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`,
     )
     .join("\n");
 
-  const totalLine = `| **Total** | **${fmtCost(total.cost, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
+  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 10000, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
 
   return `<details>
-<summary>${summaryText} — ${fmtCost(total.cost, lang)}</summary>
+<summary>${summaryText} — ${fmtCost(total.costX10000 / 10000, lang)}</summary>
 
 ${header}
 ${divider}

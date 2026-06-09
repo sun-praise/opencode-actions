@@ -2,13 +2,13 @@ import { createOpencode } from "@opencode-ai/sdk";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
-import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions, CoordinatorResult } from "./orchestrator.js";
+import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { formatCostTable } from "./cost-formatter.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
-import type { ParsedReview } from "./types.js";
+import type { ParsedReview, CoordinatorResult } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 

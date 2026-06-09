@@ -4846,8 +4846,14 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         reviewer.name
       );
       const content = extractText(messagesResult.data);
-      const { cost, tokens } = promptResult.data.info;
-      console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      const info = promptResult.data?.info;
+      const cost = info?.cost;
+      const tokens = info?.tokens;
+      if (cost !== void 0) {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      } else {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
+      }
       return { reviewer: reviewer.name, content, success: true, cost, tokens };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -4895,8 +4901,14 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       "coordinator"
     );
     const content = extractText(messagesResult.data);
-    const { cost, tokens } = promptResult.data.info;
-    console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    const info = promptResult.data?.info;
+    const cost = info?.cost;
+    const tokens = info?.tokens;
+    if (cost !== void 0) {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    } else {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
+    }
     return { content, cost, tokens };
   } finally {
     if (sessionId) {
@@ -4949,12 +4961,16 @@ function getLang() {
   const raw = process.env.MULTI_REVIEW_LANGUAGE?.trim().toLowerCase();
   return raw === "en" ? "en" : "zh";
 }
-var fmtCost = (n, lang) => lang === "zh" ? `\xA5${n.toFixed(4)}` : `$${n.toFixed(4)}`;
-var fmtTok = (n) => new Intl.NumberFormat("en-US").format(n);
+var tokFmt = new Intl.NumberFormat("en");
+var fmtCost = (n, lang) => {
+  const safe = Number.isFinite(n) ? n : 0;
+  return lang === "zh" ? `\xA5${safe.toFixed(4)}` : `$${safe.toFixed(4)}`;
+};
+var fmtTok = (n) => tokFmt.format(Number.isFinite(n) ? n : 0);
 function formatCostTable(reviews, coordinatorResult) {
   const reviewRows = reviews.filter((r) => r.success && r.cost !== void 0).map((r) => ({
     role: r.reviewer,
-    cost: r.cost,
+    costX10000: Math.round((r.cost ?? 0) * 1e4),
     input: r.tokens?.input ?? 0,
     output: r.tokens?.output ?? 0,
     reasoning: r.tokens?.reasoning ?? 0,
@@ -4967,7 +4983,7 @@ function formatCostTable(reviews, coordinatorResult) {
   if (hasCoordinatorCost) {
     rows.push({
       role: "coordinator",
-      cost: coordinatorResult.cost,
+      costX10000: Math.round((coordinatorResult.cost ?? 0) * 1e4),
       input: coordinatorResult.tokens?.input ?? 0,
       output: coordinatorResult.tokens?.output ?? 0,
       reasoning: coordinatorResult.tokens?.reasoning ?? 0,
@@ -4978,14 +4994,14 @@ function formatCostTable(reviews, coordinatorResult) {
   const total = rows.reduce(
     (acc, r) => ({
       role: "**Total**",
-      cost: acc.cost + r.cost,
+      costX10000: acc.costX10000 + r.costX10000,
       input: acc.input + r.input,
       output: acc.output + r.output,
       reasoning: acc.reasoning + r.reasoning,
       cacheRead: acc.cacheRead + r.cacheRead,
       cacheWrite: acc.cacheWrite + r.cacheWrite
     }),
-    { role: "**Total**", cost: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }
+    { role: "**Total**", costX10000: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }
   );
   const lang = getLang();
   const costLabel = lang === "zh" ? "\u82B1\u8D39 (CNY)" : "Cost (USD)";
@@ -4993,11 +5009,11 @@ function formatCostTable(reviews, coordinatorResult) {
   const header = `| Role | ${costLabel} | Input | Output | Reasoning | Cache Read | Cache Write |`;
   const divider = "| --- | --- | --- | --- | --- | --- | --- |";
   const body = rows.map(
-    (r) => `| ${r.role} | ${fmtCost(r.cost, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`
+    (r) => `| ${r.role} | ${fmtCost(r.costX10000 / 1e4, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`
   ).join("\n");
-  const totalLine = `| **Total** | **${fmtCost(total.cost, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
+  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 1e4, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
   return `<details>
-<summary>${summaryText} \u2014 ${fmtCost(total.cost, lang)}</summary>
+<summary>${summaryText} \u2014 ${fmtCost(total.costX10000 / 1e4, lang)}</summary>
 
 ${header}
 ${divider}

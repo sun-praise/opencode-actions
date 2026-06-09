@@ -17,6 +17,17 @@ export interface ReviewResult {
   };
 }
 
+export interface CoordinatorResult {
+  content: string;
+  cost?: number;
+  tokens?: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: { read: number; write: number };
+  };
+}
+
 export interface OrchestratorOptions {
   globalTimeoutMs: number;
   coordinatorTimeoutMs: number;

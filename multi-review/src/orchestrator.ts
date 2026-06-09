@@ -1,5 +1,5 @@
 import type { OpencodeClient } from "@opencode-ai/sdk";
-import type { Reviewer, ReviewResult, OrchestratorOptions } from "./types.js";
+import type { Reviewer, ReviewResult, OrchestratorOptions, CoordinatorResult } from "./types.js";
 
 const activeSessions = new Set<string>();
 
@@ -93,9 +93,15 @@ export async function runParallelReviewers(
         reviewer.name,
       );
       const content = extractText(messagesResult.data);
-      const { cost, tokens } = promptResult.data.info;
+      const info = promptResult.data?.info;
+      const cost = info?.cost;
+      const tokens = info?.tokens;
 
-      console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      if (cost !== undefined) {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      } else {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
+      }
 
       return { reviewer: reviewer.name, content, success: true, cost, tokens };
     } catch (err) {
@@ -113,16 +119,6 @@ export async function runParallelReviewers(
   return Promise.all(promises);
 }
 
-export interface CoordinatorResult {
-  content: string;
-  cost?: number;
-  tokens?: {
-    input: number;
-    output: number;
-    reasoning: number;
-    cache: { read: number; write: number };
-  };
-}
 
 export async function runCoordinator(
   client: OpencodeClient,
@@ -164,9 +160,15 @@ export async function runCoordinator(
       "coordinator",
     );
     const content = extractText(messagesResult.data);
-    const { cost, tokens } = promptResult.data.info;
+    const info = promptResult.data?.info;
+    const cost = info?.cost;
+    const tokens = info?.tokens;
 
-    console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    if (cost !== undefined) {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    } else {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
+    }
 
     return { content, cost, tokens };
   } finally {
