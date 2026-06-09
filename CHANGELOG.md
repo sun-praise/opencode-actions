@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 
+## [3.7.0] - 2026-06-09
+
+### Added
+- feat(multi-review): structured three-level severity classification (blocking/warning/suggestion) (#233)
+- feat(multi-review): severity parser with bilingual heading support and fallback
+- feat(multi-review): severity-aware comment rendering with emoji-labeled sections
+- feat(multi-review): `fail-on-severity` action input for CI gate control
+
 ## [3.6.1] - 2026-06-08
 
 ### Added
