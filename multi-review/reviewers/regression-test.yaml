@@ -54,4 +54,5 @@ prompt: |
     - Suggested test case description (what it should verify, not the actual code)
     - Severity: CRITICAL (data loss, security, crash without test) / MEDIUM (incorrect behavior without test) / LOW (minor edge case without test)
   - Then "阻塞项" / "Blocking Issues" listing gaps that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "警告项" / "Warnings" listing issues that should be fixed but don't block merge; if none, write "警告项：无" / "Warnings: None"
   - Then "建议项" / "Suggestions" listing non-blocking gaps; if none, write "建议项：无" / "Suggestions: None"

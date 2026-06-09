@@ -5,6 +5,9 @@ import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 import { filterDiff } from "./diff-filter.js";
+import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
+import { renderSeverityComment } from "./severity-renderer.js";
+import type { ParsedReview } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
@@ -159,13 +162,18 @@ async function main(): Promise<number> {
 
     // 6. Run coordinator
     let comment: string;
+    let parsedSeverity: ParsedReview | undefined;
     try {
       const synthesis = await runCoordinator(client, reviews, {
         globalTimeoutMs: globalTimeout * 1000,
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       });
-      comment = synthesis + "\n\n---\n\n" + buildReviewerDetails(reviews);
+      // Parse severity from coordinator output
+      parsedSeverity = parseSeverity(synthesis);
+      const reviewerDetails = buildReviewerDetails(reviews);
+      comment = renderSeverityComment(parsedSeverity, reviewerDetails);
+      console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);
@@ -179,6 +187,15 @@ async function main(): Promise<number> {
       cleanupErrorComments();
     } catch (err) {
       console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
+    }
+
+    // 9. Severity gate
+    const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
+    if (shouldFailOnSeverity(parsedSeverity, failOn)) {
+      const b = parsedSeverity?.blocking.length ?? 0;
+      const w = parsedSeverity?.warning.length ?? 0;
+      console.error(`Severity gate: ${b} blocking + ${w} warning issue(s) found — failing.`);
+      return 1;
     }
 
     return 0;
