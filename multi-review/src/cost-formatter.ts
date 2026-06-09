@@ -1,17 +1,12 @@
 import type { ReviewResult, CoordinatorResult } from "./types.js";
 
-/** Read language from env (set by action.yml from `language` input). */
-function getLang(): "zh" | "en" {
-  const raw = process.env.MULTI_REVIEW_LANGUAGE?.trim().toLowerCase();
-  return raw === "en" ? "en" : "zh";
-}
 
 /** Module-level singleton to avoid repeated construction. */
 const tokFmt = new Intl.NumberFormat("en");
 
-const fmtCost = (n: number, lang: "zh" | "en"): string => {
+const fmtCost = (n: number): string => {
   const safe = Number.isFinite(n) ? n : 0;
-  return lang === "zh" ? `¥${safe.toFixed(4)}` : `$${safe.toFixed(4)}`;
+  return `$${safe.toFixed(4)}`;
 };
 const fmtTok = (n: number): string => tokFmt.format(Number.isFinite(n) ? n : 0);
 
@@ -84,23 +79,20 @@ export function formatCostTable(
     { role: "**Total**", costX10000: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
   );
 
-  const lang = getLang();
-  const costLabel = lang === "zh" ? "花费 (CNY)" : "Cost (USD)";
-  const summaryText = lang === "zh" ? "💰 审查花费" : "💰 Review Cost";
-  const header = `| Role | ${costLabel} | Input | Output | Reasoning | Cache Read | Cache Write |`;
+  const header = "| Role | Cost (USD) | Input | Output | Reasoning | Cache Read | Cache Write |";
   const divider = "| --- | --- | --- | --- | --- | --- | --- |";
 
   const body = rows
     .map(
       (r) =>
-        `| ${r.role} | ${fmtCost(r.costX10000 / 10000, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`,
+        `| ${r.role} | ${fmtCost(r.costX10000 / 10000)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`,
     )
     .join("\n");
 
-  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 10000, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
+  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 10000)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
 
   return `<details>
-<summary>${summaryText} — ${fmtCost(total.costX10000 / 10000, lang)}</summary>
+<summary>💰 Review Cost — ${fmtCost(total.costX10000 / 10000)}</summary>
 
 ${header}
 ${divider}

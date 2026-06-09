@@ -2,12 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-
 ## [3.8.0] - 2026-06-09
 
 ### Added
 - feat(multi-review): cost/token tracking per reviewer and coordinator session (#236)
-- feat(multi-review): bilingual currency display (¥ CNY for zh, $ USD for en)
 - feat(multi-review): CoordinatorResult type with cost/tokens from SDK prompt results
 
 ## [3.7.0] - 2026-06-09
