@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.8.1] - 2026-06-09
+
+### Changed
+- fix(multi-review): unify cost display to USD regardless of language setting (#239)
+
 ## [3.8.0] - 2026-06-09
 
 ### Added
