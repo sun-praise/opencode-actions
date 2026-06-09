@@ -8,6 +8,24 @@ export interface ReviewResult {
   content: string;
   success: boolean;
   error?: string;
+  cost?: number;
+  tokens?: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: { read: number; write: number };
+  };
+}
+
+export interface CoordinatorResult {
+  content: string;
+  cost?: number;
+  tokens?: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: { read: number; write: number };
+  };
 }
 
 export interface OrchestratorOptions {

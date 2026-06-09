@@ -1,5 +1,5 @@
 import type { OpencodeClient } from "@opencode-ai/sdk";
-import type { Reviewer, ReviewResult, OrchestratorOptions } from "./types.js";
+import type { Reviewer, ReviewResult, OrchestratorOptions, CoordinatorResult } from "./types.js";
 
 const activeSessions = new Set<string>();
 
@@ -93,10 +93,17 @@ export async function runParallelReviewers(
         reviewer.name,
       );
       const content = extractText(messagesResult.data);
+      const info = promptResult.data?.info;
+      const cost = info?.cost;
+      const tokens = info?.tokens;
 
-      console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
+      if (cost !== undefined) {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      } else {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
+      }
 
-      return { reviewer: reviewer.name, content, success: true };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
@@ -112,11 +119,12 @@ export async function runParallelReviewers(
   return Promise.all(promises);
 }
 
+
 export async function runCoordinator(
   client: OpencodeClient,
   reviews: ReviewResult[],
   opts: OrchestratorOptions,
-): Promise<string> {
+): Promise<CoordinatorResult> {
   const reviewsText = reviews
     .map((r) => `## ${r.reviewer}\n${r.success ? r.content : `（失败: ${r.error}）`}`)
     .join("\n\n---\n\n");
@@ -136,7 +144,7 @@ export async function runCoordinator(
 
     console.log("[coordinator] Starting synthesis...");
 
-    await withTimeout(
+    const promptResult = await withTimeout(
       client.session.prompt({
         path: { id: sessionId },
         body: { parts: [{ type: "text", text: fullPrompt }] },
@@ -152,10 +160,17 @@ export async function runCoordinator(
       "coordinator",
     );
     const content = extractText(messagesResult.data);
+    const info = promptResult.data?.info;
+    const cost = info?.cost;
+    const tokens = info?.tokens;
 
-    console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
+    if (cost !== undefined) {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    } else {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
+    }
 
-    return content;
+    return { content, cost, tokens };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);

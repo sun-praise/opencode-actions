@@ -4846,8 +4846,15 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         reviewer.name
       );
       const content = extractText(messagesResult.data);
-      console.log(`[${reviewer.name}] Review complete (${content.length} chars)`);
-      return { reviewer: reviewer.name, content, success: true };
+      const info = promptResult.data?.info;
+      const cost = info?.cost;
+      const tokens = info?.tokens;
+      if (cost !== void 0) {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+      } else {
+        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
+      }
+      return { reviewer: reviewer.name, content, success: true, cost, tokens };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
@@ -4879,7 +4886,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     sessionId = sessionResult.data.id;
     activeSessions.add(sessionId);
     console.log("[coordinator] Starting synthesis...");
-    await withTimeout(
+    const promptResult = await withTimeout(
       client2.session.prompt({
         path: { id: sessionId },
         body: { parts: [{ type: "text", text: fullPrompt }] },
@@ -4894,8 +4901,15 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       "coordinator"
     );
     const content = extractText(messagesResult.data);
-    console.log(`[coordinator] Synthesis complete (${content.length} chars)`);
-    return content;
+    const info = promptResult.data?.info;
+    const cost = info?.cost;
+    const tokens = info?.tokens;
+    if (cost !== void 0) {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+    } else {
+      console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
+    }
+    return { content, cost, tokens };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);
@@ -4940,6 +4954,73 @@ async function cleanupAllSessions(client2) {
     }
   }
   activeSessions.clear();
+}
+
+// src/cost-formatter.ts
+function getLang() {
+  const raw = process.env.MULTI_REVIEW_LANGUAGE?.trim().toLowerCase();
+  return raw === "en" ? "en" : "zh";
+}
+var tokFmt = new Intl.NumberFormat("en");
+var fmtCost = (n, lang) => {
+  const safe = Number.isFinite(n) ? n : 0;
+  return lang === "zh" ? `\xA5${safe.toFixed(4)}` : `$${safe.toFixed(4)}`;
+};
+var fmtTok = (n) => tokFmt.format(Number.isFinite(n) ? n : 0);
+function formatCostTable(reviews, coordinatorResult) {
+  const reviewRows = reviews.filter((r) => r.success && r.cost !== void 0).map((r) => ({
+    role: r.reviewer,
+    costX10000: Math.round((r.cost ?? 0) * 1e4),
+    input: r.tokens?.input ?? 0,
+    output: r.tokens?.output ?? 0,
+    reasoning: r.tokens?.reasoning ?? 0,
+    cacheRead: r.tokens?.cache.read ?? 0,
+    cacheWrite: r.tokens?.cache.write ?? 0
+  }));
+  const hasCoordinatorCost = coordinatorResult !== void 0 && coordinatorResult.cost !== void 0;
+  if (reviewRows.length === 0 && !hasCoordinatorCost) return "";
+  const rows = [...reviewRows];
+  if (hasCoordinatorCost) {
+    rows.push({
+      role: "coordinator",
+      costX10000: Math.round((coordinatorResult.cost ?? 0) * 1e4),
+      input: coordinatorResult.tokens?.input ?? 0,
+      output: coordinatorResult.tokens?.output ?? 0,
+      reasoning: coordinatorResult.tokens?.reasoning ?? 0,
+      cacheRead: coordinatorResult.tokens?.cache.read ?? 0,
+      cacheWrite: coordinatorResult.tokens?.cache.write ?? 0
+    });
+  }
+  const total = rows.reduce(
+    (acc, r) => ({
+      role: "**Total**",
+      costX10000: acc.costX10000 + r.costX10000,
+      input: acc.input + r.input,
+      output: acc.output + r.output,
+      reasoning: acc.reasoning + r.reasoning,
+      cacheRead: acc.cacheRead + r.cacheRead,
+      cacheWrite: acc.cacheWrite + r.cacheWrite
+    }),
+    { role: "**Total**", costX10000: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 }
+  );
+  const lang = getLang();
+  const costLabel = lang === "zh" ? "\u82B1\u8D39 (CNY)" : "Cost (USD)";
+  const summaryText = lang === "zh" ? "\u{1F4B0} \u5BA1\u67E5\u82B1\u8D39" : "\u{1F4B0} Review Cost";
+  const header = `| Role | ${costLabel} | Input | Output | Reasoning | Cache Read | Cache Write |`;
+  const divider = "| --- | --- | --- | --- | --- | --- | --- |";
+  const body = rows.map(
+    (r) => `| ${r.role} | ${fmtCost(r.costX10000 / 1e4, lang)} | ${fmtTok(r.input)} | ${fmtTok(r.output)} | ${fmtTok(r.reasoning)} | ${fmtTok(r.cacheRead)} | ${fmtTok(r.cacheWrite)} |`
+  ).join("\n");
+  const totalLine = `| **Total** | **${fmtCost(total.costX10000 / 1e4, lang)}** | **${fmtTok(total.input)}** | **${fmtTok(total.output)}** | **${fmtTok(total.reasoning)}** | **${fmtTok(total.cacheRead)}** | **${fmtTok(total.cacheWrite)}** |`;
+  return `<details>
+<summary>${summaryText} \u2014 ${fmtCost(total.costX10000 / 1e4, lang)}</summary>
+
+${header}
+${divider}
+${body}
+${totalLine}
+
+</details>`;
 }
 
 // src/platform.ts
@@ -5836,19 +5917,22 @@ async function main() {
     }
     let comment;
     let parsedSeverity;
+    let coordinatorResult;
     try {
-      const synthesis = await runCoordinator(client2, reviews, {
+      coordinatorResult = await runCoordinator(client2, reviews, {
         globalTimeoutMs: globalTimeout * 1e3,
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
       });
-      parsedSeverity = parseSeverity(synthesis);
+      parsedSeverity = parseSeverity(coordinatorResult.content);
       const reviewerDetails = buildReviewerDetails(reviews);
-      comment = renderSeverityComment(parsedSeverity, reviewerDetails);
+      const costTable = formatCostTable(reviews, coordinatorResult);
+      comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
       console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
-      comment = buildFallbackComment(reviews);
+      const costTable = formatCostTable(reviews);
+      comment = buildFallbackComment(reviews) + "\n" + costTable;
     }
     postPRComment(comment);
     try {

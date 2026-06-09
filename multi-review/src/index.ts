@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
+import { formatCostTable } from "./cost-formatter.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
-import type { ParsedReview } from "./types.js";
+import type { ParsedReview, CoordinatorResult } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
@@ -163,20 +164,23 @@ async function main(): Promise<number> {
     // 6. Run coordinator
     let comment: string;
     let parsedSeverity: ParsedReview | undefined;
+    let coordinatorResult: CoordinatorResult | undefined;
     try {
-      const synthesis = await runCoordinator(client, reviews, {
+      coordinatorResult = await runCoordinator(client, reviews, {
         globalTimeoutMs: globalTimeout * 1000,
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       });
       // Parse severity from coordinator output
-      parsedSeverity = parseSeverity(synthesis);
+      parsedSeverity = parseSeverity(coordinatorResult.content);
       const reviewerDetails = buildReviewerDetails(reviews);
-      comment = renderSeverityComment(parsedSeverity, reviewerDetails);
+      const costTable = formatCostTable(reviews, coordinatorResult);
+      comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
       console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
-      comment = buildFallbackComment(reviews);
+      const costTable = formatCostTable(reviews);
+      comment = buildFallbackComment(reviews) + "\n" + costTable;
     }
 
     // 7. Post comment

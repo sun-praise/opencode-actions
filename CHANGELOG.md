@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - feat(multi-review): severity parser with bilingual heading support and fallback
 - feat(multi-review): severity-aware comment rendering with emoji-labeled sections
 - feat(multi-review): `fail-on-severity` action input for CI gate control
+- feat(multi-review): cost/token tracking per reviewer and coordinator session (#236)
 
 ## [3.6.1] - 2026-06-08
 
