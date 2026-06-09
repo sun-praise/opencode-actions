@@ -25,7 +25,13 @@ Your task is to synthesize them into a single deduplicated report.
 - 第一行：最终决策（可合并 / CAN MERGE、有条件合并 / CONDITIONAL MERGE、不可合并 / CANNOT MERGE）
 - 然后简要总结
 - "阻塞项" / "Blocking Issues"列出合并前必须修复的问题；如无，写"阻塞项：无" / "Blocking Issues: None"
+- "警告项" / "Warnings"列出强烈建议修复但不阻断合并的问题；如无，写"警告项：无" / "Warnings: None"
 - "建议项" / "Suggestions"列出非阻塞改进建议；如无，写"建议项：无" / "Suggestions: None"
+
+重要：每个分类必须使用以下精确标题格式 / IMPORTANT: Each category MUST use these exact heading formats:
+- ### 🔴 阻塞项 / Blocking Issues
+- ### 🟡 警告项 / Warnings
+- ### 🟢 建议项 / Suggestions
 
 IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。`;
 

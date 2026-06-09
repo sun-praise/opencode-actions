@@ -4792,7 +4792,13 @@ Your task is to synthesize them into a single deduplicated report.
 - \u7B2C\u4E00\u884C\uFF1A\u6700\u7EC8\u51B3\u7B56\uFF08\u53EF\u5408\u5E76 / CAN MERGE\u3001\u6709\u6761\u4EF6\u5408\u5E76 / CONDITIONAL MERGE\u3001\u4E0D\u53EF\u5408\u5E76 / CANNOT MERGE\uFF09
 - \u7136\u540E\u7B80\u8981\u603B\u7ED3
 - "\u963B\u585E\u9879" / "Blocking Issues"\u5217\u51FA\u5408\u5E76\u524D\u5FC5\u987B\u4FEE\u590D\u7684\u95EE\u9898\uFF1B\u5982\u65E0\uFF0C\u5199"\u963B\u585E\u9879\uFF1A\u65E0" / "Blocking Issues: None"
+- "\u8B66\u544A\u9879" / "Warnings"\u5217\u51FA\u5F3A\u70C8\u5EFA\u8BAE\u4FEE\u590D\u4F46\u4E0D\u963B\u65AD\u5408\u5E76\u7684\u95EE\u9898\uFF1B\u5982\u65E0\uFF0C\u5199"\u8B66\u544A\u9879\uFF1A\u65E0" / "Warnings: None"
 - "\u5EFA\u8BAE\u9879" / "Suggestions"\u5217\u51FA\u975E\u963B\u585E\u6539\u8FDB\u5EFA\u8BAE\uFF1B\u5982\u65E0\uFF0C\u5199"\u5EFA\u8BAE\u9879\uFF1A\u65E0" / "Suggestions: None"
+
+\u91CD\u8981\uFF1A\u6BCF\u4E2A\u5206\u7C7B\u5FC5\u987B\u4F7F\u7528\u4EE5\u4E0B\u7CBE\u786E\u6807\u9898\u683C\u5F0F / IMPORTANT: Each category MUST use these exact heading formats:
+- ### \u{1F534} \u963B\u585E\u9879 / Blocking Issues
+- ### \u{1F7E1} \u8B66\u544A\u9879 / Warnings
+- ### \u{1F7E2} \u5EFA\u8BAE\u9879 / Suggestions
 
 IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. \u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\u7F16\u53F7\uFF0CGitHub \u4F1A\u5C06\u5176\u8F6C\u4E3A issue/PR \u5F15\u7528\u3002`;
 function extractText(messages) {
@@ -5598,6 +5604,123 @@ function filterDiff(diff, options) {
   return result;
 }
 
+// src/severity-parser.ts
+function parseSeverity(text) {
+  const decision = extractDecision(text);
+  const result = {
+    decision,
+    summary: "",
+    blocking: [],
+    warning: [],
+    suggestion: [],
+    fallback: false,
+    rawText: text
+  };
+  const sectionRegex = /^###\s*(?:🔴|🟡|🟢)?\s*(阻塞项|Blocking Issues?|警告项|Warnings?|建议项|Suggestions?)(?:\s+\/.*)?$/gim;
+  const nextHeadingRegex = /^###\s/m;
+  let match;
+  let foundAny = false;
+  let firstHeadingIndex = text.length;
+  while ((match = sectionRegex.exec(text)) !== null) {
+    foundAny = true;
+    if (match.index < firstHeadingIndex) firstHeadingIndex = match.index;
+    const heading = match[1].toLowerCase();
+    const bodyStart = match.index + match[0].length;
+    const rest = text.slice(bodyStart);
+    const nextMatch = rest.search(nextHeadingRegex);
+    const body = nextMatch === -1 ? rest : rest.slice(0, nextMatch);
+    const items = parseListItems(body);
+    const key = heading === "\u963B\u585E\u9879" || heading.startsWith("blocking") ? "blocking" : heading === "\u8B66\u544A\u9879" || heading.startsWith("warning") ? "warning" : heading === "\u5EFA\u8BAE\u9879" || heading.startsWith("suggestion") ? "suggestion" : null;
+    if (key) result[key].push(...items);
+  }
+  const firstLineEnd = text.indexOf("\n");
+  const afterDecision = firstLineEnd === -1 ? "" : text.slice(firstLineEnd + 1);
+  const summaryText = afterDecision.slice(0, firstHeadingIndex - (firstLineEnd + 1)).trim();
+  result.summary = summaryText;
+  if (!foundAny) {
+    result.fallback = true;
+  }
+  return result;
+}
+function extractDecision(text) {
+  const lines = text.split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const lower = line.toLowerCase();
+    if (lower.includes("\u4E0D\u53EF\u5408\u5E76") || lower.includes("cannot merge")) {
+      return "CANNOT MERGE";
+    }
+    if (lower.includes("\u6709\u6761\u4EF6\u5408\u5E76") || lower.includes("conditional merge")) {
+      return "CONDITIONAL MERGE";
+    }
+    if (lower.includes("\u53EF\u5408\u5E76") || lower.includes("can merge")) {
+      return "CAN MERGE";
+    }
+    break;
+  }
+  return null;
+}
+function parseListItems(body) {
+  const items = [];
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const itemMatch = line.match(/^[-*]\s+(.+)$|^(\d+)\.\s+(.+)$/);
+    if (!itemMatch) continue;
+    const content = (itemMatch[1] ?? itemMatch[3]).trim();
+    const lower = content.toLowerCase();
+    if (lower === "\u65E0" || lower === "none") continue;
+    items.push(content);
+  }
+  return items;
+}
+function shouldFailOnSeverity(parsed, failOnSeverity) {
+  if (!parsed || parsed.fallback) return false;
+  if (failOnSeverity === "blocking" && parsed.blocking.length > 0) return true;
+  if (failOnSeverity === "warning" && (parsed.blocking.length > 0 || parsed.warning.length > 0)) return true;
+  return false;
+}
+
+// src/severity-renderer.ts
+var DECISION_LABELS = {
+  "CAN MERGE": "\u2705 \u53EF\u5408\u5E76 / CAN MERGE",
+  "CONDITIONAL MERGE": "\u26A0\uFE0F \u6709\u6761\u4EF6\u5408\u5E76 / CONDITIONAL MERGE",
+  "CANNOT MERGE": "\u{1F6AB} \u4E0D\u53EF\u5408\u5E76 / CANNOT MERGE"
+};
+var SECTIONS = [
+  { key: "blocking", heading: "\u{1F534} \u963B\u585E\u9879 / Blocking Issues" },
+  { key: "warning", heading: "\u{1F7E1} \u8B66\u544A\u9879 / Warnings" },
+  { key: "suggestion", heading: "\u{1F7E2} \u5EFA\u8BAE\u9879 / Suggestions" }
+];
+function renderSeverityComment(parsed, reviewerDetails) {
+  if (parsed.fallback) {
+    return parsed.rawText + "\n" + reviewerDetails;
+  }
+  const lines = [];
+  if (parsed.decision != null) {
+    const label = DECISION_LABELS[parsed.decision];
+    lines.push(label ?? parsed.decision);
+  }
+  if (parsed.summary) {
+    lines.push("", parsed.summary);
+  }
+  const totalIssues = parsed.blocking.length + parsed.warning.length + parsed.suggestion.length;
+  for (const section of SECTIONS) {
+    const items = parsed[section.key];
+    if (items.length === 0) continue;
+    lines.push(
+      `### ${section.heading} (${items.length})`,
+      ...items.map((item) => `- ${item}`)
+    );
+  }
+  if (totalIssues === 0) {
+    lines.push("> \u2139\uFE0F No issues found / \u672A\u53D1\u73B0\u95EE\u9898");
+  }
+  lines.push("", reviewerDetails);
+  return lines.join("\n");
+}
+
 // src/index.ts
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
@@ -5712,13 +5835,17 @@ async function main() {
       return 1;
     }
     let comment;
+    let parsedSeverity;
     try {
       const synthesis = await runCoordinator(client2, reviews, {
         globalTimeoutMs: globalTimeout * 1e3,
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
       });
-      comment = synthesis + "\n\n---\n\n" + buildReviewerDetails(reviews);
+      parsedSeverity = parseSeverity(synthesis);
+      const reviewerDetails = buildReviewerDetails(reviews);
+      comment = renderSeverityComment(parsedSeverity, reviewerDetails);
+      console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
       comment = buildFallbackComment(reviews);
@@ -5728,6 +5855,13 @@ async function main() {
       cleanupErrorComments();
     } catch (err) {
       console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
+    }
+    const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
+    if (shouldFailOnSeverity(parsedSeverity, failOn)) {
+      const b = parsedSeverity?.blocking.length ?? 0;
+      const w = parsedSeverity?.warning.length ?? 0;
+      console.error(`Severity gate: ${b} blocking + ${w} warning issue(s) found \u2014 failing.`);
+      return 1;
     }
     return 0;
   } finally {

@@ -147,6 +147,14 @@ inputs:
     required: false
     default: "0"
 
+  fail-on-severity:
+    description: >-
+      Control action exit code based on review severity. Allowed values:
+      "none" (default — always exit 0), "blocking" (exit 1 if blocking issues found),
+      "warning" (exit 1 if warning or blocking issues found).
+    required: false
+    default: "none"
+
 runs:
   using: composite
   steps:
@@ -284,6 +292,7 @@ runs:
         MULTI_REVIEW_ENABLE_THINKING: ${{ inputs.enable-thinking }}
         MULTI_REVIEW_DIFF_EXCLUDE: ${{ inputs.diff-exclude }}
         MULTI_REVIEW_DIFF_MAX_SIZE_KB: ${{ inputs.diff-max-size-kb }}
+        MULTI_REVIEW_FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         GITEA_TOKEN: ${{ inputs.gitea-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}

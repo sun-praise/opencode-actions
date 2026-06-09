@@ -65,6 +65,7 @@ prompt: |
     For each gap: quote the spec task verbatim, describe what's missing in the implementation, and suggest which file(s) should be modified.
   - If verdict is "全覆盖" / "FULL COVERAGE", briefly confirm all spec tasks are covered — do NOT include any severity sections.
   - Then "阻塞项" / "Blocking Issues" listing gaps that must block merge; if none, write "阻塞项：无" / "Blocking Issues: None"
+  - Then "警告项" / "Warnings" listing issues that should be fixed but don't block merge; if none, write "警告项：无" / "Warnings: None"
   - Then "建议项" / "Suggestions" listing non-blocking gaps; if none, write "建议项：无" / "Suggestions: None"
 
   IMPORTANT: Never use #N format (e.g. #1, #2) to number items. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. 请勿使用 #N 格式编号，GitHub 会将其转为 issue/PR 引用。
