@@ -1465,5 +1465,61 @@ class TestMigrationRecovery(unittest.TestCase):
         actual_attempts = int(attempt_file.read_text().strip())
         self.assertLessEqual(actual_attempts, 1, f"expected at most 1 attempt with OPENCODE_ATTEMPTS=1, got {actual_attempts}")
 
+class TestLlmUrlValidation(unittest.TestCase):
+    """Tests for LITELLM_URL scheme validation in multi-review action."""
+
+    def _run_validation(self, litellm_url: str = "") -> subprocess.CompletedProcess:
+        """Run the LITELLM_URL validation logic extracted from action.yml."""
+        script = f"""#!/usr/bin/env bash
+set -euo pipefail
+LITELLM_URL="{litellm_url}"
+if [[ -n "$LITELLM_URL" && ! "$LITELLM_URL" =~ ^https?:// ]]; then
+  printf 'error: LITELLM_URL must start with http:// or https:// (got: %s)\\n' "$LITELLM_URL" >&2
+  exit 1
+fi
+echo "ok"
+"""
+        return subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_empty_url_passes(self):
+        """Empty LITELLM_URL should pass validation."""
+        result = self._run_validation("")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ok")
+
+    def test_https_url_passes(self):
+        """LITELLM_URL with https:// should pass validation."""
+        result = self._run_validation("https://llm.example.com")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ok")
+
+    def test_http_url_passes(self):
+        """LITELLM_URL with http:// should pass validation."""
+        result = self._run_validation("http://llm.example.com")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ok")
+
+    def test_bare_hostname_fails(self):
+        """LITELLM_URL without scheme should fail validation."""
+        result = self._run_validation("llm.example.com")
+        self.assertNotEqual(result.returncode, 0, "expected failure for bare hostname")
+        self.assertIn("LITELLM_URL must start with http:// or https://", result.stderr)
+
+    def test_ip_with_port_fails(self):
+        """LITELLM_URL with IP:port but no scheme should fail validation."""
+        result = self._run_validation("192.168.1.1:4000")
+        self.assertNotEqual(result.returncode, 0, "expected failure for IP:port without scheme")
+        self.assertIn("LITELLM_URL must start with http:// or https://", result.stderr)
+
+    def test_ftp_url_fails(self):
+        """LITELLM_URL with ftp:// scheme should fail validation."""
+        result = self._run_validation("ftp://llm.example.com")
+        self.assertNotEqual(result.returncode, 0, "expected failure for ftp:// scheme")
+        self.assertIn("LITELLM_URL must start with http:// or https://", result.stderr)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
