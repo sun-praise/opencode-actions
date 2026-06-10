@@ -12,7 +12,7 @@
 
 ```yaml
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -22,7 +22,6 @@
     opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
     litellm-url: ${{ secrets.LITELLM_URL }}
     litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
-```
 
 你将获得一个自动化的 PR 审查机器人（默认中文回复，可通过 `language` 输入切换语言）。
 
@@ -48,7 +47,7 @@ npx skills add sun-praise/opencode-actions
 
 ```yaml
 - name: Run OpenCode multi-review (英文)
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: en
@@ -58,7 +57,7 @@ npx skills add sun-praise/opencode-actions
 
 ```yaml
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: ${{ vars.OPENCODE_LANGUAGE }}
@@ -76,7 +75,7 @@ npx skills add sun-praise/opencode-actions
 
 ```yaml
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     model: deepseek/deepseek-v4-flash
@@ -84,7 +83,8 @@ npx skills add sun-praise/opencode-actions
     timeout-seconds: "900"
     coordinator-timeout-seconds: "300"
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-```
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 
 ## 使用方式
 

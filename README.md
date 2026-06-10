@@ -11,7 +11,7 @@ This repository is licensed under Apache 2.0.
 Write this in your CI.yaml
 
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     model: deepseek/deepseek-v4-flash
@@ -21,7 +21,8 @@ Write this in your CI.yaml
     # only one is enough.
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 You'll get an automatic reviewer (Chinese by default, configurable via `language` input).
 
 Or add the skills to your project:
@@ -90,7 +91,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 
 ```yaml
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     model: deepseek/deepseek-v4-flash
@@ -98,7 +99,8 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
     timeout-seconds: "900"
     coordinator-timeout-seconds: "300"
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-```
+    litellm-url: ${{ secrets.LITELLM_URL }}
+    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 
 ### Inputs
 
