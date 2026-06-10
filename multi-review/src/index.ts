@@ -1,5 +1,6 @@
 import { createOpencode } from "@opencode-ai/sdk";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
 import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
@@ -18,11 +19,24 @@ const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
  */
 function buildSdkConfig(model: string): Record<string, unknown> {
   const config: Record<string, unknown> = { model };
-
+  // Inject litellm provider when model starts with "litellm/" and LITELLM_URL is set.
+  // opencode has no built-in litellm provider; we use @ai-sdk/openai to talk to
+  // any OpenAI-compatible proxy (LiteLLM, etc.) with standard function-type tools.
+  const litellmUrl = env("LITELLM_URL");
+  if (model.startsWith("litellm/") && litellmUrl) {
+    const modelId = model.slice("litellm/".length);
+    config.provider = {
+      litellm: {
+        npm: "@ai-sdk/openai",
+        name: "LiteLLM",
+        options: { baseURL: litellmUrl.replace(/\/+$/, "") + "/v1" },
+        models: { [modelId]: { name: modelId } },
+      },
+    };
+  }
   const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
   const enableThinkingRaw = env("MULTI_REVIEW_ENABLE_THINKING");
   const enableThinking = enableThinkingRaw.toLowerCase() === "true";
-
   const agentOptions: Record<string, unknown> = {};
   if (reasoningEffort) {
     if (!ALLOWED_REASONING_EFFORTS.has(reasoningEffort)) {
@@ -34,14 +48,12 @@ function buildSdkConfig(model: string): Record<string, unknown> {
   if (enableThinking) {
     agentOptions.thinking = { type: "enabled" };
   }
-
   // Read-only review: deny all editing and shell access
   const agent: Record<string, unknown> = { permission: { edit: "deny", bash: "deny" } };
   if (Object.keys(agentOptions).length > 0) {
     agent.build = { options: agentOptions };
   }
   config.agent = agent;
-
   return config;
 }
 
@@ -120,6 +132,20 @@ async function main(): Promise<number> {
   // 4. Start opencode server via SDK
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
+  // Inject litellm API key into opencode's auth.json so the custom provider
+  // can authenticate with the proxy.  Safe to call even when not using litellm.
+  const litellmApiKey = env("LITELLM_API_KEY");
+  if (providerID === "litellm" && litellmApiKey) {
+    const authDir = join(homedir(), ".local", "share", "opencode");
+    mkdirSync(authDir, { recursive: true });
+    const authPath = join(authDir, "auth.json");
+    let auth: Record<string, unknown> = {};
+    if (existsSync(authPath)) {
+      try { auth = JSON.parse(readFileSync(authPath, "utf-8")); } catch { auth = {}; }
+    }
+    auth.litellm = { type: "api", key: litellmApiKey };
+    writeFileSync(authPath, JSON.stringify(auth));
+  }
   // SDK 默认 server-start 超时仅 5000ms，繁忙 self-hosted runner 上 opencode binary 启动常 >5s
   // 导致 "Timeout waiting for server to start"。放宽默认到 30s 并允许 env 覆盖。
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 30000);
