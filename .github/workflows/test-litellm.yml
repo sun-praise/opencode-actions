@@ -1,0 +1,34 @@
+name: Test LiteLLM
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  test-litellm:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run review with LiteLLM
+        uses: sun-praise/opencode-actions/review@v3
+        with:
+          model: "litellm/deepseek-v4-flash"
+          litellm-url: "https://llm.sun-praise.com"
+          litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          attempts: 1
