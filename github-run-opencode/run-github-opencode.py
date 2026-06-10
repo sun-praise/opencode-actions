@@ -126,7 +126,7 @@ def configure_opencode_env(
     if litellm_url and litellm_model.startswith("litellm/"):
         model_id = litellm_model[len("litellm/"):]
         provider_cfg = {
-            "npm": "@ai-sdk/openai-compatible",
+            "npm": "@ai-sdk/openai",
             "name": "LiteLLM",
             "options": {
                 "baseURL": litellm_url.rstrip("/") + "/v1",
