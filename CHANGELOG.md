@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.0] - 2026-06-10
+
+### Breaking Changes
+- **Removed 6 standalone review actions** — all review functionality is now consolidated into `multi-review` via built-in personas (#252):
+  - `review` → use `multi-review` with `default-team: "quality:1"`
+  - `architect-review` → use `multi-review` with `default-team: "architecture:1"`
+  - `feature-missing` → use `multi-review` with `default-team: "feature-missing:1"`
+  - `spec-coverage` → use `multi-review` with `default-team: "spec-coverage:1"`
+  - `regression-test-missing` → use `multi-review` with `default-team: "regression-test:1"`
+  - `test-value-detector` → use `multi-review` with `default-team: "test-value:1"`
+
+### Migration Guide
+- Replace `uses: sun-praise/opencode-actions/review@v3` with `uses: sun-praise/opencode-actions/multi-review@v4`
+- Set `default-team` to include the reviewer personas you need (e.g. `"quality:1,security:1,architecture:1"`)
+- The default team now includes all 8 personas: quality, security, performance, architecture, regression-test, feature-missing, test-value, spec-coverage
+
+### Added
+- feat(multi-review): add feature-missing built-in persona (#253)
+
+### Remaining Actions
+- `multi-review` — multi-agent parallel PR review (primary review action)
+- `github-run-opencode` — one-step wrapper for `opencode github run`
+- `setup-opencode` — installs OpenCode, restores cache
+- `run-opencode` — generic `opencode` runner with retry logic
+
 ## [3.8.3] - 2026-06-10
 ### Fixed
 - fix(multi-review): inject litellm provider config and auth in opencode SDK (#246)

@@ -1,6 +1,6 @@
 ---
 name: setup-ci
-description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, multi-review, feature-missing audit, regression-test-missing, test-value-detector, spec-coverage audit, architect-review, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
+description: Configure opencode-actions GitHub Actions workflows for a repository. Use when the user wants to set up automated PR review, multi-review, or comment-triggered opencode commands in their CI. Triggers on requests like "帮我配置 CI", "设置 PR review", "添加 opencode action", "配置自动审查", or any task involving adding opencode-actions workflows to a GitHub repository.
 ---
 
 # Setup opencode-actions CI
@@ -18,18 +18,11 @@ Configure `sun-praise/opencode-actions` GitHub Actions for a user's repository.
 
 | Need | Action | One-liner |
 | --- | --- | --- |
-| PR code review | `review` | Quality, bugs, security — Chinese output |
-| Architecture review | `architect-review` | Coupling, layering, structural concerns |
 | Multi-agent review | `multi-review` | Parallel reviewer personas + coordinator synthesis |
-| PR scope audit | `feature-missing` | Missing features vs linked issue spec |
-| Spec coverage | `spec-coverage` | Missing features vs project spec files |
-| Regression test audit | `regression-test-missing` | Missing regression tests for bug fixes |
-| Test value audit | `test-value-detector` | Low-value tests: empty assertions, hardcoded mocks, duplicates |
 | Custom command | `github-run-opencode` | Flexible, user-defined prompt |
 | Manual setup | `setup-opencode` + `run-opencode` | Full control over install and run |
 
-Users typically combine `review` + `multi-review` + `feature-missing` for full coverage, or use `multi-review` alone for comprehensive parallel review.
-
+`multi-review` includes 8 built-in reviewer personas: quality, security, performance, architecture, regression-test, feature-missing, test-value, spec-coverage. Use `default-team` to select which personas run.
 
 ## Recommended Models
 
@@ -42,41 +35,6 @@ Users typically combine `review` + `multi-review` + `feature-missing` for full c
 | `xiaomi-token-plan-cn/mimo-v2-pro` | Xiaomi MiMo | `XIAOMI_API_KEY` | Token Plan (China); not compatible with multi-review ([why?](references/actions-reference.md#model-constraints)) |
 
 Set via `model:` input in the `with:` block (e.g. `model: ${{ vars.MODEL_NAME }}`), or configure `MODEL_NAME` as a repository variable in Settings → Secrets and variables → Actions → Variables to switch models without modifying workflow files.
-
-## Architect Review Setup
-
-Generate this in `.github/workflows/opencode-architect-review.yml`:
-
-```yaml
-name: OpenCode Architect Review
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  architect-review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run architect review
-        uses: sun-praise/opencode-actions/architect-review@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-```
 
 ## Multi-Review Setup
 
@@ -105,13 +63,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run multi-review
-        uses: sun-praise/opencode-actions/multi-review@v3
+        uses: sun-praise/opencode-actions/multi-review@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          # Optional: override default reviewer team (default: quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1)
+          litellm-url: ${{ secrets.LITELLM_URL }}
+          litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+          # Optional: override default reviewer team
           # default-team: "quality:2,security:1,architecture:1,test-value:1"
           # Optional: exclude files from diff (e.g. "*.lock,*.snap")
           # diff-exclude: "*.lock,*.snap"
@@ -123,8 +83,7 @@ jobs:
           # timeout-seconds: "1200"
 ```
 
-
-## Minimal Review Setup
+## Minimal Review Setup (single persona)
 
 Generate this in `.github/workflows/opencode-review.yml`:
 
@@ -151,216 +110,23 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Run OpenCode review
-        uses: sun-praise/opencode-actions/review@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-## Regression Test Missing Setup
-
-Generate this in `.github/workflows/opencode-regression-test-missing.yml`:
-
-```yaml
-name: OpenCode Regression Test Missing
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  regression-test-missing:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run regression test missing audit
-        uses: sun-praise/opencode-actions/regression-test-missing@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-```
-
-## Test Value Detector Setup
-
-Generate this in `.github/workflows/opencode-test-value-detector.yml`:
-
-```yaml
-name: OpenCode Test Value Detector
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  test-value-detector:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run test value detector
-        uses: sun-praise/opencode-actions/test-value-detector@v3
+        uses: sun-praise/opencode-actions/multi-review@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-```
-
-## Full Audit Setup (Review + Feature-Missing + Regression-Test-Missing + Test-Value-Detector + Spec-Coverage)
-
-Generate this in `.github/workflows/opencode-audit.yml`:
-
-```yaml
-name: OpenCode Audit
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run OpenCode review
-        uses: sun-praise/opencode-actions/review@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-
-  feature-missing:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: read
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run feature missing audit
-        uses: sun-praise/opencode-actions/feature-missing@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-
-  regression-test-missing:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run regression test missing audit
-        uses: sun-praise/opencode-actions/regression-test-missing@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-
-  test-value-detector:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run test value detector
-        uses: sun-praise/opencode-actions/test-value-detector@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-
-  spec-coverage:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Run spec coverage audit
-        uses: sun-praise/opencode-actions/spec-coverage@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-          opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          litellm-url: ${{ secrets.LITELLM_URL }}
+          litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+          default-team: "quality:1"
 ```
 
 ## Comment Command Setup
 
-Generate this in `.github/workflows/opencode-command.yml` for `/oc` or `/opencode` comment triggers:
+Generate this in `.github/workflows/opencode-command.yml`:
 
 ```yaml
-name: OpenCode Command
+name: OpenCode Comment Command
 
 on:
   issue_comment:
@@ -427,27 +193,63 @@ jobs:
 
       - name: Run OpenCode
         if: ${{ steps.target.outputs.is_fork != 'true' }}
-        uses: sun-praise/opencode-actions/github-run-opencode@v3
+        uses: sun-praise/opencode-actions/github-run-opencode@v4
         env:
           MODEL_NAME: zhipuai-coding-plan/glm-5.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
           opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
+          litellm-url: ${{ secrets.LITELLM_URL }}
+          litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
 ```
 
-## Customization Checklist
+## Custom Reviewer Personas
 
-When generating workflows, remind the user about:
+Users can add custom reviewer personas by placing `.yaml` or `.yml` files in `.github/reviewers/`:
 
-1. **API Key**: At least one of `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`, `OPENCODE_GO_API_KEY`, `MINIMAX_API_KEY`, or `XIAOMI_API_KEY` must be configured in repository Secrets. For multi-review, `DEEPSEEK_API_KEY` is recommended — see [Model Constraints](references/actions-reference.md#model-constraints) for details.
-2. **Model override**: Set `model:` input or `MODEL_NAME` env var to change the default model
-3. **Fallback models**: Use `fallback-models:` for timeout-driven model rotation
-4. **Timeout**: Default is 600s (10 min); adjust via `timeout-seconds:`
-5. **Fork PRs**: All templates skip fork PRs by default (secrets are not available)
-6. **Draft PRs**: All templates skip draft PRs via the `if:` guard
-7. **Version pinning**: Security-sensitive repos should pin to a full commit SHA instead of `@v3`
+```yaml
+# .github/reviewers/accessibility.yaml
+name: accessibility
+prompt: |
+  Review this PR for accessibility issues...
+```
+
+Custom personas are referenced in `default-team` just like built-in ones: `"accessibility:1,quality:1"`.
+
+## Available Personas
+
+| Persona | Focus |
+| --- | --- |
+| `quality` | Code quality, bugs, style |
+| `security` | Security vulnerabilities, injection, auth |
+| `performance` | Performance issues, hot paths, resource leaks |
+| `architecture` | Coupling, layering, module placement, structural concerns |
+| `regression-test` | Missing regression tests for bug fixes |
+| `feature-missing` | Missing features vs linked issue spec |
+| `test-value` | Low-value tests: empty assertions, hardcoded mocks, duplicates |
+| `spec-coverage` | Missing features vs project spec/task files |
+
+## Secrets Setup
+
+The user needs to configure at least one provider API key in their repository secrets:
+
+1. Go to the repository on GitHub
+2. Settings → Secrets and variables → Actions → New repository secret
+3. Add one or more:
+   - `DEEPSEEK_API_KEY` (recommended for multi-review)
+   - `ZHIPU_API_KEY`
+   - `OPENCODE_GO_API_KEY`
+   - `LITELLM_URL` + `LITELLM_API_KEY`
+   - `MINIMAX_API_KEY` (not compatible with multi-review)
+   - `XIAOMI_API_KEY` (not compatible with multi-review)
+
+`GITHUB_TOKEN` is automatically available in GitHub Actions.
+
+## Version Pinning
+
+- Use `@v4` for compatible updates within v4
+- Security-sensitive repos should pin to a full commit SHA instead of `@v4`
+- Immutable releases use semver tags like `v4.0.0`
 
 For the complete list of inputs per action, see [references/actions-reference.md](references/actions-reference.md).

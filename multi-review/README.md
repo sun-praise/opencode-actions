@@ -6,7 +6,7 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 
 ```yaml
 - name: Run OpenCode multi-review
-  uses: sun-praise/opencode-actions/multi-review@v3
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     model: deepseek/deepseek-v4-flash
@@ -19,7 +19,7 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 ## What it does
 
 - Spawns N reviewer sessions in parallel via `@opencode-ai/sdk`
-- Built-in reviewer personas: quality, security, performance, architecture, regression-test
+- Built-in reviewer personas: quality, security, performance, architecture, regression-test, feature-missing, test-value, spec-coverage
 - A coordinator session reads all reviewer outputs and produces a deduplicated synthesis
 - Each reviewer's full output is included in a collapsible `<details>` block
 - Single `opencode serve` instance shared across sessions (one MCP cold start)
@@ -67,14 +67,9 @@ Setup-related inputs from [`setup-opencode`](https://github.com/sun-praise/openc
 
 ## Related actions in this monorepo
 
-- [`review`](https://github.com/sun-praise/opencode-actions/tree/main/review) — single-agent PR review with sensible defaults
-- [`architect-review`](https://github.com/sun-praise/opencode-actions/tree/main/architect-review) — architecture-focused review
-- [`feature-missing`](https://github.com/sun-praise/opencode-actions/tree/main/feature-missing) — PR scope audit vs linked issue
-- [`spec-coverage`](https://github.com/sun-praise/opencode-actions/tree/main/spec-coverage) — spec/task coverage audit
 - [`setup-opencode`](https://github.com/sun-praise/opencode-actions/tree/main/setup-opencode) — installs OpenCode, restores a dedicated cache
 - [`run-opencode`](https://github.com/sun-praise/opencode-actions/tree/main/run-opencode) — generic `opencode` runner with retry logic
 - [`github-run-opencode`](https://github.com/sun-praise/opencode-actions/tree/main/github-run-opencode) — one-step wrapper for `opencode github run`
-
 See the [root README](https://github.com/sun-praise/opencode-actions) for the full list of inputs and examples.
 
 ## License
