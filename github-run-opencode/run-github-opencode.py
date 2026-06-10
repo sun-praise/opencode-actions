@@ -102,16 +102,19 @@ def configure_opencode_env(
     enable_thinking: str,
     working_directory: str = "",
     permission: dict | None = None,
+    litellm_url: str = "",
+    litellm_model: str = "",
 ) -> None:
-    """Set OPENCODE_CONFIG_CONTENT env var with reasoning effort, thinking, and permission configuration.
-
+    """Set OPENCODE_CONFIG_CONTENT env var with provider, reasoning, thinking, and permission configuration.
     Reads existing opencode.json from the working directory (if present) and merges
     the CI-specific settings into it.  The merged config is passed via the
     ``OPENCODE_CONFIG_CONTENT`` environment variable so that no file is written
     to the working tree, keeping it clean and avoiding spurious git push attempts.
+    When *litellm_url* is non-empty and the active model starts with ``litellm/``,
+    a custom ``litellm`` provider is injected using the ``@ai-sdk/openai-compatible``
+    adapter so opencode can reach any LiteLLM proxy endpoint.
     """
     config_path = Path(working_directory) / "opencode.json" if working_directory else Path("opencode.json")
-
     config: dict = {}
     if config_path.exists():
         try:
@@ -119,30 +122,56 @@ def configure_opencode_env(
                 config = json.load(f)
         except (json.JSONDecodeError, OSError):
             config = {}
-
+    # Inject litellm provider when litellm URL and model are provided.
+    if litellm_url and litellm_model.startswith("litellm/"):
+        model_id = litellm_model[len("litellm/"):]
+        provider_cfg = {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "LiteLLM",
+            "options": {
+                "baseURL": litellm_url.rstrip("/") + "/v1",
+            },
+            "models": {
+                model_id: {"name": model_id},
+            },
+        }
+        if "provider" not in config:
+            config["provider"] = {}
+        config["provider"]["litellm"] = provider_cfg
     if "agent" not in config:
         config["agent"] = {}
-
     # Use "build" as the default agent name for CI scenarios
     agent_name = "build"
     if agent_name not in config["agent"]:
         config["agent"][agent_name] = {}
-
     if "options" not in config["agent"][agent_name]:
         config["agent"][agent_name]["options"] = {}
-
     if reasoning_effort:
         config["agent"][agent_name]["options"]["reasoningEffort"] = reasoning_effort
-
     if enable_thinking.lower() == "true":
         config["agent"][agent_name]["options"]["thinking"] = {"type": "enabled"}
-
     if permission:
         if "permission" not in config["agent"][agent_name]:
             config["agent"][agent_name]["permission"] = {}
         _deep_merge(config["agent"][agent_name]["permission"], permission)
-
     os.environ["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, ensure_ascii=False)
+def _inject_litellm_auth(api_key: str) -> None:
+    """Write the litellm API key into opencode's auth.json so the custom
+    provider can authenticate.  The file lives at
+    ``~/.local/share/opencode/auth.json``; missing parent dirs are created."""
+    auth_dir = Path.home() / ".local" / "share" / "opencode"
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    auth_path = auth_dir / "auth.json"
+    auth: dict = {}
+    if auth_path.exists():
+        try:
+            with open(auth_path, "r", encoding="utf-8") as f:
+                auth = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            auth = {}
+    auth["litellm"] = {"type": "api", "key": api_key}
+    with open(auth_path, "w", encoding="utf-8") as f:
+        json.dump(auth, f)
 
 
 def extract_decision(output_text: str, output_format: str) -> str:
@@ -672,9 +701,21 @@ def _main() -> int:
             print(f"GITHUB_RUN_OPENCODE_PERMISSION must be a JSON object, got {type(permission).__name__}", file=sys.stderr)
             sys.exit(1)
 
-    needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission
+    litellm_url = get_env("LITELLM_URL")
+    litellm_api_key = get_env("LITELLM_API_KEY")
+    model = os.environ.get("MODEL", "")
+    is_litellm = model.startswith("litellm/") and litellm_url
+    # Inject litellm auth into opencode's credential store so the custom
+    # provider can authenticate with the proxy.
+    if is_litellm and litellm_api_key:
+        _inject_litellm_auth(litellm_api_key)
+    needs_config = reasoning_effort or enable_thinking.lower() == "true" or permission or is_litellm
     if needs_config:
-        configure_opencode_env(reasoning_effort, enable_thinking, working_directory, permission)
+        configure_opencode_env(
+            reasoning_effort, enable_thinking, working_directory, permission,
+            litellm_url=litellm_url,
+            litellm_model=model,
+        )
 
     validate_regex(fallback_on_regex, "GITHUB_RUN_OPENCODE_FALLBACK_ON_REGEX")
     # Ensure git identity is configured so that opencode's built-in commit logic
