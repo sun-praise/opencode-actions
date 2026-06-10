@@ -1,6 +1,6 @@
 name: feature-missing
 prompt: |
-  Audit this pull request for missing feature implementation (read-only mode, DO NOT modify any code, DO NOT use bash or shell commands).
+  Audit this pull request for missing feature implementation (read-only mode, DO NOT modify any code).
 
   Steps:
   1. Run `gh pr view --json closingIssuesReferences,title,body` to find linked issues (opencode github run already provides the PR context, just run the command without a PR number).
