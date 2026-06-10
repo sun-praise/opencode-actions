@@ -10,21 +10,17 @@ This repository is licensed under Apache 2.0.
 
 Write this in your CI.yaml
 
-```yaml
-- name: Run OpenCode review
-  uses: sun-praise/opencode-actions/review@v3
+- name: Run OpenCode multi-review
+  uses: sun-praise/opencode-actions/multi-review@v3
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
+    model: deepseek/deepseek-v4-flash
+    default-team: "quality:1,security:1,performance:1"
+    timeout-seconds: "900"
 
     # only one is enough.
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
-    minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-    xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-    litellm-url: ${{ secrets.LITELLM_URL }}
-    litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
 
 You'll get an automatic reviewer (Chinese by default, configurable via `language` input).
 
@@ -36,13 +32,7 @@ npx skills add sun-praise/opencode-actions
 
 ## What it includes
 
-- `review`: opinionated PR review wrapper with built-in prompt and model defaults
 - `multi-review`: multi-agent parallel review using OpenCode SDK — multiple reviewers run concurrently, a coordinator synthesizes findings into one PR comment
-- `architect-review`: architecture-level PR review focusing on coupling, layering, and structural concerns
-- `feature-missing`: audits PR implementation against linked issue spec to find missing features
-- `regression-test-missing`: detects PRs that fix bugs or modify behavior but lack regression tests
-- `spec-coverage`: cross-references project spec/task files against PR implementation to find planned but unimplemented features
-- `test-value-detector`: detects low-value tests in PRs — empty assertions, hardcoded mocks, detached tests, duplicates, missing edge-case coverage
 - `github-run-opencode`: one-step wrapper for the common `opencode github run` workflow
 - `setup-opencode`: installs OpenCode, restores a dedicated cache, and exports the binary path
 - `run-opencode`: runs `opencode` with optional retry logic for flaky GitHub network failures
@@ -88,24 +78,12 @@ Use this when you want the shortest consumer workflow for `opencode github run`.
 
 `github-run-opencode` also accepts the setup-related inputs from `setup-opencode`, such as `cache`, `cache-key`, `install-attempts`, `install-url`, and `allow-preinstalled`.
 
-## review
-
-Use this when you want the simplest PR review setup.
-
-- built-in `prompt` review template (same as `github-run-opencode`)
-- built-in `MODEL` resolution: explicit `model` input, else `MODEL_NAME`, else `zhipuai-coding-plan/glm-5.1`
-- built-in `timeout-seconds` default: `600` (10 minutes)
-- optional ordered `fallback-models` for timeout-driven model rotation
-- still allows overriding any input when needed
-
-When `fallback-models` is set, the wrapper keeps `model` as the first choice and only rotates to the next candidate when the current model times out or emits a timeout-like error. Candidates whose provider key is unavailable are skipped automatically.
-
 ## multi-review
 
 Use this when you want multiple AI reviewers to analyze a PR in parallel, with a coordinator that synthesizes all findings into a single comment.
 
 - spawns N reviewer sessions in parallel via the OpenCode SDK (`@opencode-ai/sdk`)
-- built-in reviewer personas: quality, security, performance, architecture
+- built-in reviewer personas: quality, security, performance, architecture, regression-test, feature-missing, test-value, spec-coverage
 - a coordinator session reads all reviewer outputs and produces a deduplicated synthesis
 - each reviewer's detailed output is included in a collapsible `<details>` section
 - single `opencode serve` instance shared across all sessions (one MCP cold start)
@@ -145,119 +123,6 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
 
 `multi-review` also accepts all setup-related inputs from `setup-opencode` (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`).
-
-## architect-review
-
-Use this alongside `review` to evaluate PR changes from an architecture perspective.
-
-- evaluates coupling, module placement, layering, interface design, and shotgun surgery risks
-- reads `AGENTS.md` (or `CLAUDE.md`) for project-specific architecture conventions
-- shares the same inputs and cache as `review`/`feature-missing`
-
-```yaml
-- name: Run OpenCode architect review
-  uses: sun-praise/opencode-actions/architect-review@v3
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
-
-## feature-missing
-
-Use this alongside `review` to audit whether a PR's implementation covers all requirements from the linked issue spec.
-
-- automatically reads the linked issue body as the feature spec via `gh pr view`
-- if no linked issue, extracts requirements from the PR title and body
-- classifies gaps by severity: CRITICAL, MEDIUM, LOW
-- shares the same inputs and cache as `review`/`github-run-opencode`
-
-```yaml
-- name: Run feature missing audit
-  uses: sun-praise/opencode-actions/feature-missing@v3
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
-
-## spec-coverage
-
-Use this alongside `review` and `feature-missing` to audit whether a PR implements everything the project's spec/task files planned.
-
-Unlike `feature-missing` (which checks PR self-described scope), `spec-coverage` uses the project's own spec files as the **authoritative source of intended scope**. This catches cases where a PR implements part of a larger planned feature but skips critical integration steps.
-
-- auto-discovers spec files in `openspec/changes/*/tasks.md`, `specs/**`, and other common locations
-- intelligently skips bug fixes and minor changes that don't need specs (`SKIP`)
-- reports missing spec files as a CRITICAL gap when a feature PR should have one but doesn't
-- cross-references unchecked task items against the PR diff
-- checks end-to-end integration (models read at runtime, configs consumed, APIs called)
-- classifies gaps by severity: CRITICAL, MEDIUM, LOW
-- shares the same inputs and cache as `review`/`feature-missing`
-
-```yaml
-- name: Run spec coverage audit
-  uses: sun-praise/opencode-actions/spec-coverage@v3
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
-
-## test-value-detector
-
-Use this to automatically detect low-value tests in pull requests — tests that pass CI but contribute nothing to code quality.
-
-- identifies empty assertions and always-true conditions
-- flags hardcoded mocks that decouple tests from real logic
-- detects tests referencing non-existent or mismatched functions
-- spots duplicate tests with no additional coverage value
-- highlights missing boundary, error, and edge-case coverage
-- classifies findings by severity: CRITICAL, MEDIUM, LOW
-- shares the same inputs and cache as `review`/`github-run-opencode`
-
-```yaml
-- name: Run test value detection
-  uses: sun-praise/opencode-actions/test-value-detector@v3
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
-
-### Customization
-
-Override the built-in prompt via the `prompt` input to adjust detection focus or severity thresholds for your project.
-
-## regression-test-missing
-
-Use this alongside `review` to detect PRs that fix bugs or modify behavior but lack corresponding regression tests.
-
-- classifies PR type (BUGFIX, BEHAVIOR_CHANGE, NEW_FEATURE, CHORE)
-- only flags missing tests for BUGFIX and BEHAVIOR_CHANGE PRs
-- skips NEW_FEATURE and CHORE PRs with "无需回归测试"
-- shares the same inputs and cache as `review`/`feature-missing`
-
-```yaml
-- name: Run regression test missing audit
-  uses: sun-praise/opencode-actions/regression-test-missing@v3
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-```
-
-### How the review actions differ
-
-| Action | Scope source | What it catches |
-| --- | --- | --- |
-| `review` | PR diff | Code quality, security, bugs |
-| `multi-review` | PR diff (multiple parallel reviewers) | Quality, security, performance, architecture — coordinator synthesizes |
-| `architect-review` | PR diff + project conventions | Coupling, layering, module placement, structural concerns |
-| `feature-missing` | PR title/body + linked issues | PR self-described scope completeness |
-| `spec-coverage` | Project spec/task files | Full planned scope vs implementation |
-| `test-value-detector` | PR diff (test files) | Low-value tests, missing coverage |
-| `regression-test-missing` | PR diff + PR metadata | Missing regression tests for bug fixes and behavior changes |
 
 ## setup-opencode
 
@@ -309,49 +174,39 @@ In the common same-job case, `setup-opencode` already exports `opencode` to `PAT
 Public consumers should reference the subdirectory action path:
 
 ```yaml
-uses: sun-praise/opencode-actions/review@v3
-uses: sun-praise/opencode-actions/multi-review@v3
-uses: sun-praise/opencode-actions/architect-review@v3
-uses: sun-praise/opencode-actions/feature-missing@v3
-uses: sun-praise/opencode-actions/spec-coverage@v3
-uses: sun-praise/opencode-actions/test-value-detector@v3
-uses: sun-praise/opencode-actions/regression-test-missing@v3
-uses: sun-praise/opencode-actions/github-run-opencode@v3
-uses: sun-praise/opencode-actions/setup-opencode@v3
-uses: sun-praise/opencode-actions/run-opencode@v3
+uses: sun-praise/opencode-actions/multi-review@v4
+uses: sun-praise/opencode-actions/github-run-opencode@v4
+uses: sun-praise/opencode-actions/setup-opencode@v4
+uses: sun-praise/opencode-actions/run-opencode@v4
 ```
 ```yaml
-- name: Run OpenCode review
-  uses: sun-praise/opencode-actions/review@v3
+- name: Run OpenCode multi-review
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
-    opencode-go-api-key: ${{ secrets.OPENCODE_GO_API_KEY }}
-    minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-    xiaomi-api-key: ${{ secrets.XIAOMI_API_KEY }}
-```
+    model: deepseek/deepseek-v4-flash
+    default-team: "quality:1,security:1,performance:1"
+    deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
 
 More examples live in `examples/`.
 
 To use English output, set the `language` input:
 
 ```yaml
-- name: Run OpenCode review (English)
-  uses: sun-praise/opencode-actions/review@v3
+- name: Run OpenCode multi-review (English)
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: en
-```
 
 Or configure it from repository variables:
 
 ```yaml
-- name: Run OpenCode review
-  uses: sun-praise/opencode-actions/review@v3
+- name: Run OpenCode multi-review
+  uses: sun-praise/opencode-actions/multi-review@v4
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: ${{ vars.OPENCODE_LANGUAGE }}
-```
 
 If you need more control, you can still use `setup-opencode` and `run-opencode` directly. For example, pass `opencode-path` explicitly when reusing a binary from another job or a custom location.
 
@@ -371,7 +226,7 @@ This repository includes a CI workflow that:
 
 - runs `shellcheck` on every bundled shell script
 - runs the local shell-based regression suite
-- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, `uses: ./review`, `uses: ./multi-review`, `uses: ./feature-missing`, `uses: ./spec-coverage`, `uses: ./architect-review`, `uses: ./test-value-detector`, and `uses: ./regression-test-missing`
+- smoke-tests all actions through `uses: ./setup-opencode`, `uses: ./run-opencode`, `uses: ./github-run-opencode`, and `uses: ./multi-review`
 
 ## Release Policy
 
@@ -386,7 +241,7 @@ This repository includes a CI workflow that:
 2. Verify `CI` passes on `main`.
 3. Create a GitHub release with a semver tag such as `v1.0.0`.
 4. Confirm the `Update Major Tag` workflow moved `v1` to that release.
-5. Use `owner/repo/review@v3` for the simplest review setup, `owner/repo/multi-review@v3` for multi-agent parallel review, `owner/repo/architect-review@v3` for architecture review, `owner/repo/feature-missing@v3` for PR scope audit, `owner/repo/spec-coverage@v3` for spec coverage audit, `owner/repo/test-value-detector@v3` for low-value test detection, `owner/repo/github-run-opencode@v3` for generic `github run`, or `owner/repo/setup-opencode@v3` plus `owner/repo/run-opencode@v3` for more control.
+5. Use `owner/repo/multi-review@v4` for multi-agent parallel review, `owner/repo/github-run-opencode@v4` for generic `github run`, or `owner/repo/setup-opencode@v4` plus `owner/repo/run-opencode@v4` for more control.
 
 The initial release-notes template lives at `docs/releases/v1.0.0.md`.
 

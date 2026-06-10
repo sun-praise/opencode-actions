@@ -970,90 +970,8 @@ class TestApplyPassLevel(unittest.TestCase):
 
 
 
-class TestReviewAction(unittest.TestCase):
-    """Tests for review action metadata."""
-
-    def extract_prompt_default(self, action_file: Path) -> str:
-        text = action_file.read_text()
-        m = re.search(
-            r"^  prompt:\s*\n    default:\s*\|\s*\n((?:(?<=\n)      .*\n)*)",
-            text,
-            re.MULTILINE,
-        )
-        if not m:
-            return ""
-        lines = m.group(1).splitlines()
-        return "\n".join(line[6:] for line in lines) + "\n"
-
-    def extract_field(self, action_file: Path, field: str) -> str:
-        text = action_file.read_text()
-        m = re.search(
-            rf"^  {re.escape(field)}:\s*\n(?:    .*\n)*?    default:\s*(.+)$",
-            text,
-            re.MULTILINE,
-        )
-        if not m:
-            return ""
-        return m.group(1).strip()
-
-    def has_input(self, action_file: Path, field: str) -> bool:
-        text = action_file.read_text()
-        return bool(re.search(rf"^  {re.escape(field)}:\s*$", text, re.MULTILINE))
-
-    def test_prompt_defaults_consistent(self):
-        github_run = REPO_ROOT / "github-run-opencode" / "action.yml"
-        review = REPO_ROOT / "review" / "action.yml"
-        github_run_prompt = self.extract_prompt_default(github_run)
-        review_prompt = self.extract_prompt_default(review)
-        # One may be empty; if both are non-empty they should match
-        if github_run_prompt and review_prompt:
-            self.assertEqual(
-                github_run_prompt,
-                review_prompt,
-                "review/action.yml prompt default must match github-run-opencode/action.yml",
-            )
-
-    def test_review_model_default_empty(self):
-        review = REPO_ROOT / "review" / "action.yml"
-        self.assertEqual(self.extract_field(review, "model"), '""')
-
-    def test_both_have_timeout_seconds(self):
-        github_run = REPO_ROOT / "github-run-opencode" / "action.yml"
-        review = REPO_ROOT / "review" / "action.yml"
-        self.assertTrue(self.has_input(github_run, "timeout-seconds"))
-        self.assertTrue(self.has_input(review, "timeout-seconds"))
-
-    def test_timeout_defaults_are_600(self):
-        github_run = REPO_ROOT / "github-run-opencode" / "action.yml"
-        review = REPO_ROOT / "review" / "action.yml"
-        self.assertEqual(self.extract_field(github_run, "timeout-seconds"), '"600"')
-        self.assertEqual(self.extract_field(review, "timeout-seconds"), '"600"')
 
 
-class TestDogfoodWorkflow(unittest.TestCase):
-    """Tests for .github/workflows/review.yml dogfood checks."""
-
-    def setUp(self):
-        self.workflow_file = REPO_ROOT / ".github" / "workflows" / "review.yml"
-
-    def test_workflow_exists(self):
-        self.assertTrue(self.workflow_file.exists())
-
-    def test_uses_review_v2(self):
-        content = self.workflow_file.read_text()
-        self.assertIn("uses: Svtter/opencode-actions/review@v2", content)
-
-    def test_has_model_input(self):
-        content = self.workflow_file.read_text()
-        self.assertIn("model:", content)
-
-    def test_skips_fork_prs(self):
-        content = self.workflow_file.read_text()
-        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", content)
-
-    def test_wires_zhipu_key(self):
-        content = self.workflow_file.read_text()
-        self.assertIn("zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}", content)
 
 
 class TestCleanupErrorComments(unittest.TestCase):
@@ -1158,7 +1076,7 @@ class TestCleanupErrorComments(unittest.TestCase):
 
     def test_cleanup_input_exists_in_actions(self):
         """All actions using the Python script should have cleanup-error-comments input."""
-        for action_dir in ["github-run-opencode", "review", "feature-missing", "spec-coverage"]:
+        for action_dir in ["github-run-opencode"]:
             action_file = REPO_ROOT / action_dir / "action.yml"
             content = action_file.read_text()
             self.assertIn(

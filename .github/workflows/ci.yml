@@ -108,55 +108,6 @@ jobs:
         env:
           FAKE_OPENCODE_VERSION: 2.0.1
 
-      - name: Run review convenience action
-        uses: ./review
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-          attempts: 1
-          github-token: smoke-gh-token
-          zhipu-api-key: smoke-zhipu-token
-
-      - name: Run architect-review convenience action
-        uses: ./architect-review
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-          attempts: 1
-          github-token: smoke-gh-token
-          zhipu-api-key: smoke-zhipu-token
-
-      - name: Run test-value-detector convenience action
-        uses: ./test-value-detector
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-          attempts: 1
-          github-token: smoke-gh-token
-          zhipu-api-key: smoke-zhipu-token
-
-      - name: Run multi-review convenience action
-        uses: ./multi-review
-        continue-on-error: true
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-          github-token: smoke-gh-token
-          zhipu-api-key: smoke-zhipu-token
-
-      - name: Run regression-test-missing convenience action
-        uses: ./regression-test-missing
-        with:
-          install-url: http://127.0.0.1:8765/fake-installer.sh
-          cache: false
-          install-attempts: 1
-          attempts: 1
-          github-token: smoke-gh-token
-          zhipu-api-key: smoke-zhipu-token
       - name: Stop fake installer server
         if: always()
         run: |
