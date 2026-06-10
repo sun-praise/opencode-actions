@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.8.3] - 2026-06-10
+### Fixed
+- fix(multi-review): inject litellm provider config and auth in opencode SDK (#246)
+
 ## [3.8.2] - 2026-06-10
 ### Fixed
 - fix: inject litellm provider config and auth for opencode (#243)
