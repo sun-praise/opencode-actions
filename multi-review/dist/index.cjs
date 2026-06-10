@@ -2281,6 +2281,7 @@ async function createOpencode(options) {
 
 // src/index.ts
 var import_node_fs3 = require("fs");
+var import_node_os2 = require("os");
 var import_node_path3 = require("path");
 
 // src/reviewers.ts
@@ -5799,6 +5800,18 @@ function renderSeverityComment(parsed, reviewerDetails) {
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
   const config = { model };
+  const litellmUrl = env("LITELLM_URL");
+  if (model.startsWith("litellm/") && litellmUrl) {
+    const modelId = model.slice("litellm/".length);
+    config.provider = {
+      litellm: {
+        npm: "@ai-sdk/openai",
+        name: "LiteLLM",
+        options: { baseURL: litellmUrl.replace(/\/+$/, "") + "/v1" },
+        models: { [modelId]: { name: modelId } }
+      }
+    };
+  }
   const reasoningEffort = env("MULTI_REVIEW_REASONING_EFFORT");
   const enableThinkingRaw = env("MULTI_REVIEW_ENABLE_THINKING");
   const enableThinking = enableThinkingRaw.toLowerCase() === "true";
@@ -5878,6 +5891,22 @@ async function main() {
   console.log(`Model: ${providerID}/${modelID}`);
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
+  const litellmApiKey = env("LITELLM_API_KEY");
+  if (providerID === "litellm" && litellmApiKey) {
+    const authDir = (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".local", "share", "opencode");
+    (0, import_node_fs3.mkdirSync)(authDir, { recursive: true });
+    const authPath = (0, import_node_path3.join)(authDir, "auth.json");
+    let auth = {};
+    if ((0, import_node_fs3.existsSync)(authPath)) {
+      try {
+        auth = JSON.parse((0, import_node_fs3.readFileSync)(authPath, "utf-8"));
+      } catch {
+        auth = {};
+      }
+    }
+    auth.litellm = { type: "api", key: litellmApiKey };
+    (0, import_node_fs3.writeFileSync)(authPath, JSON.stringify(auth));
+  }
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
   const { client: client2, server } = await createOpencode({
     config: sdkConfig,
