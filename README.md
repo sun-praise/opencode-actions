@@ -10,6 +10,9 @@ This repository is licensed under Apache 2.0.
 
 Write this in your CI.yaml
 
+
+```yaml
+
 - name: Run OpenCode multi-review
   uses: sun-praise/opencode-actions/multi-review@v4
   with:
@@ -23,6 +26,9 @@ Write this in your CI.yaml
     zhipu-api-key: ${{ secrets.ZHIPU_API_KEY }}
     litellm-url: ${{ secrets.LITELLM_URL }}
     litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+
+```
+
 You'll get an automatic reviewer (Chinese by default, configurable via `language` input).
 
 Or add the skills to your project:
