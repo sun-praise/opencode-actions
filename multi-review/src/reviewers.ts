@@ -8,7 +8,7 @@ interface PersonaYAML {
   prompt: string;
 }
 
-const DEFAULT_TEAM = "quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1";
+const DEFAULT_TEAM = "quality:1,security:1,performance:1,architecture:1,regression-test:1,feature-missing:1,test-value:1";
 
 function parseTeam(teamStr: string): Map<string, number> {
   const result = new Map<string, number>();
@@ -21,7 +21,7 @@ function parseTeam(teamStr: string): Map<string, number> {
 
 function loadBuiltInReviewers(reviewersDir: string): Map<string, PersonaYAML> {
   const map = new Map<string, PersonaYAML>();
-  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "test-value.yaml", "spec-coverage.yaml"]) {
+  for (const file of ["quality.yaml", "security.yaml", "performance.yaml", "architecture.yaml", "regression-test.yaml", "feature-missing.yaml", "test-value.yaml", "spec-coverage.yaml"]) {
     try {
       const raw = readFileSync(join(reviewersDir, file), "utf-8");
       const parsed = yaml.load(raw) as PersonaYAML;
