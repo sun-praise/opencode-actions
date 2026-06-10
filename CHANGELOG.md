@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.8.2] - 2026-06-10
+### Fixed
+- fix: inject litellm provider config and auth for opencode (#243)
+- fix: use @ai-sdk/openai adapter instead of @ai-sdk/openai-compatible for litellm tools compatibility
+
 ## [3.8.1] - 2026-06-09
 
 ### Changed
