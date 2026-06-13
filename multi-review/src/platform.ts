@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync, unlinkSync, mkdtempSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -23,8 +23,39 @@ export function detectPlatform(): Platform {
 
 export function resolvePRNumber(): string | null {
   const ref = process.env.GITHUB_REF || "";
-  const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
-  return match ? match[1] : null;
+  // GitHub injects refs/pull/N/merge; Gitea injects refs/pull/N/head for PR events.
+  const match = ref.match(/^refs\/pull\/(\d+)\/(?:merge|head)$/);
+  if (match) return match[1];
+  return resolvePRNumberFromEvent();
+}
+
+/**
+ * Fallback PR-number resolver: read pull_request.number from the webhook
+ * payload at GITHUB_EVENT_PATH. Independent of the GITHUB_REF format, so it
+ * survives platforms/versions that use a different ref convention (e.g. Gitea).
+ * Gated to pull_request events so an issue or deploy number is never mistaken
+ * for a PR number.
+ */
+function resolvePRNumberFromEvent(): string | null {
+  const eventName = process.env.GITHUB_EVENT_NAME || "";
+  if (!eventName.startsWith("pull_request")) return null;
+
+  const eventPath = process.env.GITHUB_EVENT_PATH || "";
+  if (!eventPath) return null;
+
+  try {
+    const payload = JSON.parse(readFileSync(eventPath, "utf-8")) as {
+      number?: unknown;
+      pull_request?: { number?: unknown };
+    };
+    const num = payload.number ?? payload.pull_request?.number;
+    if (typeof num === "number" && Number.isInteger(num) && num > 0) {
+      return String(num);
+    }
+  } catch (err) {
+    console.debug(`resolvePRNumber: failed to read PR number from GITHUB_EVENT_PATH: ${formatError(err)}`);
+  }
+  return null;
 }
 
 const REPO_RE = /^[\w.-]+\/[\w.-]+$/;

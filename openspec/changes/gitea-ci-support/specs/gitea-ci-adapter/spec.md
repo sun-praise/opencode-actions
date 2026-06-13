@@ -37,9 +37,13 @@
 ### Requirement: Gitea 环境变量映射
 系统 SHALL 将 Gitea Actions 注入的 `GITHUB_*` 环境变量正确映射到内部使用。
 
-#### Scenario: 解析 PR 编号
-- **WHEN** Gitea Actions 设置 `GITHUB_REF=refs/pull/123/merge`
-- **THEN** 系统 SHALL 使用与 GitHub 相同的正则 `refs/pull/(\d+)/merge` 解析出 PR 编号 123
+#### Scenario: 解析 PR 编号（Gitea 使用 /head）
+- **WHEN** Gitea Actions 设置 `GITHUB_REF=refs/pull/123/head`（Gitea 1.24+ 对 `pull_request` 事件注入的是 `/head` 而非 GitHub 的 `/merge`）
+- **THEN** 系统 SHALL 用正则 `refs/pull/(\d+)/(?:merge|head)` 同时兼容 GitHub 的 `/merge` 与 Gitea 的 `/head`，解析出 PR 编号 123
+
+#### Scenario: 回退到事件 payload 解析 PR 编号
+- **WHEN** `GITHUB_REF` 不匹配上述格式（例如其它平台/版本）且 `GITHUB_EVENT_NAME` 以 `pull_request` 开头
+- **THEN** 系统 SHALL 从 `GITHUB_EVENT_PATH` 读取 webhook payload，取 `number`（或 `pull_request.number`）作为 PR 编号；对非 `pull_request` 事件（如 `issues`）SHALL 返回空以避免误把 issue 编号当作 PR 编号
 
 #### Scenario: 解析 repo 信息
 - **WHEN** Gitea Actions 设置 `GITHUB_REPOSITORY=owner/repo`

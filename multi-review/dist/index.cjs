@@ -5031,8 +5031,25 @@ function detectPlatform() {
 }
 function resolvePRNumber() {
   const ref = process.env.GITHUB_REF || "";
-  const match = ref.match(/^refs\/pull\/(\d+)\/merge$/);
-  return match ? match[1] : null;
+  const match = ref.match(/^refs\/pull\/(\d+)\/(?:merge|head)$/);
+  if (match) return match[1];
+  return resolvePRNumberFromEvent();
+}
+function resolvePRNumberFromEvent() {
+  const eventName = process.env.GITHUB_EVENT_NAME || "";
+  if (!eventName.startsWith("pull_request")) return null;
+  const eventPath = process.env.GITHUB_EVENT_PATH || "";
+  if (!eventPath) return null;
+  try {
+    const payload = JSON.parse((0, import_node_fs2.readFileSync)(eventPath, "utf-8"));
+    const num = payload.number ?? payload.pull_request?.number;
+    if (typeof num === "number" && Number.isInteger(num) && num > 0) {
+      return String(num);
+    }
+  } catch (err) {
+    console.debug(`resolvePRNumber: failed to read PR number from GITHUB_EVENT_PATH: ${formatError(err)}`);
+  }
+  return null;
 }
 var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 var _repo;
