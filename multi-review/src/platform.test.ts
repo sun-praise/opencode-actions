@@ -1,6 +1,9 @@
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { validateGitRef, escapeHashReferences } from "./platform.js";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { validateGitRef, escapeHashReferences, resolvePRNumber } from "./platform.js";
 
 describe("escapeHashReferences", () => {
   it("escapes #N after space", () => {
@@ -102,5 +105,81 @@ describe("validateGitRef", () => {
   });
   it("rejects names with spaces", () => {
     assert.throws(() => validateGitRef("my branch"), /Invalid git ref/);
+  });
+});
+
+describe("resolvePRNumber", () => {
+  const envKeys = ["GITHUB_REF", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];
+  const saved: Record<string, string | undefined> = {};
+  let tmpDir: string;
+
+  beforeEach(() => {
+    for (const k of envKeys) saved[k] = process.env[k];
+    delete process.env.GITHUB_REF;
+    delete process.env.GITHUB_EVENT_NAME;
+    delete process.env.GITHUB_EVENT_PATH;
+    tmpDir = mkdtempSync(join(tmpdir(), "resolve-pr-"));
+  });
+
+  afterEach(() => {
+    for (const k of envKeys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("parses GitHub refs/pull/N/merge", () => {
+    process.env.GITHUB_REF = "refs/pull/123/merge";
+    assert.equal(resolvePRNumber(), "123");
+  });
+
+  it("parses Gitea refs/pull/N/head", () => {
+    process.env.GITHUB_REF = "refs/pull/456/head";
+    assert.equal(resolvePRNumber(), "456");
+  });
+
+  it("returns null for non-PR refs", () => {
+    process.env.GITHUB_REF = "refs/heads/main";
+    assert.equal(resolvePRNumber(), null);
+    process.env.GITHUB_REF = "refs/tags/v1.0.0";
+    assert.equal(resolvePRNumber(), null);
+  });
+
+  it("returns null when GITHUB_REF is unset", () => {
+    assert.equal(resolvePRNumber(), null);
+  });
+
+  it("falls back to pull_request.number in the event payload", () => {
+    const eventPath = join(tmpDir, "event.json");
+    writeFileSync(
+      eventPath,
+      JSON.stringify({ action: "opened", number: 789, pull_request: { number: 789 } }),
+    );
+    process.env.GITHUB_EVENT_NAME = "pull_request";
+    process.env.GITHUB_EVENT_PATH = eventPath;
+    assert.equal(resolvePRNumber(), "789");
+  });
+
+  it("does not mistake an issue number for a PR number", () => {
+    const eventPath = join(tmpDir, "event.json");
+    writeFileSync(eventPath, JSON.stringify({ action: "opened", number: 42 }));
+    process.env.GITHUB_EVENT_NAME = "issues";
+    process.env.GITHUB_EVENT_PATH = eventPath;
+    assert.equal(resolvePRNumber(), null);
+  });
+
+  it("returns null when the event payload has no PR number", () => {
+    const eventPath = join(tmpDir, "event.json");
+    writeFileSync(eventPath, JSON.stringify({ action: "opened" }));
+    process.env.GITHUB_EVENT_NAME = "pull_request";
+    process.env.GITHUB_EVENT_PATH = eventPath;
+    assert.equal(resolvePRNumber(), null);
+  });
+
+  it("returns null on an unreadable event payload", () => {
+    process.env.GITHUB_EVENT_NAME = "pull_request";
+    process.env.GITHUB_EVENT_PATH = join(tmpDir, "does-not-exist.json");
+    assert.equal(resolvePRNumber(), null);
   });
 });
