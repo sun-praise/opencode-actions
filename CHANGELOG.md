@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.1] - 2026-06-14
+
+### Fixed
+- **multi-review**: resolve PR number from Gitea's `refs/pull/N/head` ref (GitHub uses `/merge`), which previously caused `PR diff is empty or unavailable (PR #?)` and skipped the review on Gitea Actions (#1). Added a `GITHUB_EVENT_PATH` (`pull_request.number`) fallback, gated to `pull_request` events so issue numbers are never mistaken for PR numbers.
+- Corrected the gitea-ci-adapter spec scenario that wrongly assumed Gitea injects `refs/pull/N/merge`.
+
 ## [4.0.0] - 2026-06-10
 
 ### Breaking Changes
