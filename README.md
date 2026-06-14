@@ -107,6 +107,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
     litellm-url: ${{ secrets.LITELLM_URL }}
     litellm-api-key: ${{ secrets.LITELLM_API_KEY }}
+```
 
 ### Inputs
 
@@ -195,6 +196,7 @@ uses: sun-praise/opencode-actions/run-opencode@v4
     model: deepseek/deepseek-v4-flash
     default-team: "quality:1,security:1,performance:1"
     deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+```
 
 More examples live in `examples/`.
 
@@ -206,6 +208,7 @@ To use English output, set the `language` input:
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: en
+```
 
 Or configure it from repository variables:
 
@@ -215,6 +218,7 @@ Or configure it from repository variables:
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     language: ${{ vars.OPENCODE_LANGUAGE }}
+```
 
 If you need more control, you can still use `setup-opencode` and `run-opencode` directly. For example, pass `opencode-path` explicitly when reusing a binary from another job or a custom location.
 
