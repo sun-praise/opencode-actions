@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.2] - 2026-06-17
+
+### Changed
+- **setup-opencode**, **multi-review**, **github-run-opencode**: disable `actions/cache` by default (`cache: "false"`). On self-hosted runners files persist on disk between runs, so uploading/downloading via GitHub's cache service is unnecessary overhead. Users on GitHub-hosted runners can re-enable with `cache: "true"`.
+
 ## [4.0.1] - 2026-06-14
 
 ### Fixed
