@@ -25,7 +25,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run multi-review
-        uses: sun-praise/opencode-actions/multi-review@v3.8.3
+        uses: sun-praise/opencode-actions/multi-review@v4.0.2
         with:
           model: "litellm/deepseek-v4-flash"
           default-team: "quality:1,security:1,performance:1,architecture:1,regression-test:1,test-value:1"
