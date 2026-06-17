@@ -62,7 +62,7 @@
 | `install-url` | `https://opencode.ai/install` | 安装器 URL |
 | `install-dir` | auto | opencode 安装目录 |
 | `xdg-cache-home` | auto | XDG 缓存目录 |
-| `cache` | `true` | 启用 `actions/cache` |
+| `cache` | `false` | 启用 `actions/cache` |
 | `cache-key` | `v1` | 缓存 key 后缀 |
 | `install-attempts` | `3` | 安装重试次数 |
 | `allow-preinstalled` | `false` | 复用 PATH 上已有的 opencode |
