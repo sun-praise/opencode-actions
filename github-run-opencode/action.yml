@@ -20,7 +20,7 @@ inputs:
   cache:
     description: Cache the install and XDG cache directories with actions/cache.
     required: false
-    default: "true"
+    default: "false"
   cache-key:
     description: Cache key suffix used to invalidate installer-based caches.
     required: false

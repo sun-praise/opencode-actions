@@ -142,7 +142,7 @@ Use this when you want multiple AI reviewers to analyze a PR in parallel, with a
 | `install-url` | `https://opencode.ai/install` | Installer URL used to bootstrap OpenCode |
 | `install-dir` | computed | Directory where `opencode` will be installed |
 | `xdg-cache-home` | computed | Dedicated XDG cache directory |
-| `cache` | `true` | Enable `actions/cache` for install and cache directories |
+| `cache` | `false` | Enable `actions/cache` for install and cache directories |
 | `cache-key` | `v1` | Cache key suffix used to invalidate installer caches |
 | `install-attempts` | `3` | Total installer attempts |
 | `allow-preinstalled` | `false` | Reuse an existing trusted `opencode` already present on `PATH` |
