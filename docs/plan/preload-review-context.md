@@ -55,17 +55,95 @@
    - 跨会话恢复复杂，且容易因文件变更而失效
    - 优先级低于会话级复用
 
+## 技术实现方案（multi-review MVP）
+
+### 复用现有 cache
+
+`multi-review/action.yml` 已经通过 `actions/cache` 缓存了 `XDG_CACHE_HOME`。cache key 与 PR 无关，因此同一仓库后续任意 run 都会命中同一个 cache，把 `XDG_CACHE_HOME` 里的内容一起恢复。我们要做的只是把 review 上下文文件也放进这个目录，让现有 cache 机制顺带恢复。
+
+### 新增 `context-cache.ts`
+
+负责按 PR 存取完整会话历史：
+
+```ts
+interface ReviewContext {
+  version: 1;
+  repo: string;
+  prNumber: string;
+  savedAt: string;
+  sessions: ReviewSession[];
+}
+
+interface ReviewSession {
+  name: string; // reviewer 名字或 "coordinator"
+  messages: Message[];
+}
+
+interface Message {
+  info: { role: string };
+  parts: Array<{ type: string; text?: string }>;
+}
+```
+
+- 文件路径：`$XDG_CACHE_HOME/opencode-actions/review-context/{owner}-{repo}-pr-{prNumber}.json`
+- 加载：按当前 `GITHUB_REPOSITORY` + PR number 查找对应文件，忽略其他 PR 的缓存。
+- 保存：追加本次 reviewer / coordinator 的完整 messages，写回同一文件。
+- 失败时只 warning，不影响主流程。
+
+### 修改 `types.ts`
+
+给 `ReviewResult` 增加 `messages?: Message[]`，让 orchestrator 把完整消息带回来。
+
+### 修改 `orchestrator.ts`
+
+- `OrchestratorOptions` 增加 `previousContext?: ReviewContext | null`。
+- 每个 reviewer 创建 session 后，构建 prompt 时先 prepend 历史上下文：
+
+```
+=== Previous review context for PR #N ===
+[role: user] ...
+[role: assistant] ...
+
+=== Current review request ===
+This is a re-review of the same PR. Focus on the CURRENT diff below.
+<reviewer.prompt>
+
+PR Diff:
+```
+<current diff>
+```
+```
+
+- 每个 reviewer 跑完后，把 `client.session.messages()` 返回的完整数组塞回 `ReviewResult.messages`。
+- coordinator 先不注入历史上下文（其职责是综合当前 reviews），但跑完后保存其完整 messages。
+
+### 修改 `index.ts`
+
+- PR number 解析完后调用 `loadReviewContext(prNumber)`，命中则打印日志。
+- 把 `previousContext` 传给 `runParallelReviewers`。
+- reviewer 和 coordinator 完成后，合并旧 sessions + 新 sessions，调用 `saveReviewContext()`。
+
+### 风险与应对
+
+| 风险 | 应对 |
+|---|---|
+| 历史上下文太长，撑爆 prompt | MVP 先不处理，后续加截断；依赖模型长上下文能力 |
+| 旧 diff 与新 diff 混在一起 | prompt 明确区分 “Previous context” 和 “Current diff”，并 instruct 聚焦 current diff |
+| 并发 run 写同一 PR cache | 后写覆盖先写，可接受；MVP 不做锁 |
+| cache miss | 正常降级为全新 review |
+| cache 目录不可写 | catch 错误，warning，继续 |
+
 ## 待决策（基于会话级复用）
 
 - 上下文保留范围：**保留完整对话历史**，不压缩为摘要或文件列表
-- PR 关联：如何按 PR 维度索引并恢复对应的 session 上下文？
-- 触发方式：自动复用上一次 review 的 session，还是由用户显式指定？
-- 生命周期：session 超时或结束后如何优雅降级为全新 review？
-- 多轮边界：修复后重新 review 同一 PR 时，如何标识“已修复的评论”与“仍需关注的评论”？
+- PR 关联：按 `owner/repo#pr` 为 key 存取缓存文件
+- 触发方式：自动复用，命中 cache 且存在当前 PR 上下文时自动注入
+- 生命周期：cache miss / 目录不可写 / 无 PR 上下文时，优雅降级为全新 review
+- 多轮边界：修复后重新 review 同一 PR 时，prompt 明确 instruct 模型聚焦 current diff，不再重复报告已修复问题
 
 ## 下一步
 
-- 评估当前 review action 的入口和流程
-- 验证 opencode session 是否能可靠保留并恢复 review 上下文
+- 在 multi-review 中落地 `context-cache.ts` 及 orchestrator/index 改造
+- 补充 `context-cache.test.ts` 单元测试
 - 以会话级复用为 MVP 做原型验证
 - 对比启用前后的 `read/` 调用次数与 token 消耗
