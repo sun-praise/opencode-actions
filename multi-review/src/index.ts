@@ -9,7 +9,7 @@ import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, pars
 import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
-import { loadReviewContext, saveReviewContext } from "./context-cache.js";
+import { loadReviewContext, saveReviewContext, formatPreviousContext } from "./context-cache.js";
 import type { ParsedReview, CoordinatorResult, ReviewSession } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
@@ -84,7 +84,8 @@ async function main(): Promise<number> {
   const prNumber = resolvePRNumber();
 
   // Load previous review context for the same PR when available.
-  const previousContext = prNumber ? loadReviewContext(prNumber) : null;
+  const previousContext = prNumber ? await loadReviewContext(prNumber) : null;
+  const previousContextText = previousContext ? formatPreviousContext(previousContext) : undefined;
   if (previousContext) {
     console.log(
       `Loaded previous review context for PR #${prNumber}: ${previousContext.sessions.length} sessions`,
@@ -186,7 +187,7 @@ async function main(): Promise<number> {
       globalTimeoutMs: globalTimeout * 1000,
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
-      previousContext,
+      previousContextText,
     });
 
     const successCount = reviews.filter((r) => r.success).length;
@@ -227,7 +228,7 @@ async function main(): Promise<number> {
       if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
         newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
       }
-      saveReviewContext(prNumber, newSessions);
+      await saveReviewContext(prNumber, newSessions);
     }
 
     // 8. Post comment

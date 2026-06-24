@@ -8,9 +8,9 @@ import {
   loadReviewContext,
   saveReviewContext,
   formatPreviousContext,
-  type ReviewContext,
-  type ReviewSession,
+  trimSessions,
 } from "./context-cache.js";
+import type { ReviewContext, ReviewSession } from "./types.js";
 
 const ORIGINAL_XDG = process.env.XDG_CACHE_HOME;
 const ORIGINAL_REPO = process.env.GITHUB_REPOSITORY;
@@ -34,12 +34,12 @@ describe("context-cache", () => {
     assert.strictEqual(getContextCacheDir(), join(tempDir, "opencode-actions", "review-context"));
   });
 
-  it("loadReviewContext returns null when no context exists", () => {
-    const ctx = loadReviewContext("123");
+  it("loadReviewContext returns null when no context exists", async () => {
+    const ctx = await loadReviewContext("123");
     assert.strictEqual(ctx, null);
   });
 
-  it("saveReviewContext and loadReviewContext roundtrip", () => {
+  it("saveReviewContext and loadReviewContext roundtrip", async () => {
     const sessions: ReviewSession[] = [
       {
         name: "quality",
@@ -49,9 +49,9 @@ describe("context-cache", () => {
         ],
       },
     ];
-    saveReviewContext("42", sessions);
+    await saveReviewContext("42", sessions);
 
-    const loaded = loadReviewContext("42");
+    const loaded = await loadReviewContext("42");
     assert.ok(loaded);
     assert.strictEqual(loaded!.version, 1);
     assert.strictEqual(loaded!.repo, "owner/repo");
@@ -61,40 +61,106 @@ describe("context-cache", () => {
     assert.strictEqual(loaded!.sessions[0].messages.length, 2);
   });
 
-  it("saveReviewContext appends to existing context", () => {
+  it("saveReviewContext appends to existing context", async () => {
     const first: ReviewSession[] = [
       { name: "security", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "ok" }] }] },
     ];
     const second: ReviewSession[] = [
       { name: "coordinator", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "merged" }] }] },
     ];
-    saveReviewContext("7", first);
-    saveReviewContext("7", second);
+    await saveReviewContext("7", first);
+    await saveReviewContext("7", second);
 
-    const loaded = loadReviewContext("7");
+    const loaded = await loadReviewContext("7");
     assert.ok(loaded);
     assert.strictEqual(loaded!.sessions.length, 2);
     assert.strictEqual(loaded!.sessions[0].name, "security");
     assert.strictEqual(loaded!.sessions[1].name, "coordinator");
   });
 
-  it("loadReviewContext returns null and warns for malformed file", () => {
+  it("trimSessions keeps the most recent sessions per name", () => {
+    const sessions: ReviewSession[] = [
+      { name: "quality", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "1" }] }] },
+      { name: "security", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "1" }] }] },
+      { name: "quality", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "2" }] }] },
+      { name: "quality", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "3" }] }] },
+      { name: "quality", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "4" }] }] },
+    ];
+    const trimmed = trimSessions(sessions, 2);
+    const quality = trimmed.filter((s) => s.name === "quality");
+    assert.strictEqual(quality.length, 2);
+    assert.strictEqual(quality[0].messages[0].parts[0].text, "3");
+    assert.strictEqual(quality[1].messages[0].parts[0].text, "4");
+    assert.strictEqual(trimmed.filter((s) => s.name === "security").length, 1);
+  });
+
+  it("saveReviewContext trims old sessions per name", async () => {
+    const sessions: ReviewSession[] = [];
+    for (let i = 1; i <= 5; i++) {
+      sessions.push({
+        name: "quality",
+        messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: String(i) }] }],
+      });
+    }
+    await saveReviewContext("999", sessions);
+
+    const loaded = await loadReviewContext("999");
+    assert.ok(loaded);
+    assert.strictEqual(loaded!.sessions.length, 3);
+    assert.strictEqual(loaded!.sessions[0].messages[0].parts[0].text, "3");
+    assert.strictEqual(loaded!.sessions[2].messages[0].parts[0].text, "5");
+  });
+
+  it("loadReviewContext returns null and warns for malformed file", async () => {
     const dir = getContextCacheDir();
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "owner-repo-pr-99.json"), "not json");
 
-    const loaded = loadReviewContext("99");
+    const loaded = await loadReviewContext("99");
     assert.strictEqual(loaded, null);
   });
 
-  it("loadReviewContext returns null when GITHUB_REPOSITORY is invalid", () => {
+  it("loadReviewContext returns null when version/repo/prNumber mismatch", async () => {
+    const dir = getContextCacheDir();
+    mkdirSync(dir, { recursive: true });
+    const context = {
+      version: 999,
+      repo: "owner/repo",
+      prNumber: "88",
+      savedAt: "2026-01-01T00:00:00.000Z",
+      sessions: [],
+    } as unknown as ReviewContext;
+    writeFileSync(join(dir, "owner-repo-pr-88.json"), JSON.stringify(context));
+
+    const loaded = await loadReviewContext("88");
+    assert.strictEqual(loaded, null);
+  });
+
+  it("loadReviewContext returns null when GITHUB_REPOSITORY is invalid", async () => {
     process.env.GITHUB_REPOSITORY = "invalid";
     try {
-      const ctx = loadReviewContext("1");
+      const ctx = await loadReviewContext("1");
       assert.strictEqual(ctx, null);
     } finally {
       process.env.GITHUB_REPOSITORY = "owner/repo";
     }
+  });
+
+  it("saveReviewContext skips when GITHUB_REPOSITORY is invalid", async () => {
+    process.env.GITHUB_REPOSITORY = "invalid";
+    try {
+      await saveReviewContext("1", [{ name: "x", messages: [] }]);
+      const ctx = await loadReviewContext("1");
+      assert.strictEqual(ctx, null);
+    } finally {
+      process.env.GITHUB_REPOSITORY = "owner/repo";
+    }
+  });
+
+  it("saveReviewContext skips empty sessions", async () => {
+    await saveReviewContext("empty", []);
+    const ctx = await loadReviewContext("empty");
+    assert.strictEqual(ctx, null);
   });
 
   it("formatPreviousContext includes session and role markers", () => {
@@ -109,6 +175,7 @@ describe("context-cache", () => {
           messages: [
             { info: { role: "user" }, parts: [{ type: "text", text: "prompt" }] },
             { info: { role: "assistant" }, parts: [{ type: "text", text: "review" }] },
+            { info: { role: "tool" }, parts: [{ type: "image" }] },
           ],
         },
       ],
@@ -118,5 +185,18 @@ describe("context-cache", () => {
     assert.ok(formatted.includes("Session: quality"));
     assert.ok(formatted.includes("[user] prompt"));
     assert.ok(formatted.includes("[assistant] review"));
+    assert.ok(!formatted.includes("[tool]"));
+  });
+
+  it("formatPreviousContext handles empty sessions", () => {
+    const context: ReviewContext = {
+      version: 1,
+      repo: "owner/repo",
+      prNumber: "6",
+      savedAt: "2026-01-01T00:00:00.000Z",
+      sessions: [],
+    };
+    const formatted = formatPreviousContext(context);
+    assert.ok(formatted.includes("PR #6"));
   });
 });

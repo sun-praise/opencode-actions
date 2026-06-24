@@ -122,12 +122,12 @@ var require_isexe = __commonJS({
         if (typeof Promise !== "function") {
           throw new TypeError("callback not provided");
         }
-        return new Promise(function(resolve, reject) {
+        return new Promise(function(resolve2, reject) {
           isexe(path, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
-              resolve(is);
+              resolve2(is);
             }
           });
         });
@@ -194,27 +194,27 @@ var require_which = __commonJS({
         opt = {};
       const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
       const found = [];
-      const step = (i) => new Promise((resolve, reject) => {
+      const step = (i) => new Promise((resolve2, reject) => {
         if (i === pathEnv.length)
-          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+          return opt.all && found.length ? resolve2(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
         const pCmd = path.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve(subStep(p, i, 0));
+        resolve2(subStep(p, i, 0));
       });
-      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
+      const subStep = (p, i, ii) => new Promise((resolve2, reject) => {
         if (ii === pathExt.length)
-          return resolve(step(i + 1));
+          return resolve2(step(i + 1));
         const ext = pathExt[ii];
         isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
           if (!er && is) {
             if (opt.all)
               found.push(p + ext);
             else
-              return resolve(p + ext);
+              return resolve2(p + ext);
           }
-          return resolve(subStep(p, i, ii + 1));
+          return resolve2(subStep(p, i, ii + 1));
         });
       });
       return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
@@ -529,7 +529,7 @@ var require_cross_spawn = __commonJS({
 // node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
   let lastEventId;
-  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
   const createStream = async function* () {
     let retryDelay = sseDefaultRetryDelay ?? 3e3;
     let attempt = 0;
@@ -2205,7 +2205,7 @@ async function createOpencodeServer(options) {
   });
   let clear = () => {
   };
-  const url = await new Promise((resolve, reject) => {
+  const url = await new Promise((resolve2, reject) => {
     const id = setTimeout(() => {
       clear();
       stop(proc);
@@ -2230,7 +2230,7 @@ async function createOpencodeServer(options) {
           }
           clearTimeout(id);
           resolved = true;
-          resolve(match[1]);
+          resolve2(match[1]);
           return;
         }
       }
@@ -4769,104 +4769,6 @@ function resolveModel() {
   return { providerID: raw.slice(0, idx), modelID: raw.slice(idx + 1) };
 }
 
-// src/context-cache.ts
-var import_node_fs2 = require("fs");
-var import_node_os = require("os");
-var import_node_path2 = require("path");
-var CACHE_VERSION = 1;
-var CONTEXT_DIR_NAME = (0, import_node_path2.join)("opencode-actions", "review-context");
-function getContextCacheDir() {
-  const xdgCacheHome = process.env.XDG_CACHE_HOME || (0, import_node_path2.join)((0, import_node_os.homedir)(), ".cache");
-  return (0, import_node_path2.join)(xdgCacheHome, CONTEXT_DIR_NAME);
-}
-function getRepo() {
-  const repo = process.env.GITHUB_REPOSITORY || "";
-  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
-    return "";
-  }
-  return repo;
-}
-function getContextPath(prNumber) {
-  const repo = getRepo();
-  if (!repo || !prNumber) {
-    return null;
-  }
-  const safeRepo = repo.replace(/\//g, "-");
-  const safePr = prNumber.replace(/\D/g, "");
-  if (!safePr) {
-    return null;
-  }
-  return (0, import_node_path2.join)(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
-}
-function loadReviewContext(prNumber) {
-  const path = getContextPath(prNumber);
-  if (!path) {
-    return null;
-  }
-  if (!(0, import_node_fs2.existsSync)(path)) {
-    return null;
-  }
-  try {
-    const raw = (0, import_node_fs2.readFileSync)(path, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed?.version !== CACHE_VERSION || !Array.isArray(parsed.sessions)) {
-      console.warn(`Ignoring malformed review context: ${path}`);
-      return null;
-    }
-    return parsed;
-  } catch (err) {
-    console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
-    return null;
-  }
-}
-function saveReviewContext(prNumber, newSessions) {
-  const path = getContextPath(prNumber);
-  if (!path) {
-    console.warn("Skipping review context save: unable to determine repo or PR number");
-    return;
-  }
-  if (!newSessions.length) {
-    return;
-  }
-  const repo = getRepo();
-  if (!repo) {
-    console.warn("Skipping review context save: GITHUB_REPOSITORY is unset or invalid");
-    return;
-  }
-  const existing = loadReviewContext(prNumber);
-  const context = {
-    version: CACHE_VERSION,
-    repo,
-    prNumber,
-    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    sessions: [...existing?.sessions || [], ...newSessions]
-  };
-  try {
-    (0, import_node_fs2.mkdirSync)((0, import_node_path2.dirname)(path), { recursive: true });
-    (0, import_node_fs2.writeFileSync)(path, JSON.stringify(context, null, 2));
-    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
-  } catch (err) {
-    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
-  }
-}
-function formatPreviousContext(context) {
-  const lines = [];
-  lines.push(`=== Previous review context for PR #${context.prNumber} ===`);
-  lines.push(`Saved at: ${context.savedAt}`);
-  lines.push("");
-  for (const session of context.sessions) {
-    lines.push(`--- Session: ${session.name} ---`);
-    for (const message of session.messages) {
-      const role = message.info.role;
-      const text = message.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join("\n");
-      if (!text) continue;
-      lines.push(`[${role}] ${text}`);
-      lines.push("");
-    }
-  }
-  return lines.join("\n");
-}
-
 // src/orchestrator.ts
 var activeSessions = /* @__PURE__ */ new Set();
 var DEFAULT_COORDINATOR_PROMPT = `\u4F60\u662F\u4E00\u4E2A\u4EE3\u7801\u5BA1\u67E5\u534F\u8C03\u5458\u3002\u4EE5\u4E0B\u5BA1\u67E5\u7531\u72EC\u7ACB\u7684\u4E13\u5BB6 reviewer \u751F\u6210\u3002
@@ -4903,10 +4805,10 @@ IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. Git
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
 }
-function buildReviewerPrompt(reviewerPrompt, prDiff, previousContext) {
+function buildReviewerPrompt(reviewerPrompt, prDiff, previousContextText) {
   const parts = [];
-  if (previousContext) {
-    parts.push(formatPreviousContext(previousContext));
+  if (previousContextText) {
+    parts.push(previousContextText);
     parts.push("=== Current review request ===");
     parts.push(
       "This is a re-review of the same PR. Focus on the CURRENT diff below. Do not re-report issues that have already been fixed."
@@ -4950,7 +4852,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         client2.session.prompt({
           path: { id: sessionId },
           body: {
-            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContext) }]
+            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }]
           },
           throwOnError: true
         }),
@@ -5137,9 +5039,9 @@ ${totalLine}
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
-var import_node_fs3 = require("fs");
-var import_node_path3 = require("path");
-var import_node_os2 = require("os");
+var import_node_fs2 = require("fs");
+var import_node_path2 = require("path");
+var import_node_os = require("os");
 var _platform;
 function detectPlatform() {
   if (_platform === void 0) {
@@ -5159,7 +5061,7 @@ function resolvePRNumberFromEvent() {
   const eventPath = process.env.GITHUB_EVENT_PATH || "";
   if (!eventPath) return null;
   try {
-    const payload = JSON.parse((0, import_node_fs3.readFileSync)(eventPath, "utf-8"));
+    const payload = JSON.parse((0, import_node_fs2.readFileSync)(eventPath, "utf-8"));
     const num = payload.number ?? payload.pull_request?.number;
     if (typeof num === "number" && Number.isInteger(num) && num > 0) {
       return String(num);
@@ -5171,7 +5073,7 @@ function resolvePRNumberFromEvent() {
 }
 var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 var _repo;
-function getRepo2() {
+function getRepo() {
   if (_repo !== void 0) return _repo;
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
@@ -5235,12 +5137,12 @@ function curlWithAuth(url, headers, opts = {}) {
   });
 }
 var MAX_PAGES = 20;
-var _tempDir = (0, import_node_fs3.mkdtempSync)((0, import_node_path3.join)((0, import_node_os2.tmpdir)(), "opencode-review-"));
-(0, import_node_fs3.chmodSync)(_tempDir, 448);
+var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
+(0, import_node_fs2.chmodSync)(_tempDir, 448);
 function writeAuthHeader(token, prefix) {
-  const path = (0, import_node_path3.join)(_tempDir, `${prefix}-${process.pid}`);
-  (0, import_node_fs3.writeFileSync)(path, `Authorization: Bearer ${token}`);
-  (0, import_node_fs3.chmodSync)(path, 384);
+  const path = (0, import_node_path2.join)(_tempDir, `${prefix}-${process.pid}`);
+  (0, import_node_fs2.writeFileSync)(path, `Authorization: Bearer ${token}`);
+  (0, import_node_fs2.chmodSync)(path, 384);
   return path;
 }
 function fetchAllGiteaComments(baseUrl, token) {
@@ -5312,7 +5214,7 @@ function postPRComment(body) {
   }
 }
 function postCommentGithub(prNumber, body) {
-  const repo = getRepo2();
+  const repo = getRepo();
   if (hasGh()) {
     try {
       (0, import_node_child_process2.execFileSync)("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
@@ -5357,14 +5259,14 @@ function postCommentGithub(prNumber, body) {
     fallbackStdout(body);
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(headerFile);
+      (0, import_node_fs2.unlinkSync)(headerFile);
     } catch (e) {
       console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
     }
   }
 }
 function postCommentGitea(prNumber, body) {
-  const repo = getRepo2();
+  const repo = getRepo();
   const base = getGiteaApiBase();
   const token = getGiteaToken();
   if (!base || !repo) {
@@ -5416,7 +5318,7 @@ function fetchPRDiff(prNumber) {
   }
   if (hasTea()) {
     try {
-      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo2()], {
+      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
         env: { ...process.env },
         timeout: 3e4,
         stdio: "pipe",
@@ -5429,7 +5331,7 @@ function fetchPRDiff(prNumber) {
   return fetchDiffGitea(prNumber);
 }
 function fetchDiffGithub(prNumber) {
-  const repo = getRepo2();
+  const repo = getRepo();
   if (hasGh()) {
     try {
       return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
@@ -5458,7 +5360,7 @@ function fetchDiffGithub(prNumber) {
       console.warn(`REST API failed, falling back to local git diff: ${formatError(err)}`);
     } finally {
       try {
-        (0, import_node_fs3.unlinkSync)(headerFile);
+        (0, import_node_fs2.unlinkSync)(headerFile);
       } catch (e) {
         console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
       }
@@ -5482,7 +5384,7 @@ function fetchDiffGithub(prNumber) {
   }
 }
 function fetchDiffGitea(prNumber) {
-  const repo = getRepo2();
+  const repo = getRepo();
   const base = getGiteaApiBase();
   const token = getGiteaToken();
   if (!base || !repo) {
@@ -5500,7 +5402,7 @@ function cleanupErrorComments() {
   if (enabled.toLowerCase() !== "true") return;
   const prNumber = resolvePRNumber();
   if (!prNumber) return;
-  const repo = getRepo2();
+  const repo = getRepo();
   const runId = process.env.GITHUB_RUN_ID || "";
   if (!repo || !runId) return;
   if (detectPlatform() === "github") {
@@ -5590,7 +5492,7 @@ function listCommentsGithubRest(prNumber, repo) {
   } finally {
     if (headerFile) {
       try {
-        (0, import_node_fs3.unlinkSync)(headerFile);
+        (0, import_node_fs2.unlinkSync)(headerFile);
       } catch (e) {
         console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
       }
@@ -5623,7 +5525,7 @@ function deleteCommentGithub(commentId, repo) {
     (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
   } finally {
     try {
-      (0, import_node_fs3.unlinkSync)(headerFile);
+      (0, import_node_fs2.unlinkSync)(headerFile);
     } catch (e) {
       console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
     }
@@ -5931,6 +5833,140 @@ function renderSeverityComment(parsed, reviewerDetails) {
   return lines.join("\n");
 }
 
+// src/context-cache.ts
+var import_promises = require("fs/promises");
+var import_node_fs3 = require("fs");
+var import_node_os2 = require("os");
+var import_node_path3 = require("path");
+var CACHE_VERSION = 1;
+var CONTEXT_DIR_NAME = (0, import_node_path3.join)("opencode-actions", "review-context");
+var MAX_ROUNDS_PER_SESSION_NAME = 3;
+var FILE_MODE = 384;
+function isSafePathComponent(value) {
+  if (!value) return false;
+  if (value.includes("..") || value.includes("\0") || value.startsWith("/")) return false;
+  return /^[\w./-]+$/.test(value);
+}
+function getContextCacheDir() {
+  const raw = process.env.XDG_CACHE_HOME || (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".cache");
+  const resolved = (0, import_node_path3.resolve)(raw);
+  const expectedRoot = (0, import_node_path3.resolve)(raw);
+  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
+    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
+  }
+  return (0, import_node_path3.join)(resolved, CONTEXT_DIR_NAME);
+}
+function getRepo2() {
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    return "";
+  }
+  return repo;
+}
+function getContextPath(prNumber) {
+  const repo = getRepo2();
+  if (!repo || !prNumber) {
+    return null;
+  }
+  const safeRepo = repo.replace(/\//g, "-");
+  const safePr = prNumber.replace(/\D/g, "");
+  if (!safePr || !isSafePathComponent(safeRepo) || !isSafePathComponent(safePr)) {
+    return null;
+  }
+  return (0, import_node_path3.join)(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
+}
+function validateLoadedContext(parsed, expectedPrNumber) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const ctx = parsed;
+  const repo = getRepo2();
+  if (ctx.version !== CACHE_VERSION || ctx.repo !== repo || ctx.prNumber !== expectedPrNumber || !Array.isArray(ctx.sessions)) {
+    return null;
+  }
+  return parsed;
+}
+function trimSessions(sessions, maxPerName = MAX_ROUNDS_PER_SESSION_NAME) {
+  const counts = /* @__PURE__ */ new Map();
+  const result = [];
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const session = sessions[i];
+    const count = counts.get(session.name) || 0;
+    if (count < maxPerName) {
+      result.unshift(session);
+      counts.set(session.name, count + 1);
+    }
+  }
+  return result;
+}
+async function loadReviewContext(prNumber) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    return null;
+  }
+  if (!(0, import_node_fs3.existsSync)(path)) {
+    return null;
+  }
+  try {
+    const raw = await (0, import_promises.readFile)(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    const validated = validateLoadedContext(parsed, prNumber);
+    if (!validated) {
+      console.warn(`Ignoring malformed or stale review context: ${path}`);
+      return null;
+    }
+    return validated;
+  } catch (err) {
+    console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+async function saveReviewContext(prNumber, newSessions) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    console.warn("Skipping review context save: unable to determine repo or PR number");
+    return;
+  }
+  if (!newSessions.length) {
+    return;
+  }
+  const repo = getRepo2();
+  if (!repo) {
+    console.warn("Skipping review context save: GITHUB_REPOSITORY is unset or invalid");
+    return;
+  }
+  const existing = await loadReviewContext(prNumber);
+  const context = {
+    version: CACHE_VERSION,
+    repo,
+    prNumber,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sessions: trimSessions([...existing?.sessions || [], ...newSessions])
+  };
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
+    await (0, import_promises.writeFile)(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
+    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+function formatPreviousContext(context) {
+  const lines = [];
+  lines.push(`=== Previous review context for PR #${context.prNumber} ===`);
+  lines.push(`Saved at: ${context.savedAt}`);
+  lines.push("");
+  for (const session of context.sessions) {
+    lines.push(`--- Session: ${session.name} ---`);
+    for (const message of session.messages) {
+      const role = message.info.role;
+      const text = message.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join("\n");
+      if (!text) continue;
+      lines.push(`[${role}] ${text}`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+}
+
 // src/index.ts
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
@@ -5985,7 +6021,8 @@ async function main() {
   } catch {
   }
   const prNumber = resolvePRNumber();
-  const previousContext = prNumber ? loadReviewContext(prNumber) : null;
+  const previousContext = prNumber ? await loadReviewContext(prNumber) : null;
+  const previousContextText = previousContext ? formatPreviousContext(previousContext) : void 0;
   if (previousContext) {
     console.log(
       `Loaded previous review context for PR #${prNumber}: ${previousContext.sessions.length} sessions`
@@ -6071,7 +6108,7 @@ async function main() {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
-      previousContext
+      previousContextText
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -6103,7 +6140,7 @@ async function main() {
       if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
         newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
       }
-      saveReviewContext(prNumber, newSessions);
+      await saveReviewContext(prNumber, newSessions);
     }
     postPRComment(comment);
     try {

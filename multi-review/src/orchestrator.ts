@@ -1,6 +1,5 @@
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Reviewer, ReviewResult, OrchestratorOptions, CoordinatorResult } from "./types.js";
-import { formatPreviousContext } from "./context-cache.js";
 
 const activeSessions = new Set<string>();
 
@@ -47,11 +46,11 @@ function extractText(messages: Array<{ info: { role: string }; parts: Array<{ ty
 function buildReviewerPrompt(
   reviewerPrompt: string,
   prDiff: string,
-  previousContext?: OrchestratorOptions["previousContext"] | null,
+  previousContextText?: string,
 ): string {
   const parts: string[] = [];
-  if (previousContext) {
-    parts.push(formatPreviousContext(previousContext));
+  if (previousContextText) {
+    parts.push(previousContextText);
     parts.push("=== Current review request ===");
     parts.push(
       "This is a re-review of the same PR. Focus on the CURRENT diff below. " +
@@ -104,7 +103,7 @@ export async function runParallelReviewers(
         client.session.prompt({
           path: { id: sessionId },
           body: {
-            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContext) }],
+            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }],
           },
           throwOnError: true,
         }),

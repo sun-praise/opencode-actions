@@ -54,8 +54,8 @@ export interface OrchestratorOptions {
   globalTimeoutMs: number;
   coordinatorTimeoutMs: number;
   coordinatorPrompt: string;
-  /** Previously saved review context for the same PR, if any. */
-  previousContext?: ReviewContext | null;
+  /** Pre-formatted previous review context text for the same PR, if any. */
+  previousContextText?: string;
 }
 
 // ── Severity parsing ─────────────────────────────────────────────────
