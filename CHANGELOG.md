@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-06-24
+
+### Added
+- **multi-review**: persist review context across re-runs of the same PR. Supports two backends:
+  - Independent HTTP cache server via new `context-cache-url` and `context-cache-token` inputs (#271).
+  - GitHub Actions cache fallback when no external server is configured, using a per-run key so the most recent context is always restored.
+- New `review-context-server/` standalone HTTP server with filesystem persistence, optional bearer auth, Docker, and systemd deployment docs.
+
 ## [4.0.2] - 2026-06-17
 
 ### Changed
