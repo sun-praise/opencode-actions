@@ -2280,9 +2280,9 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-var import_node_fs3 = require("fs");
-var import_node_os2 = require("os");
-var import_node_path3 = require("path");
+var import_node_fs4 = require("fs");
+var import_node_os3 = require("os");
+var import_node_path4 = require("path");
 
 // src/reviewers.ts
 var import_node_fs = require("fs");
@@ -4769,6 +4769,104 @@ function resolveModel() {
   return { providerID: raw.slice(0, idx), modelID: raw.slice(idx + 1) };
 }
 
+// src/context-cache.ts
+var import_node_fs2 = require("fs");
+var import_node_os = require("os");
+var import_node_path2 = require("path");
+var CACHE_VERSION = 1;
+var CONTEXT_DIR_NAME = (0, import_node_path2.join)("opencode-actions", "review-context");
+function getContextCacheDir() {
+  const xdgCacheHome = process.env.XDG_CACHE_HOME || (0, import_node_path2.join)((0, import_node_os.homedir)(), ".cache");
+  return (0, import_node_path2.join)(xdgCacheHome, CONTEXT_DIR_NAME);
+}
+function getRepo() {
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    return "";
+  }
+  return repo;
+}
+function getContextPath(prNumber) {
+  const repo = getRepo();
+  if (!repo || !prNumber) {
+    return null;
+  }
+  const safeRepo = repo.replace(/\//g, "-");
+  const safePr = prNumber.replace(/\D/g, "");
+  if (!safePr) {
+    return null;
+  }
+  return (0, import_node_path2.join)(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
+}
+function loadReviewContext(prNumber) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    return null;
+  }
+  if (!(0, import_node_fs2.existsSync)(path)) {
+    return null;
+  }
+  try {
+    const raw = (0, import_node_fs2.readFileSync)(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed?.version !== CACHE_VERSION || !Array.isArray(parsed.sessions)) {
+      console.warn(`Ignoring malformed review context: ${path}`);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+function saveReviewContext(prNumber, newSessions) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    console.warn("Skipping review context save: unable to determine repo or PR number");
+    return;
+  }
+  if (!newSessions.length) {
+    return;
+  }
+  const repo = getRepo();
+  if (!repo) {
+    console.warn("Skipping review context save: GITHUB_REPOSITORY is unset or invalid");
+    return;
+  }
+  const existing = loadReviewContext(prNumber);
+  const context = {
+    version: CACHE_VERSION,
+    repo,
+    prNumber,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sessions: [...existing?.sessions || [], ...newSessions]
+  };
+  try {
+    (0, import_node_fs2.mkdirSync)((0, import_node_path2.dirname)(path), { recursive: true });
+    (0, import_node_fs2.writeFileSync)(path, JSON.stringify(context, null, 2));
+    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+function formatPreviousContext(context) {
+  const lines = [];
+  lines.push(`=== Previous review context for PR #${context.prNumber} ===`);
+  lines.push(`Saved at: ${context.savedAt}`);
+  lines.push("");
+  for (const session of context.sessions) {
+    lines.push(`--- Session: ${session.name} ---`);
+    for (const message of session.messages) {
+      const role = message.info.role;
+      const text = message.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join("\n");
+      if (!text) continue;
+      lines.push(`[${role}] ${text}`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+}
+
 // src/orchestrator.ts
 var activeSessions = /* @__PURE__ */ new Set();
 var DEFAULT_COORDINATOR_PROMPT = `\u4F60\u662F\u4E00\u4E2A\u4EE3\u7801\u5BA1\u67E5\u534F\u8C03\u5458\u3002\u4EE5\u4E0B\u5BA1\u67E5\u7531\u72EC\u7ACB\u7684\u4E13\u5BB6 reviewer \u751F\u6210\u3002
@@ -4805,6 +4903,24 @@ IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. Git
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
 }
+function buildReviewerPrompt(reviewerPrompt, prDiff, previousContext) {
+  const parts = [];
+  if (previousContext) {
+    parts.push(formatPreviousContext(previousContext));
+    parts.push("=== Current review request ===");
+    parts.push(
+      "This is a re-review of the same PR. Focus on the CURRENT diff below. Do not re-report issues that have already been fixed."
+    );
+    parts.push("");
+  }
+  parts.push(reviewerPrompt);
+  parts.push("");
+  parts.push("PR Diff:");
+  parts.push("```");
+  parts.push(prDiff);
+  parts.push("```");
+  return parts.join("\n");
+}
 function withTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
@@ -4834,7 +4950,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         client2.session.prompt({
           path: { id: sessionId },
           body: {
-            parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }]
+            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContext) }]
           },
           throwOnError: true
         }),
@@ -4846,7 +4962,8 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         remaining(),
         reviewer.name
       );
-      const content = extractText(messagesResult.data);
+      const messages = messagesResult.data;
+      const content = extractText(messages);
       const info = promptResult.data?.info;
       const cost = info?.cost;
       const tokens = info?.tokens;
@@ -4855,7 +4972,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       } else {
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
-      return { reviewer: reviewer.name, content, success: true, cost, tokens };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
@@ -4901,7 +5018,8 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       opts.coordinatorTimeoutMs,
       "coordinator"
     );
-    const content = extractText(messagesResult.data);
+    const messages = messagesResult.data;
+    const content = extractText(messages);
     const info = promptResult.data?.info;
     const cost = info?.cost;
     const tokens = info?.tokens;
@@ -4910,7 +5028,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     } else {
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
-    return { content, cost, tokens };
+    return { content, cost, tokens, messages };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);
@@ -5019,9 +5137,9 @@ ${totalLine}
 
 // src/platform.ts
 var import_node_child_process2 = require("child_process");
-var import_node_fs2 = require("fs");
-var import_node_path2 = require("path");
-var import_node_os = require("os");
+var import_node_fs3 = require("fs");
+var import_node_path3 = require("path");
+var import_node_os2 = require("os");
 var _platform;
 function detectPlatform() {
   if (_platform === void 0) {
@@ -5041,7 +5159,7 @@ function resolvePRNumberFromEvent() {
   const eventPath = process.env.GITHUB_EVENT_PATH || "";
   if (!eventPath) return null;
   try {
-    const payload = JSON.parse((0, import_node_fs2.readFileSync)(eventPath, "utf-8"));
+    const payload = JSON.parse((0, import_node_fs3.readFileSync)(eventPath, "utf-8"));
     const num = payload.number ?? payload.pull_request?.number;
     if (typeof num === "number" && Number.isInteger(num) && num > 0) {
       return String(num);
@@ -5053,7 +5171,7 @@ function resolvePRNumberFromEvent() {
 }
 var REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 var _repo;
-function getRepo() {
+function getRepo2() {
   if (_repo !== void 0) return _repo;
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (repo && !REPO_RE.test(repo)) {
@@ -5117,12 +5235,12 @@ function curlWithAuth(url, headers, opts = {}) {
   });
 }
 var MAX_PAGES = 20;
-var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
-(0, import_node_fs2.chmodSync)(_tempDir, 448);
+var _tempDir = (0, import_node_fs3.mkdtempSync)((0, import_node_path3.join)((0, import_node_os2.tmpdir)(), "opencode-review-"));
+(0, import_node_fs3.chmodSync)(_tempDir, 448);
 function writeAuthHeader(token, prefix) {
-  const path = (0, import_node_path2.join)(_tempDir, `${prefix}-${process.pid}`);
-  (0, import_node_fs2.writeFileSync)(path, `Authorization: Bearer ${token}`);
-  (0, import_node_fs2.chmodSync)(path, 384);
+  const path = (0, import_node_path3.join)(_tempDir, `${prefix}-${process.pid}`);
+  (0, import_node_fs3.writeFileSync)(path, `Authorization: Bearer ${token}`);
+  (0, import_node_fs3.chmodSync)(path, 384);
   return path;
 }
 function fetchAllGiteaComments(baseUrl, token) {
@@ -5194,7 +5312,7 @@ function postPRComment(body) {
   }
 }
 function postCommentGithub(prNumber, body) {
-  const repo = getRepo();
+  const repo = getRepo2();
   if (hasGh()) {
     try {
       (0, import_node_child_process2.execFileSync)("gh", ["pr", "comment", prNumber, "--repo", repo, "--body", body], {
@@ -5239,14 +5357,14 @@ function postCommentGithub(prNumber, body) {
     fallbackStdout(body);
   } finally {
     try {
-      (0, import_node_fs2.unlinkSync)(headerFile);
+      (0, import_node_fs3.unlinkSync)(headerFile);
     } catch (e) {
       console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
     }
   }
 }
 function postCommentGitea(prNumber, body) {
-  const repo = getRepo();
+  const repo = getRepo2();
   const base = getGiteaApiBase();
   const token = getGiteaToken();
   if (!base || !repo) {
@@ -5298,7 +5416,7 @@ function fetchPRDiff(prNumber) {
   }
   if (hasTea()) {
     try {
-      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo()], {
+      return (0, import_node_child_process2.execFileSync)("tea", ["pulls", "diff", prNumber, "--repo", getRepo2()], {
         env: { ...process.env },
         timeout: 3e4,
         stdio: "pipe",
@@ -5311,7 +5429,7 @@ function fetchPRDiff(prNumber) {
   return fetchDiffGitea(prNumber);
 }
 function fetchDiffGithub(prNumber) {
-  const repo = getRepo();
+  const repo = getRepo2();
   if (hasGh()) {
     try {
       return (0, import_node_child_process2.execFileSync)("gh", ["pr", "diff", prNumber, "--repo", repo], {
@@ -5340,7 +5458,7 @@ function fetchDiffGithub(prNumber) {
       console.warn(`REST API failed, falling back to local git diff: ${formatError(err)}`);
     } finally {
       try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
+        (0, import_node_fs3.unlinkSync)(headerFile);
       } catch (e) {
         console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
       }
@@ -5364,7 +5482,7 @@ function fetchDiffGithub(prNumber) {
   }
 }
 function fetchDiffGitea(prNumber) {
-  const repo = getRepo();
+  const repo = getRepo2();
   const base = getGiteaApiBase();
   const token = getGiteaToken();
   if (!base || !repo) {
@@ -5382,7 +5500,7 @@ function cleanupErrorComments() {
   if (enabled.toLowerCase() !== "true") return;
   const prNumber = resolvePRNumber();
   if (!prNumber) return;
-  const repo = getRepo();
+  const repo = getRepo2();
   const runId = process.env.GITHUB_RUN_ID || "";
   if (!repo || !runId) return;
   if (detectPlatform() === "github") {
@@ -5472,7 +5590,7 @@ function listCommentsGithubRest(prNumber, repo) {
   } finally {
     if (headerFile) {
       try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
+        (0, import_node_fs3.unlinkSync)(headerFile);
       } catch (e) {
         console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
       }
@@ -5505,7 +5623,7 @@ function deleteCommentGithub(commentId, repo) {
     (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
   } finally {
     try {
-      (0, import_node_fs2.unlinkSync)(headerFile);
+      (0, import_node_fs3.unlinkSync)(headerFile);
     } catch (e) {
       console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
     }
@@ -5858,15 +5976,21 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const diffPath = (0, import_node_path3.join)(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path4.join)(runnerTemp, ".pr-diff.txt");
   try {
-    prDiff = (0, import_node_fs3.readFileSync)(diffPath, "utf-8");
+    prDiff = (0, import_node_fs4.readFileSync)(diffPath, "utf-8");
     if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
   } catch {
   }
   const prNumber = resolvePRNumber();
+  const previousContext = prNumber ? loadReviewContext(prNumber) : null;
+  if (previousContext) {
+    console.log(
+      `Loaded previous review context for PR #${prNumber}: ${previousContext.sessions.length} sessions`
+    );
+  }
   if (!prDiff.trim()) {
     if (prNumber) {
       try {
@@ -5910,19 +6034,19 @@ async function main() {
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
   const litellmApiKey = env("LITELLM_API_KEY");
   if (providerID === "litellm" && litellmApiKey) {
-    const authDir = (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".local", "share", "opencode");
-    (0, import_node_fs3.mkdirSync)(authDir, { recursive: true });
-    const authPath = (0, import_node_path3.join)(authDir, "auth.json");
+    const authDir = (0, import_node_path4.join)((0, import_node_os3.homedir)(), ".local", "share", "opencode");
+    (0, import_node_fs4.mkdirSync)(authDir, { recursive: true });
+    const authPath = (0, import_node_path4.join)(authDir, "auth.json");
     let auth = {};
-    if ((0, import_node_fs3.existsSync)(authPath)) {
+    if ((0, import_node_fs4.existsSync)(authPath)) {
       try {
-        auth = JSON.parse((0, import_node_fs3.readFileSync)(authPath, "utf-8"));
+        auth = JSON.parse((0, import_node_fs4.readFileSync)(authPath, "utf-8"));
       } catch {
         auth = {};
       }
     }
     auth.litellm = { type: "api", key: litellmApiKey };
-    (0, import_node_fs3.writeFileSync)(authPath, JSON.stringify(auth));
+    (0, import_node_fs4.writeFileSync)(authPath, JSON.stringify(auth));
   }
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
   const { client: client2, server } = await createOpencode({
@@ -5946,7 +6070,8 @@ async function main() {
     const reviews = await runParallelReviewers(client2, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
-      coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
+      coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
+      previousContext
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -5972,6 +6097,13 @@ async function main() {
       console.error(`Coordinator failed: ${err}`);
       const costTable = formatCostTable(reviews);
       comment = buildFallbackComment(reviews) + "\n" + costTable;
+    }
+    if (prNumber) {
+      const newSessions = reviews.filter((r) => r.success && r.messages && r.messages.length > 0).map((r) => ({ name: r.reviewer, messages: r.messages }));
+      if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
+        newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
+      }
+      saveReviewContext(prNumber, newSessions);
     }
     postPRComment(comment);
     try {

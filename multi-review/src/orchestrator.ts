@@ -1,5 +1,6 @@
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Reviewer, ReviewResult, OrchestratorOptions, CoordinatorResult } from "./types.js";
+import { formatPreviousContext } from "./context-cache.js";
 
 const activeSessions = new Set<string>();
 
@@ -43,6 +44,30 @@ function extractText(messages: Array<{ info: { role: string }; parts: Array<{ ty
     .join("\n");
 }
 
+function buildReviewerPrompt(
+  reviewerPrompt: string,
+  prDiff: string,
+  previousContext?: OrchestratorOptions["previousContext"] | null,
+): string {
+  const parts: string[] = [];
+  if (previousContext) {
+    parts.push(formatPreviousContext(previousContext));
+    parts.push("=== Current review request ===");
+    parts.push(
+      "This is a re-review of the same PR. Focus on the CURRENT diff below. " +
+      "Do not re-report issues that have already been fixed.",
+    );
+    parts.push("");
+  }
+  parts.push(reviewerPrompt);
+  parts.push("");
+  parts.push("PR Diff:");
+  parts.push("```");
+  parts.push(prDiff);
+  parts.push("```");
+  return parts.join("\n");
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
@@ -79,7 +104,7 @@ export async function runParallelReviewers(
         client.session.prompt({
           path: { id: sessionId },
           body: {
-            parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }],
+            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContext) }],
           },
           throwOnError: true,
         }),
@@ -92,7 +117,8 @@ export async function runParallelReviewers(
         remaining(),
         reviewer.name,
       );
-      const content = extractText(messagesResult.data);
+      const messages = messagesResult.data;
+      const content = extractText(messages);
       const info = promptResult.data?.info;
       const cost = info?.cost;
       const tokens = info?.tokens;
@@ -103,7 +129,7 @@ export async function runParallelReviewers(
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
 
-      return { reviewer: reviewer.name, content, success: true, cost, tokens };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
@@ -159,7 +185,8 @@ export async function runCoordinator(
       opts.coordinatorTimeoutMs,
       "coordinator",
     );
-    const content = extractText(messagesResult.data);
+    const messages = messagesResult.data;
+    const content = extractText(messages);
     const info = promptResult.data?.info;
     const cost = info?.cost;
     const tokens = info?.tokens;
@@ -170,7 +197,7 @@ export async function runCoordinator(
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
 
-    return { content, cost, tokens };
+    return { content, cost, tokens, messages };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);
