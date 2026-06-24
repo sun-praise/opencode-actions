@@ -97,6 +97,14 @@ inputs:
     description: Value exported as LITELLM_API_KEY before running `opencode github run`.
     required: false
     default: ""
+  context-cache-url:
+    description: URL of an independent review context cache server (e.g. http://cache-server:8080). When set, review contexts are persisted via HTTP instead of the local filesystem.
+    required: false
+    default: ""
+  context-cache-token:
+    description: Bearer token for the review context cache server.
+    required: false
+    default: ""
   extra-env:
     description: >-
       Extra environment variables to pass to opencode runtime.
@@ -304,10 +312,13 @@ runs:
         XIAOMI_API_KEY: ${{ inputs.xiaomi-api-key }}
         LITELLM_URL: ${{ inputs.litellm-url }}
         LITELLM_API_KEY: ${{ inputs.litellm-api-key }}
+        MULTI_REVIEW_CONTEXT_CACHE_URL: ${{ inputs.context-cache-url }}
+        MULTI_REVIEW_CONTEXT_CACHE_TOKEN: ${{ inputs.context-cache-token }}
         GITHUB_REF: ${{ github.ref }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         RUNNER_TEMP: ${{ runner.temp }}
+        XDG_CACHE_HOME: ${{ steps.paths.outputs.xdg_cache_home }}
       run: |
         set -euo pipefail
         if ! command -v node >/dev/null 2>&1; then
