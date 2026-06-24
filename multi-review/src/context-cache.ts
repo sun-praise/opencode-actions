@@ -16,21 +16,6 @@ function isSafePathComponent(value: string): boolean {
   return /^[\w./-]+$/.test(value);
 }
 
-/**
- * Resolve the directory used to store review contexts.
- * Relies on XDG_CACHE_HOME being set by the action; falls back to ~/.cache.
- * Validates the resolved path to avoid traversal outside the intended cache root.
- */
-export function getContextCacheDir(): string {
-  const raw = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
-  const resolved = resolve(raw);
-  const expectedRoot = resolve(raw);
-  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
-    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
-  }
-  return join(resolved, CONTEXT_DIR_NAME);
-}
-
 function getRepo(): string {
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
@@ -39,23 +24,30 @@ function getRepo(): string {
   return repo;
 }
 
-function getContextPath(prNumber: string): string | null {
+function getContextKey(prNumber: string): { owner: string; repo: string; pr: string } | null {
   const repo = getRepo();
   if (!repo || !prNumber) {
     return null;
   }
-  const safeRepo = repo.replace(/\//g, "-");
+  const [owner, repoName] = repo.split("/");
   const safePr = prNumber.replace(/\D/g, "");
-  if (!safePr || !isSafePathComponent(safeRepo) || !isSafePathComponent(safePr)) {
+  if (!safePr || !isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
     return null;
   }
-  return join(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
+  return { owner, repo: repoName, pr: safePr };
 }
 
-function validateLoadedContext(
-  parsed: unknown,
-  expectedPrNumber: string,
-): ReviewContext | null {
+function getContextCacheUrl(): string | undefined {
+  const url = process.env.MULTI_REVIEW_CONTEXT_CACHE_URL || "";
+  return url ? url.replace(/\/+$/, "") : undefined;
+}
+
+function getContextCacheToken(): string | undefined {
+  const token = process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN || "";
+  return token || undefined;
+}
+
+function validateLoadedContext(parsed: unknown, expectedPrNumber: string): ReviewContext | null {
   if (!parsed || typeof parsed !== "object") return null;
   const ctx = parsed as Partial<ReviewContext>;
   const repo = getRepo();
@@ -74,7 +66,10 @@ function validateLoadedContext(
  * Keep only the most recent sessions for each session name to prevent
  * unbounded cache growth across repeated re-reviews of the same PR.
  */
-export function trimSessions(sessions: ReviewSession[], maxPerName = MAX_ROUNDS_PER_SESSION_NAME): ReviewSession[] {
+export function trimSessions(
+  sessions: ReviewSession[],
+  maxPerName = MAX_ROUNDS_PER_SESSION_NAME,
+): ReviewSession[] {
   const counts = new Map<string, number>();
   const result: ReviewSession[] = [];
   for (let i = sessions.length - 1; i >= 0; i--) {
@@ -88,50 +83,130 @@ export function trimSessions(sessions: ReviewSession[], maxPerName = MAX_ROUNDS_
   return result;
 }
 
-/**
- * Load the previously saved review context for a PR.
- * Returns null if no context exists, the repo/PR mismatch, or the file is corrupt.
- */
-export async function loadReviewContext(prNumber: string): Promise<ReviewContext | null> {
-  const path = getContextPath(prNumber);
-  if (!path) {
+// ── HTTP cache server backend ──────────────────────────────────────────
+
+async function httpGetContext(url: string, token: string | undefined, key: ReturnType<typeof getContextKey>): Promise<ReviewContext | null> {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}`;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, { headers });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
+      return null;
+    }
+    const parsed = (await res.json()) as unknown;
+    return validateLoadedContext(parsed, key.pr);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP GET failed: ${err instanceof Error ? err.message : err}`);
     return null;
   }
-  if (!existsSync(path)) {
-    return null;
+}
+
+async function httpPutContext(
+  url: string,
+  token: string | undefined,
+  key: ReturnType<typeof getContextKey>,
+  context: ReviewContext,
+): Promise<void> {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(context),
+    });
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
+      return;
+    }
+    console.log(`Saved review context for PR #${key.pr}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP PUT failed: ${err instanceof Error ? err.message : err}`);
   }
+}
+
+// ── Filesystem backend (fallback / local testing) ───────────────────────
+
+export function getContextCacheDir(): string {
+  const raw = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+  const resolved = resolve(raw);
+  const expectedRoot = resolve(raw);
+  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
+    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
+  }
+  return join(resolved, CONTEXT_DIR_NAME);
+}
+
+function getFilesystemPath(key: ReturnType<typeof getContextKey>): string {
+  const repoKey = `${key.owner}-${key.repo}`;
+  return join(getContextCacheDir(), `${repoKey}-pr-${key.pr}.json`);
+}
+
+async function fsGetContext(key: ReturnType<typeof getContextKey>): Promise<ReviewContext | null> {
+  const path = getFilesystemPath(key);
+  if (!existsSync(path)) return null;
   try {
     const raw = await readFile(path, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
-    const validated = validateLoadedContext(parsed, prNumber);
-    if (!validated) {
-      console.warn(`Ignoring malformed or stale review context: ${path}`);
-      return null;
-    }
-    return validated;
+    return validateLoadedContext(parsed, key.pr);
   } catch (err) {
     console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }
 
+async function fsPutContext(key: ReturnType<typeof getContextKey>, context: ReviewContext): Promise<void> {
+  const path = getFilesystemPath(key);
+  try {
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
+    console.log(`Saved review context for PR #${key.pr}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+// ── Public API ─────────────────────────────────────────────────────────
+
+/**
+ * Load the previously saved review context for a PR.
+ * Prefers the configured HTTP cache server; falls back to the local filesystem.
+ */
+export async function loadReviewContext(prNumber: string): Promise<ReviewContext | null> {
+  const key = getContextKey(prNumber);
+  if (!key) return null;
+
+  const url = getContextCacheUrl();
+  if (url) {
+    const ctx = await httpGetContext(url, getContextCacheToken(), key);
+    if (ctx) {
+      console.log(`Loaded previous review context for PR #${prNumber}: ${ctx.sessions.length} sessions`);
+      return ctx;
+    }
+    return null;
+  }
+
+  return fsGetContext(key);
+}
+
 /**
  * Save (append) review sessions for a PR.
- * Existing sessions are preserved and trimmed; new sessions are appended.
- * Failures are logged and ignored so the main review flow is never blocked.
+ * Prefers the configured HTTP cache server; falls back to the local filesystem.
  */
 export async function saveReviewContext(
   prNumber: string,
   newSessions: ReviewSession[],
 ): Promise<void> {
-  const path = getContextPath(prNumber);
-  if (!path) {
+  const key = getContextKey(prNumber);
+  if (!key) {
     console.warn("Skipping review context save: unable to determine repo or PR number");
     return;
   }
-  if (!newSessions.length) {
-    return;
-  }
+  if (!newSessions.length) return;
 
   const repo = getRepo();
   if (!repo) {
@@ -148,12 +223,11 @@ export async function saveReviewContext(
     sessions: trimSessions([...(existing?.sessions || []), ...newSessions]),
   };
 
-  try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await writeFile(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
-    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
-  } catch (err) {
-    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  const url = getContextCacheUrl();
+  if (url) {
+    await httpPutContext(url, getContextCacheToken(), key, context);
+  } else {
+    await fsPutContext(key, context);
   }
 }
 

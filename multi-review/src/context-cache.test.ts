@@ -1,6 +1,8 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,20 +16,26 @@ import type { ReviewContext, ReviewSession } from "./types.js";
 
 const ORIGINAL_XDG = process.env.XDG_CACHE_HOME;
 const ORIGINAL_REPO = process.env.GITHUB_REPOSITORY;
+const ORIGINAL_CACHE_URL = process.env.MULTI_REVIEW_CONTEXT_CACHE_URL;
+const ORIGINAL_CACHE_TOKEN = process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN;
 
-describe("context-cache", () => {
+describe("context-cache filesystem backend", { concurrency: false }, () => {
   let tempDir: string;
 
   before(() => {
     tempDir = mkdtempSync(join(tmpdir(), "context-cache-test-"));
     process.env.XDG_CACHE_HOME = tempDir;
     process.env.GITHUB_REPOSITORY = "owner/repo";
+    delete process.env.MULTI_REVIEW_CONTEXT_CACHE_URL;
+    delete process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN;
   });
 
   after(() => {
     rmSync(tempDir, { recursive: true, force: true });
     process.env.XDG_CACHE_HOME = ORIGINAL_XDG;
     process.env.GITHUB_REPOSITORY = ORIGINAL_REPO;
+    process.env.MULTI_REVIEW_CONTEXT_CACHE_URL = ORIGINAL_CACHE_URL;
+    process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN = ORIGINAL_CACHE_TOKEN;
   });
 
   it("getContextCacheDir uses XDG_CACHE_HOME", () => {
@@ -198,5 +206,138 @@ describe("context-cache", () => {
     };
     const formatted = formatPreviousContext(context);
     assert.ok(formatted.includes("PR #6"));
+  });
+});
+
+describe("context-cache HTTP backend", { concurrency: false }, () => {
+  let server: Server;
+  let baseUrl: string;
+  let dataDir: string;
+  const authToken = "test-token";
+
+  before(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), "context-cache-http-test-"));
+    process.env.GITHUB_REPOSITORY = "owner/repo";
+    delete process.env.XDG_CACHE_HOME;
+
+    server = createServer((req, res) => {
+      const auth = req.headers.authorization || "";
+      if (auth !== `Bearer ${authToken}`) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+
+      const match = (req.url || "").match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)$/);
+      if (!match) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not found" }));
+        return;
+      }
+
+      const [, owner, repo, pr] = match;
+      const filePath = join(dataDir, owner, repo, `${pr}.json`);
+
+      if (req.method === "GET") {
+        try {
+          const data = readFileSync(filePath, "utf-8");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(data);
+        } catch {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Not found" }));
+        }
+      } else if (req.method === "PUT") {
+        let body = "";
+        req.setEncoding("utf-8");
+        req.on("data", (chunk: string) => { body += chunk; });
+        req.on("end", () => {
+          try {
+            JSON.parse(body);
+            mkdirSync(dirname(filePath), { recursive: true });
+            writeFileSync(filePath, body);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ saved: true }));
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Bad request" }));
+          }
+        });
+      } else {
+        res.writeHead(405);
+        res.end();
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
+        if (addr && typeof addr === "object") {
+          baseUrl = `http://127.0.0.1:${addr.port}`;
+        }
+        resolve();
+      });
+    });
+
+    process.env.MULTI_REVIEW_CONTEXT_CACHE_URL = baseUrl;
+    process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN = authToken;
+  });
+
+  after(async () => {
+    delete process.env.MULTI_REVIEW_CONTEXT_CACHE_URL;
+    delete process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dataDir, { recursive: true, force: true });
+    process.env.GITHUB_REPOSITORY = ORIGINAL_REPO;
+    process.env.XDG_CACHE_HOME = ORIGINAL_XDG;
+  });
+
+  it("loadReviewContext returns null when server has no context", async () => {
+    const ctx = await loadReviewContext("123");
+    assert.strictEqual(ctx, null);
+  });
+
+  it("saveReviewContext and loadReviewContext roundtrip via HTTP", async () => {
+    const sessions: ReviewSession[] = [
+      {
+        name: "quality",
+        messages: [
+          { info: { role: "user" }, parts: [{ type: "text", text: "review this" }] },
+          { info: { role: "assistant" }, parts: [{ type: "text", text: "looks good" }] },
+        ],
+      },
+    ];
+    await saveReviewContext("42", sessions);
+
+    const loaded = await loadReviewContext("42");
+    assert.ok(loaded);
+    assert.strictEqual(loaded!.repo, "owner/repo");
+    assert.strictEqual(loaded!.prNumber, "42");
+    assert.strictEqual(loaded!.sessions.length, 1);
+  });
+
+  it("saveReviewContext appends via HTTP", async () => {
+    await saveReviewContext("7", [{ name: "security", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "ok" }] }] }]);
+    await saveReviewContext("7", [{ name: "coordinator", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "merged" }] }] }]);
+
+    const loaded = await loadReviewContext("7");
+    assert.ok(loaded);
+    assert.strictEqual(loaded!.sessions.length, 2);
+  });
+
+  it("falls back to filesystem when HTTP URL is not set", async () => {
+    const fsDir = mkdtempSync(join(tmpdir(), "context-cache-fs-fallback-"));
+    process.env.XDG_CACHE_HOME = fsDir;
+    delete process.env.MULTI_REVIEW_CONTEXT_CACHE_URL;
+
+    try {
+      await saveReviewContext("100", [{ name: "quality", messages: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "ok" }] }] }]);
+      const loaded = await loadReviewContext("100");
+      assert.ok(loaded);
+      assert.strictEqual(loaded!.sessions.length, 1);
+    } finally {
+      rmSync(fsDir, { recursive: true, force: true });
+      process.env.MULTI_REVIEW_CONTEXT_CACHE_URL = baseUrl;
+    }
   });
 });

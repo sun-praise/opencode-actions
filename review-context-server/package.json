@@ -1,0 +1,20 @@
+{
+  "name": "opencode-review-context-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone HTTP server for storing and retrieving multi-review contexts.",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -5847,15 +5847,6 @@ function isSafePathComponent(value) {
   if (value.includes("..") || value.includes("\0") || value.startsWith("/")) return false;
   return /^[\w./-]+$/.test(value);
 }
-function getContextCacheDir() {
-  const raw = process.env.XDG_CACHE_HOME || (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".cache");
-  const resolved = (0, import_node_path3.resolve)(raw);
-  const expectedRoot = (0, import_node_path3.resolve)(raw);
-  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
-    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
-  }
-  return (0, import_node_path3.join)(resolved, CONTEXT_DIR_NAME);
-}
 function getRepo2() {
   const repo = process.env.GITHUB_REPOSITORY || "";
   if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
@@ -5863,17 +5854,25 @@ function getRepo2() {
   }
   return repo;
 }
-function getContextPath(prNumber) {
+function getContextKey(prNumber) {
   const repo = getRepo2();
   if (!repo || !prNumber) {
     return null;
   }
-  const safeRepo = repo.replace(/\//g, "-");
+  const [owner, repoName] = repo.split("/");
   const safePr = prNumber.replace(/\D/g, "");
-  if (!safePr || !isSafePathComponent(safeRepo) || !isSafePathComponent(safePr)) {
+  if (!safePr || !isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
     return null;
   }
-  return (0, import_node_path3.join)(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
+  return { owner, repo: repoName, pr: safePr };
+}
+function getContextCacheUrl() {
+  const url = process.env.MULTI_REVIEW_CONTEXT_CACHE_URL || "";
+  return url ? url.replace(/\/+$/, "") : void 0;
+}
+function getContextCacheToken() {
+  const token = process.env.MULTI_REVIEW_CONTEXT_CACHE_TOKEN || "";
+  return token || void 0;
 }
 function validateLoadedContext(parsed, expectedPrNumber) {
   if (!parsed || typeof parsed !== "object") return null;
@@ -5897,37 +5896,99 @@ function trimSessions(sessions, maxPerName = MAX_ROUNDS_PER_SESSION_NAME) {
   }
   return result;
 }
-async function loadReviewContext(prNumber) {
-  const path = getContextPath(prNumber);
-  if (!path) {
+async function httpGetContext(url, token, key) {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}`;
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, { headers });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
+      return null;
+    }
+    const parsed = await res.json();
+    return validateLoadedContext(parsed, key.pr);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP GET failed: ${err instanceof Error ? err.message : err}`);
     return null;
   }
-  if (!(0, import_node_fs3.existsSync)(path)) {
-    return null;
+}
+async function httpPutContext(url, token, key, context) {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}`;
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(context)
+    });
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
+      return;
+    }
+    console.log(`Saved review context for PR #${key.pr}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP PUT failed: ${err instanceof Error ? err.message : err}`);
   }
+}
+function getContextCacheDir() {
+  const raw = process.env.XDG_CACHE_HOME || (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".cache");
+  const resolved = (0, import_node_path3.resolve)(raw);
+  const expectedRoot = (0, import_node_path3.resolve)(raw);
+  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
+    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
+  }
+  return (0, import_node_path3.join)(resolved, CONTEXT_DIR_NAME);
+}
+function getFilesystemPath(key) {
+  const repoKey = `${key.owner}-${key.repo}`;
+  return (0, import_node_path3.join)(getContextCacheDir(), `${repoKey}-pr-${key.pr}.json`);
+}
+async function fsGetContext(key) {
+  const path = getFilesystemPath(key);
+  if (!(0, import_node_fs3.existsSync)(path)) return null;
   try {
     const raw = await (0, import_promises.readFile)(path, "utf-8");
     const parsed = JSON.parse(raw);
-    const validated = validateLoadedContext(parsed, prNumber);
-    if (!validated) {
-      console.warn(`Ignoring malformed or stale review context: ${path}`);
-      return null;
-    }
-    return validated;
+    return validateLoadedContext(parsed, key.pr);
   } catch (err) {
     console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }
+async function fsPutContext(key, context) {
+  const path = getFilesystemPath(key);
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
+    await (0, import_promises.writeFile)(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
+    console.log(`Saved review context for PR #${key.pr}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+async function loadReviewContext(prNumber) {
+  const key = getContextKey(prNumber);
+  if (!key) return null;
+  const url = getContextCacheUrl();
+  if (url) {
+    const ctx = await httpGetContext(url, getContextCacheToken(), key);
+    if (ctx) {
+      console.log(`Loaded previous review context for PR #${prNumber}: ${ctx.sessions.length} sessions`);
+      return ctx;
+    }
+    return null;
+  }
+  return fsGetContext(key);
+}
 async function saveReviewContext(prNumber, newSessions) {
-  const path = getContextPath(prNumber);
-  if (!path) {
+  const key = getContextKey(prNumber);
+  if (!key) {
     console.warn("Skipping review context save: unable to determine repo or PR number");
     return;
   }
-  if (!newSessions.length) {
-    return;
-  }
+  if (!newSessions.length) return;
   const repo = getRepo2();
   if (!repo) {
     console.warn("Skipping review context save: GITHUB_REPOSITORY is unset or invalid");
@@ -5941,12 +6002,11 @@ async function saveReviewContext(prNumber, newSessions) {
     savedAt: (/* @__PURE__ */ new Date()).toISOString(),
     sessions: trimSessions([...existing?.sessions || [], ...newSessions])
   };
-  try {
-    await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
-    await (0, import_promises.writeFile)(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
-    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
-  } catch (err) {
-    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  const url = getContextCacheUrl();
+  if (url) {
+    await httpPutContext(url, getContextCacheToken(), key, context);
+  } else {
+    await fsPutContext(key, context);
   }
 }
 function formatPreviousContext(context) {
