@@ -122,12 +122,12 @@ var require_isexe = __commonJS({
         if (typeof Promise !== "function") {
           throw new TypeError("callback not provided");
         }
-        return new Promise(function(resolve, reject) {
+        return new Promise(function(resolve2, reject) {
           isexe(path, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
-              resolve(is);
+              resolve2(is);
             }
           });
         });
@@ -194,27 +194,27 @@ var require_which = __commonJS({
         opt = {};
       const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
       const found = [];
-      const step = (i) => new Promise((resolve, reject) => {
+      const step = (i) => new Promise((resolve2, reject) => {
         if (i === pathEnv.length)
-          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+          return opt.all && found.length ? resolve2(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
         const pCmd = path.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve(subStep(p, i, 0));
+        resolve2(subStep(p, i, 0));
       });
-      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
+      const subStep = (p, i, ii) => new Promise((resolve2, reject) => {
         if (ii === pathExt.length)
-          return resolve(step(i + 1));
+          return resolve2(step(i + 1));
         const ext = pathExt[ii];
         isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
           if (!er && is) {
             if (opt.all)
               found.push(p + ext);
             else
-              return resolve(p + ext);
+              return resolve2(p + ext);
           }
-          return resolve(subStep(p, i, ii + 1));
+          return resolve2(subStep(p, i, ii + 1));
         });
       });
       return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
@@ -529,7 +529,7 @@ var require_cross_spawn = __commonJS({
 // node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
   let lastEventId;
-  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
   const createStream = async function* () {
     let retryDelay = sseDefaultRetryDelay ?? 3e3;
     let attempt = 0;
@@ -2205,7 +2205,7 @@ async function createOpencodeServer(options) {
   });
   let clear = () => {
   };
-  const url = await new Promise((resolve, reject) => {
+  const url = await new Promise((resolve2, reject) => {
     const id = setTimeout(() => {
       clear();
       stop(proc);
@@ -2230,7 +2230,7 @@ async function createOpencodeServer(options) {
           }
           clearTimeout(id);
           resolved = true;
-          resolve(match[1]);
+          resolve2(match[1]);
           return;
         }
       }
@@ -2280,9 +2280,9 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-var import_node_fs3 = require("fs");
-var import_node_os2 = require("os");
-var import_node_path3 = require("path");
+var import_node_fs4 = require("fs");
+var import_node_os3 = require("os");
+var import_node_path4 = require("path");
 
 // src/reviewers.ts
 var import_node_fs = require("fs");
@@ -4805,6 +4805,24 @@ IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. Git
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
 }
+function buildReviewerPrompt(reviewerPrompt, prDiff, previousContextText) {
+  const parts = [];
+  if (previousContextText) {
+    parts.push(previousContextText);
+    parts.push("=== Current review request ===");
+    parts.push(
+      "This is a re-review of the same PR. Focus on the CURRENT diff below. Do not re-report issues that have already been fixed."
+    );
+    parts.push("");
+  }
+  parts.push(reviewerPrompt);
+  parts.push("");
+  parts.push("PR Diff:");
+  parts.push("```");
+  parts.push(prDiff);
+  parts.push("```");
+  return parts.join("\n");
+}
 function withTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
@@ -4834,7 +4852,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         client2.session.prompt({
           path: { id: sessionId },
           body: {
-            parts: [{ type: "text", text: reviewer.prompt + "\n\nPR Diff:\n```\n" + prDiff + "\n```" }]
+            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }]
           },
           throwOnError: true
         }),
@@ -4846,7 +4864,8 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         remaining(),
         reviewer.name
       );
-      const content = extractText(messagesResult.data);
+      const messages = messagesResult.data;
+      const content = extractText(messages);
       const info = promptResult.data?.info;
       const cost = info?.cost;
       const tokens = info?.tokens;
@@ -4855,7 +4874,7 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       } else {
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
-      return { reviewer: reviewer.name, content, success: true, cost, tokens };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
@@ -4901,7 +4920,8 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       opts.coordinatorTimeoutMs,
       "coordinator"
     );
-    const content = extractText(messagesResult.data);
+    const messages = messagesResult.data;
+    const content = extractText(messages);
     const info = promptResult.data?.info;
     const cost = info?.cost;
     const tokens = info?.tokens;
@@ -4910,7 +4930,7 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     } else {
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
-    return { content, cost, tokens };
+    return { content, cost, tokens, messages };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);
@@ -5813,6 +5833,140 @@ function renderSeverityComment(parsed, reviewerDetails) {
   return lines.join("\n");
 }
 
+// src/context-cache.ts
+var import_promises = require("fs/promises");
+var import_node_fs3 = require("fs");
+var import_node_os2 = require("os");
+var import_node_path3 = require("path");
+var CACHE_VERSION = 1;
+var CONTEXT_DIR_NAME = (0, import_node_path3.join)("opencode-actions", "review-context");
+var MAX_ROUNDS_PER_SESSION_NAME = 3;
+var FILE_MODE = 384;
+function isSafePathComponent(value) {
+  if (!value) return false;
+  if (value.includes("..") || value.includes("\0") || value.startsWith("/")) return false;
+  return /^[\w./-]+$/.test(value);
+}
+function getContextCacheDir() {
+  const raw = process.env.XDG_CACHE_HOME || (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".cache");
+  const resolved = (0, import_node_path3.resolve)(raw);
+  const expectedRoot = (0, import_node_path3.resolve)(raw);
+  if (!resolved.startsWith(expectedRoot + "/") && resolved !== expectedRoot) {
+    throw new Error(`Refusing to use unsafe XDG_CACHE_HOME: ${raw}`);
+  }
+  return (0, import_node_path3.join)(resolved, CONTEXT_DIR_NAME);
+}
+function getRepo2() {
+  const repo = process.env.GITHUB_REPOSITORY || "";
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    return "";
+  }
+  return repo;
+}
+function getContextPath(prNumber) {
+  const repo = getRepo2();
+  if (!repo || !prNumber) {
+    return null;
+  }
+  const safeRepo = repo.replace(/\//g, "-");
+  const safePr = prNumber.replace(/\D/g, "");
+  if (!safePr || !isSafePathComponent(safeRepo) || !isSafePathComponent(safePr)) {
+    return null;
+  }
+  return (0, import_node_path3.join)(getContextCacheDir(), `${safeRepo}-pr-${safePr}.json`);
+}
+function validateLoadedContext(parsed, expectedPrNumber) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const ctx = parsed;
+  const repo = getRepo2();
+  if (ctx.version !== CACHE_VERSION || ctx.repo !== repo || ctx.prNumber !== expectedPrNumber || !Array.isArray(ctx.sessions)) {
+    return null;
+  }
+  return parsed;
+}
+function trimSessions(sessions, maxPerName = MAX_ROUNDS_PER_SESSION_NAME) {
+  const counts = /* @__PURE__ */ new Map();
+  const result = [];
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const session = sessions[i];
+    const count = counts.get(session.name) || 0;
+    if (count < maxPerName) {
+      result.unshift(session);
+      counts.set(session.name, count + 1);
+    }
+  }
+  return result;
+}
+async function loadReviewContext(prNumber) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    return null;
+  }
+  if (!(0, import_node_fs3.existsSync)(path)) {
+    return null;
+  }
+  try {
+    const raw = await (0, import_promises.readFile)(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    const validated = validateLoadedContext(parsed, prNumber);
+    if (!validated) {
+      console.warn(`Ignoring malformed or stale review context: ${path}`);
+      return null;
+    }
+    return validated;
+  } catch (err) {
+    console.warn(`Failed to load review context (${path}): ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+async function saveReviewContext(prNumber, newSessions) {
+  const path = getContextPath(prNumber);
+  if (!path) {
+    console.warn("Skipping review context save: unable to determine repo or PR number");
+    return;
+  }
+  if (!newSessions.length) {
+    return;
+  }
+  const repo = getRepo2();
+  if (!repo) {
+    console.warn("Skipping review context save: GITHUB_REPOSITORY is unset or invalid");
+    return;
+  }
+  const existing = await loadReviewContext(prNumber);
+  const context = {
+    version: CACHE_VERSION,
+    repo,
+    prNumber,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sessions: trimSessions([...existing?.sessions || [], ...newSessions])
+  };
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
+    await (0, import_promises.writeFile)(path, JSON.stringify(context, null, 2), { mode: FILE_MODE });
+    console.log(`Saved review context for PR #${prNumber}: ${context.sessions.length} sessions`);
+  } catch (err) {
+    console.warn(`Failed to save review context (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+function formatPreviousContext(context) {
+  const lines = [];
+  lines.push(`=== Previous review context for PR #${context.prNumber} ===`);
+  lines.push(`Saved at: ${context.savedAt}`);
+  lines.push("");
+  for (const session of context.sessions) {
+    lines.push(`--- Session: ${session.name} ---`);
+    for (const message of session.messages) {
+      const role = message.info.role;
+      const text = message.parts.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text).join("\n");
+      if (!text) continue;
+      lines.push(`[${role}] ${text}`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+}
+
 // src/index.ts
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
@@ -5858,15 +6012,22 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const diffPath = (0, import_node_path3.join)(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path4.join)(runnerTemp, ".pr-diff.txt");
   try {
-    prDiff = (0, import_node_fs3.readFileSync)(diffPath, "utf-8");
+    prDiff = (0, import_node_fs4.readFileSync)(diffPath, "utf-8");
     if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
   } catch {
   }
   const prNumber = resolvePRNumber();
+  const previousContext = prNumber ? await loadReviewContext(prNumber) : null;
+  const previousContextText = previousContext ? formatPreviousContext(previousContext) : void 0;
+  if (previousContext) {
+    console.log(
+      `Loaded previous review context for PR #${prNumber}: ${previousContext.sessions.length} sessions`
+    );
+  }
   if (!prDiff.trim()) {
     if (prNumber) {
       try {
@@ -5910,19 +6071,19 @@ async function main() {
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
   const litellmApiKey = env("LITELLM_API_KEY");
   if (providerID === "litellm" && litellmApiKey) {
-    const authDir = (0, import_node_path3.join)((0, import_node_os2.homedir)(), ".local", "share", "opencode");
-    (0, import_node_fs3.mkdirSync)(authDir, { recursive: true });
-    const authPath = (0, import_node_path3.join)(authDir, "auth.json");
+    const authDir = (0, import_node_path4.join)((0, import_node_os3.homedir)(), ".local", "share", "opencode");
+    (0, import_node_fs4.mkdirSync)(authDir, { recursive: true });
+    const authPath = (0, import_node_path4.join)(authDir, "auth.json");
     let auth = {};
-    if ((0, import_node_fs3.existsSync)(authPath)) {
+    if ((0, import_node_fs4.existsSync)(authPath)) {
       try {
-        auth = JSON.parse((0, import_node_fs3.readFileSync)(authPath, "utf-8"));
+        auth = JSON.parse((0, import_node_fs4.readFileSync)(authPath, "utf-8"));
       } catch {
         auth = {};
       }
     }
     auth.litellm = { type: "api", key: litellmApiKey };
-    (0, import_node_fs3.writeFileSync)(authPath, JSON.stringify(auth));
+    (0, import_node_fs4.writeFileSync)(authPath, JSON.stringify(auth));
   }
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
   const { client: client2, server } = await createOpencode({
@@ -5946,7 +6107,8 @@ async function main() {
     const reviews = await runParallelReviewers(client2, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
-      coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
+      coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
+      previousContextText
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -5972,6 +6134,13 @@ async function main() {
       console.error(`Coordinator failed: ${err}`);
       const costTable = formatCostTable(reviews);
       comment = buildFallbackComment(reviews) + "\n" + costTable;
+    }
+    if (prNumber) {
+      const newSessions = reviews.filter((r) => r.success && r.messages && r.messages.length > 0).map((r) => ({ name: r.reviewer, messages: r.messages }));
+      if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
+        newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
+      }
+      await saveReviewContext(prNumber, newSessions);
     }
     postPRComment(comment);
     try {

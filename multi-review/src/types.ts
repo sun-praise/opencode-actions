@@ -3,6 +3,24 @@ export interface Reviewer {
   prompt: string;
 }
 
+export interface Message {
+  info: { role: string };
+  parts: Array<{ type: string; text?: string }>;
+}
+
+export interface ReviewSession {
+  name: string;
+  messages: Message[];
+}
+
+export interface ReviewContext {
+  version: 1;
+  repo: string;
+  prNumber: string;
+  savedAt: string;
+  sessions: ReviewSession[];
+}
+
 export interface ReviewResult {
   reviewer: string;
   content: string;
@@ -15,6 +33,8 @@ export interface ReviewResult {
     reasoning: number;
     cache: { read: number; write: number };
   };
+  /** Full conversation history for session-level context reuse. */
+  messages?: Message[];
 }
 
 export interface CoordinatorResult {
@@ -26,12 +46,16 @@ export interface CoordinatorResult {
     reasoning: number;
     cache: { read: number; write: number };
   };
+  /** Full conversation history for session-level context reuse. */
+  messages?: Message[];
 }
 
 export interface OrchestratorOptions {
   globalTimeoutMs: number;
   coordinatorTimeoutMs: number;
   coordinatorPrompt: string;
+  /** Pre-formatted previous review context text for the same PR, if any. */
+  previousContextText?: string;
 }
 
 // ── Severity parsing ─────────────────────────────────────────────────

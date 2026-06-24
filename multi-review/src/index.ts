@@ -9,7 +9,8 @@ import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, pars
 import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
-import type { ParsedReview, CoordinatorResult } from "./types.js";
+import { loadReviewContext, saveReviewContext, formatPreviousContext } from "./context-cache.js";
+import type { ParsedReview, CoordinatorResult, ReviewSession } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
@@ -81,6 +82,15 @@ async function main(): Promise<number> {
   }
 
   const prNumber = resolvePRNumber();
+
+  // Load previous review context for the same PR when available.
+  const previousContext = prNumber ? await loadReviewContext(prNumber) : null;
+  const previousContextText = previousContext ? formatPreviousContext(previousContext) : undefined;
+  if (previousContext) {
+    console.log(
+      `Loaded previous review context for PR #${prNumber}: ${previousContext.sessions.length} sessions`,
+    );
+  }
 
   if (!prDiff.trim()) {
     if (prNumber) {
@@ -177,6 +187,7 @@ async function main(): Promise<number> {
       globalTimeoutMs: globalTimeout * 1000,
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
+      previousContextText,
     });
 
     const successCount = reviews.filter((r) => r.success).length;
@@ -209,17 +220,28 @@ async function main(): Promise<number> {
       comment = buildFallbackComment(reviews) + "\n" + costTable;
     }
 
-    // 7. Post comment
+    // 7. Persist review context for the same PR (best-effort)
+    if (prNumber) {
+      const newSessions: ReviewSession[] = reviews
+        .filter((r) => r.success && r.messages && r.messages.length > 0)
+        .map((r) => ({ name: r.reviewer, messages: r.messages! }));
+      if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
+        newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
+      }
+      await saveReviewContext(prNumber, newSessions);
+    }
+
+    // 8. Post comment
     postPRComment(comment);
 
-    // 8. Cleanup error comments from previous runs (best-effort, never blocks the main flow)
+    // 9. Cleanup error comments from previous runs (best-effort, never blocks the main flow)
     try {
       cleanupErrorComments();
     } catch (err) {
       console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
     }
 
-    // 9. Severity gate
+    // 10. Severity gate
     const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
     if (shouldFailOnSeverity(parsedSeverity, failOn)) {
       const b = parsedSeverity?.blocking.length ?? 0;

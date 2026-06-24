@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsup",
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test src/platform.test.ts src/reviewers.test.ts src/custom-reviewers.test.ts src/diff-filter.test.ts"
+    "test": "node --import tsx --test src/platform.test.ts src/reviewers.test.ts src/custom-reviewers.test.ts src/diff-filter.test.ts src/context-cache.test.ts"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.0.0",
