@@ -4,7 +4,7 @@ Standalone HTTP server for persisting multi-review session contexts across CI ru
 
 ## Why
 
-GitHub Actions `actions/cache` is immutable: once a cache key is written it cannot be updated. Review context changes on every run, so a mutable store is required. This server provides a simple key/value HTTP API backed by the local filesystem.
+GitHub Actions `actions/cache` is immutable: once a cache key is written it cannot be updated. To work around this, `multi-review` uses a unique cache key per run and restores the most recent one. This works for GitHub-hosted runners, but if you prefer a self-hosted mutable store or need to share context across runners that cannot reach GitHub Actions cache, this server provides a simple key/value HTTP API backed by the local filesystem.
 
 ## API
 
