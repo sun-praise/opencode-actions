@@ -122,6 +122,99 @@ describe("parseContextPath (URL → params)", () => {
   it("does not match /context/o/r/p/v2/extra", () => {
     assert.strictEqual(parseContextPath("/context/owner/repo/123/v2/extra"), null);
   });
+
+  it("rejects .. components (path-traversal defense)", () => {
+    // Note: Node already URL-decodes req.url before our regex sees it,
+    // so %2e%2e would arrive as `..`. The regex itself only forbids `/`,
+    // so `..` slips past `[^/]+`. The explicit isSafePathComponent
+    // check catches it.
+    assert.strictEqual(parseContextPath("/context/.."), null);
+    assert.strictEqual(parseContextPath("/context/../etc/passwd"), null);
+    assert.strictEqual(parseContextPath("/context/owner/../../etc"), null);
+    assert.strictEqual(parseContextPath("/context/owner/.."), null);
+  });
+
+  it("rejects empty components", () => {
+    assert.strictEqual(parseContextPath("/context//repo/1"), null);
+    // The regex `[^/]+` already requires at least one non-slash char,
+    // so empty segments don't match in the first place — but assert it.
+  });
+
+  it("rejects components with backslash (Windows-style traversal)", () => {
+    // `\` is not `/` so the regex matches; the explicit component check
+    // rejects it.
+    assert.strictEqual(parseContextPath("/context/..\\etc\\owner/repo/1"), null);
+  });
+
+  it("rejects components with NUL byte", () => {
+    assert.strictEqual(parseContextPath("/context/owner\0/repo/1"), null);
+  });
+
+  it("rejects components with shell metacharacters", () => {
+    assert.strictEqual(parseContextPath("/context/$IFS/repo/1"), null);
+    assert.strictEqual(parseContextPath("/context/owner;/repo/1"), null);
+  });
+});
+
+describe("isSafePathComponent", () => {
+  const { isSafePathComponent } = __test;
+
+  it("accepts ordinary owner/repo names", () => {
+    assert.strictEqual(isSafePathComponent("owner"), true);
+    assert.strictEqual(isSafePathComponent("my-org"), true);
+    assert.strictEqual(isSafePathComponent("some_repo"), true);
+    assert.strictEqual(isSafePathComponent("org.with.dots"), true);
+  });
+
+  it("rejects empty / dot / dotdot", () => {
+    assert.strictEqual(isSafePathComponent(""), false);
+    assert.strictEqual(isSafePathComponent("."), false);
+    assert.strictEqual(isSafePathComponent(".."), false);
+  });
+
+  it("rejects path separators and NUL", () => {
+    assert.strictEqual(isSafePathComponent("a/b"), false);
+    assert.strictEqual(isSafePathComponent("a\\b"), false);
+    assert.strictEqual(isSafePathComponent("a\0b"), false);
+  });
+});
+
+describe("getContextPath refuses to escape DATA_DIR", () => {
+  const { getContextPath } = __test;
+  let savedDataDir: string | undefined;
+
+  before(() => {
+    // Pin DATA_DIR to an absolute path so the defence-in-depth check's
+    // `resolve(full).startsWith(normalizedData)` comparison is
+    // deterministic regardless of cwd / module load order.
+    savedDataDir = process.env.DATA_DIR;
+    process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "ctx-dit-"));
+  });
+
+  after(() => {
+    if (savedDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = savedDataDir;
+  });
+
+  it("getContextPath still throws when fed already-bad input (defence in depth)", () => {
+    // parseContextPath now catches these, but if someone calls
+    // getContextPath directly (or via future code paths), it must
+    // still refuse to resolve outside DATA_DIR.
+    assert.throws(
+      () => getContextPath("..", "repo", "1", "v1"),
+      /Refusing/,
+    );
+    assert.throws(
+      () => getContextPath("owner", "..", "1", "v1"),
+      /Refusing/,
+    );
+    // `pr=".."` gets collapsed by `join`, so the path stays inside
+    // DATA_DIR but maps to the wrong file. Component check catches it.
+    assert.throws(
+      () => getContextPath("owner", "repo", "..", "v1"),
+      /Refusing/,
+    );
+  });
 });
 
 describe("getContextPath (params → fs path)", () => {
@@ -165,6 +258,21 @@ describe("HTTP routing (v1 + v2 coexist on the same PR)", { concurrency: false }
   it("rejects requests without the bearer token", async () => {
     const r = await http(s.baseUrl, "/context/owner/repo/1");
     assert.strictEqual(r.status, 401);
+  });
+
+  it("rejects GET with path-traversal components", async () => {
+    // Node URL parser will normalise `..` segments in `req.url`, so the
+    // exact URL that lands at our handler is `req.url` post-normalisation.
+    // We just check that 404 is returned (treated as "not found" — not
+    // a 200 with secret data).
+    for (const evilPath of [
+      "/context/../etc/passwd",
+      "/context/owner/../../../etc/passwd",
+      "/context/foo/../../bar/1",
+    ]) {
+      const r = await http(s.baseUrl, evilPath, { token: "secret-token" });
+      assert.strictEqual(r.status, 404, `expected 404 for ${evilPath}, got ${r.status}`);
+    }
   });
 
   it("GET v1 returns 404 when nothing stored", async () => {

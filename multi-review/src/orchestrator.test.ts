@@ -245,7 +245,7 @@ describe("orchestrator: runParallelReviewers", { concurrency: false }, () => {
     assert.strictEqual(results[0].sessionID, "ses_fail");
   });
 
-  it("cleanupAllSessions deletes every active session", async () => {
+  it("cleanupAllSessions deletes sessions tracked when skipSessionCleanup=true", async () => {
     const { client, createdSessions, deletedSessions } = createFakeClient();
     // skipSessionCleanup: true keeps sessions tracked in the module-level
     // activeSessions set so the caller can clean them up later via
@@ -260,18 +260,25 @@ describe("orchestrator: runParallelReviewers", { concurrency: false }, () => {
     assert.strictEqual(deletedSessions.length, 0, "skipSessionCleanup should skip deletion");
 
     const myIds = new Set(createdSessions);
-    const before = new Set(deletedSessions);
     await cleanupAllSessions(client);
-    const after = new Set(deletedSessions);
-    const newDeletes = [...after].filter((id) => !before.has(id));
-    // At minimum, both of our sessions should be among the deleted set.
-    // (Earlier tests in the suite may have left additional sessions in
-    // the module-level activeSessions set, which is also fine — we just
-    // care that ours were deleted.)
+    // Both sessions we created via runParallelReviewers must be in the
+    // deleted set now. (We don't assert "exactly 2 new deletes" because
+    // the module-level activeSessions set is shared across tests in the
+    // suite and earlier tests may have left entries that also got
+    // cleaned up — that's fine, the contract is "everything tracked is
+    // deleted" which earlier tests already cover in the default path.)
     for (const id of myIds) {
-      assert.ok(deletedSessions.includes(id), `expected ${id} to be deleted by cleanupAllSessions`);
+      assert.ok(
+        deletedSessions.includes(id),
+        `expected ${id} to be deleted by cleanupAllSessions`,
+      );
     }
-    assert.ok(newDeletes.length >= 2, `expected at least 2 new deletes; got ${newDeletes.length}`);
+  });
+
+  it("cleanupAllSessions is idempotent (calling twice does not throw)", async () => {
+    const { client } = createFakeClient();
+    await cleanupAllSessions(client);
+    await cleanupAllSessions(client);
   });
 });
 

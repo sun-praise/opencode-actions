@@ -1,7 +1,6 @@
 import { createOpencode } from "@opencode-ai/sdk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
@@ -12,7 +11,8 @@ import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
 import { loadReviewContext, saveReviewContext, formatPreviousContext, loadReviewBundles, saveReviewBundles } from "./context-cache.js";
-import { exportSession, importBundle } from "./opencode-bundle.js";
+import { exportSession } from "./opencode-bundle.js";
+import { restoreSessionBundles } from "./session-resume.js";
 import type { ParsedReview, CoordinatorResult, ReviewSession, SessionBundle } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
@@ -148,60 +148,10 @@ async function main(): Promise<number> {
   //    ~/.local/share/opencode. The map returned to the orchestrator
   //    tells each reviewer which sessionID to continue (if any).
   const reviewBundles = prNumber ? await loadReviewBundles(prNumber) : null;
-  const existingSessions = new Map<string, string>();
-  let tempDataHome: string | null = null;
-  if (reviewBundles && reviewBundles.bundles.length > 0) {
-    tempDataHome = join(runnerTemp, `oac-resume-${prNumber}-${Date.now()}`);
-    mkdirSync(tempDataHome, { recursive: true });
-    process.env.XDG_DATA_HOME = tempDataHome;
-    console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
-    // Bootstrap the DB schema by running `opencode serve` and waiting for
-    // `opencode.db` to materialize on disk. The `opencode import` CLI
-    // requires the schema to exist before it can write session rows.
-    // We poll instead of using a fixed 3s timeout — on a cold runner the
-    // migration can take >1s, and on a warm cache it's instant. A safety
-    // cap of 10s protects against a wedged `opencode` binary.
-    const dbPath = join(tempDataHome, "opencode", "opencode.db");
-    const bsProc = spawn("opencode", ["serve", "--port", "0"], {
-      env: { ...process.env, XDG_DATA_HOME: tempDataHome },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    bsProc.on("error", (err) => {
-      console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
-    });
-    const bootstrapDeadline = Date.now() + 10_000;
-    while (Date.now() < bootstrapDeadline) {
-      if (existsSync(dbPath)) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    bsProc.kill("SIGTERM");
-    if (!existsSync(dbPath)) {
-      console.warn(`v2 resume: schema bootstrap timed out after 10s; bundles may fail to import`);
-    } else {
-      console.log(`v2 resume: schema bootstrapped in ${Math.round((Date.now() - (bootstrapDeadline - 10_000)))}ms`);
-    }
-    // Import each bundle in parallel. Per-bundle failures are isolated —
-    // one bad bundle should not prevent the rest from restoring.
-    const importResults = await Promise.allSettled(
-      reviewBundles.bundles.map(async (b) => {
-        const importedId = await importBundle(b.bundle, {
-          ...process.env,
-          XDG_DATA_HOME: tempDataHome!,
-        });
-        return { name: b.name, sessionID: importedId };
-      }),
-    );
-    for (const r of importResults) {
-      if (r.status === "fulfilled") {
-        existingSessions.set(r.value.name, r.value.sessionID);
-        console.log(`v2 resume: imported bundle for "${r.value.name}" → ${r.value.sessionID}`);
-      } else {
-        const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        console.warn(`v2 resume: failed to import bundle: ${reason}`);
-      }
-    }
-    console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
-  }
+  const { existingSessions, tempDataHome } = await restoreSessionBundles(reviewBundles, {
+    baseTempDir: runnerTemp,
+    prLabel: prNumber ? String(prNumber) : "ad-hoc",
+  });
 
   // 5. Start opencode server via SDK
   console.log("Starting opencode server...");
@@ -306,23 +256,32 @@ async function main(): Promise<number> {
     // 7b. v2: export each session's current state and save as bundles.
     //     Run AFTER the review/coordinator finished so the opencode DB
     //     has the latest user+assistant messages for every session.
+    //     Exported in parallel — each export invokes a fresh `opencode`
+    //     subprocess, and they're independent, so wall-clock time is
+    //     determined by the slowest single export rather than the sum.
     if (prNumber) {
       const exportEnv = { ...process.env };
       if (tempDataHome) exportEnv.XDG_DATA_HOME = tempDataHome;
-      const newBundles: SessionBundle[] = [];
       const exportTargets: Array<{ name: string; sessionID: string | undefined }> = [
         ...reviews
           .filter((r) => r.success && r.sessionID)
           .map((r) => ({ name: r.reviewer, sessionID: r.sessionID! })),
         { name: "coordinator", sessionID: coordinatorResult?.sessionID },
-      ];
-      for (const t of exportTargets) {
-        if (!t.sessionID) continue;
-        try {
+      ].filter((t): t is { name: string; sessionID: string } => Boolean(t.sessionID));
+      const exportResults = await Promise.allSettled(
+        exportTargets.map(async (t) => {
           const bundle = (await exportSession(t.sessionID, exportEnv)) as Record<string, unknown>;
-          newBundles.push({ name: t.name, sessionID: t.sessionID, bundle, savedAt: new Date().toISOString() });
-        } catch (err) {
-          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${err instanceof Error ? err.message : err}`);
+          return { name: t.name, sessionID: t.sessionID, bundle, savedAt: new Date().toISOString() };
+        }),
+      );
+      const newBundles: SessionBundle[] = [];
+      for (let i = 0; i < exportResults.length; i++) {
+        const r = exportResults[i];
+        const t = exportTargets[i];
+        if (r.status === "fulfilled") {
+          newBundles.push(r.value);
+        } else {
+          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${r.reason instanceof Error ? r.reason.message : r.reason}`);
         }
       }
       if (newBundles.length > 0) {
@@ -361,8 +320,9 @@ async function main(): Promise<number> {
     // opencode.db on disk after the run. That DB contains the full
     // session history including user-supplied PR diffs and any
     // tool-output the opencode server captured. Only enable this on
-    // disposable CI runners you control.
-    if (tempDataHome && existsSync(tempDataHome) && !env("MULTI_REVIEW_KEEP_TEMP_DB")) {
+    // disposable CI runners you control. Default is cleanup (only set
+    // this when actively debugging).
+    if (tempDataHome && existsSync(tempDataHome) && env("MULTI_REVIEW_KEEP_TEMP_DB") !== "1") {
       try { await rm(tempDataHome, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }

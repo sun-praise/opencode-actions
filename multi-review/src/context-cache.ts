@@ -100,7 +100,7 @@ function validateLoadedContextV2(parsed: unknown, expectedPrNumber: string): Rev
   for (const b of ctx.bundles) {
     if (!b || typeof b !== "object") return null;
     if (typeof b.name !== "string" || typeof b.sessionID !== "string") return null;
-    if (b.bundle === undefined || b.bundle === null) return null;
+    if (b.bundle == null) return null;
   }
   return parsed as ReviewContextV2;
 }
@@ -306,7 +306,7 @@ async function fsPutBundles(key: ReturnType<typeof getContextKey>, ctx: ReviewCo
   const path = getFilesystemPathV2(key);
   try {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await writeFile(path, JSON.stringify(ctx, null, 2), { mode: FILE_MODE });
+    await writeFile(path, JSON.stringify(ctx), { mode: FILE_MODE });
     console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
   } catch (err) {
     console.warn(`Failed to save review bundles (${path}): ${err instanceof Error ? err.message : err}`);

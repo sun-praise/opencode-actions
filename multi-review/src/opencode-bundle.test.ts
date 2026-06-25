@@ -1,8 +1,8 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { exportSession, importBundle, readBundleFile } from "./opencode-bundle.js";
 
 /**
@@ -141,26 +141,56 @@ describe("opencode-bundle", { concurrency: false }, () => {
     });
 
     it("cleans up the temp bundle directory on success", async () => {
-      // We can't easily inspect the temp dir from here, but we can assert
-      // the fake's stdin/file interactions don't leak: if the cleanup
-      // failed, future OS-level scans would surface the leak. This test
-      // is mostly a smoke to ensure the cleanup path doesn't throw.
+      // The fake CLI writes the path of the bundle file it was handed
+      // (argv[2]) into a marker file the test can read. After importBundle
+      // resolves, that file must be gone — which proves the temp dir was
+      // removed (it's the only thing in there).
+      const markerDir = mkdtempSync(join(tmpdir(), "oac-bundle-marker-"));
+      const markerPath = join(markerDir, "bundle-path.txt");
       const fake = installFakeOpencode({
-        body: `echo "Imported session: ses_ok"`,
+        body: `echo "$2" > "${markerPath}"\necho "Imported session: ses_ok"`,
       });
       try {
         await importBundle({ info: { id: "x" } });
+        const recorded = readFileSync(markerPath, "utf-8").trim();
+        assert.ok(
+          recorded.endsWith("bundle.json"),
+          `fake should have been invoked with the bundle path; got '${recorded}'`,
+        );
+        assert.strictEqual(
+          existsSync(recorded),
+          false,
+          `temp bundle file should have been removed after success; still exists at ${recorded}`,
+        );
+        assert.strictEqual(
+          existsSync(dirname(recorded)),
+          false,
+          `temp bundle directory should have been removed after success; still exists at ${dirname(recorded)}`,
+        );
       } finally {
+        rmSync(markerDir, { recursive: true, force: true });
         fake.restore();
       }
     });
 
     it("cleans up the temp bundle directory on failure", async () => {
+      // Same approach as the success-cleanup test, but the fake exits
+      // non-zero before writing the marker. After the rejection, the
+      // temp bundle file the fake would have read must still be gone.
+      // We can't record the path through the CLI here, so instead we
+      // assert via a different channel: list /tmp entries matching
+      // oac-bundle-* — there must be ZERO of them.
       const fake = installFakeOpencode({
         body: `exit 99`,
       });
       try {
         await assert.rejects(() => importBundle({}));
+        const leak = readdirSync(tmpdir()).filter((n) => n.startsWith("oac-bundle-"));
+        assert.deepStrictEqual(
+          leak,
+          [],
+          `no oac-bundle-* temp dirs should remain after importBundle rejection; found: ${leak.join(", ")}`,
+        );
       } finally {
         fake.restore();
       }

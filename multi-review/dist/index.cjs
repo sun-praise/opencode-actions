@@ -2280,11 +2280,10 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-var import_node_fs5 = require("fs");
+var import_node_fs6 = require("fs");
 var import_promises2 = require("fs/promises");
-var import_node_child_process4 = require("child_process");
 var import_node_os4 = require("os");
-var import_node_path5 = require("path");
+var import_node_path6 = require("path");
 
 // src/reviewers.ts
 var import_node_fs = require("fs");
@@ -5914,7 +5913,7 @@ function validateLoadedContextV2(parsed, expectedPrNumber) {
   for (const b of ctx.bundles) {
     if (!b || typeof b !== "object") return null;
     if (typeof b.name !== "string" || typeof b.sessionID !== "string") return null;
-    if (b.bundle === void 0 || b.bundle === null) return null;
+    if (b.bundle == null) return null;
   }
   return parsed;
 }
@@ -6065,7 +6064,7 @@ async function fsPutBundles(key, ctx) {
   const path = getFilesystemPathV2(key);
   try {
     await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
-    await (0, import_promises.writeFile)(path, JSON.stringify(ctx, null, 2), { mode: FILE_MODE });
+    await (0, import_promises.writeFile)(path, JSON.stringify(ctx), { mode: FILE_MODE });
     console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
   } catch (err) {
     console.warn(`Failed to save review bundles (${path}): ${err instanceof Error ? err.message : err}`);
@@ -6206,6 +6205,68 @@ async function importBundle(bundle, env2 = process.env) {
   }
 }
 
+// src/session-resume.ts
+var import_node_fs5 = require("fs");
+var import_node_child_process4 = require("child_process");
+var import_node_crypto = require("crypto");
+var import_node_path5 = require("path");
+async function restoreSessionBundles(reviewBundles, options) {
+  const empty = { existingSessions: /* @__PURE__ */ new Map(), tempDataHome: null };
+  if (!reviewBundles || reviewBundles.bundles.length === 0) return empty;
+  const tempDataHome = (0, import_node_path5.join)(options.baseTempDir, `oac-resume-${options.prLabel}-${(0, import_node_crypto.randomUUID)()}`);
+  (0, import_node_fs5.mkdirSync)(tempDataHome, { recursive: true });
+  process.env.XDG_DATA_HOME = tempDataHome;
+  console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
+  const dbPath = (0, import_node_path5.join)(tempDataHome, "opencode", "opencode.db");
+  const bin = options.opencodeBin ?? "opencode";
+  const bsProc = (0, import_node_child_process4.spawn)(bin, ["serve", "--port", "0"], {
+    env: { ...process.env, XDG_DATA_HOME: tempDataHome },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  bsProc.on("error", (err) => {
+    console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
+  });
+  const bootstrapAbort = new AbortController();
+  const killBootstrap = () => {
+    if (!bsProc.killed) bsProc.kill("SIGTERM");
+  };
+  bootstrapAbort.signal.addEventListener("abort", killBootstrap);
+  const bootstrapTimeoutMs = options.bootstrapTimeoutMs ?? 1e4;
+  const bootstrapStartedAt = Date.now();
+  const bootstrapDeadline = bootstrapStartedAt + bootstrapTimeoutMs;
+  while (Date.now() < bootstrapDeadline) {
+    if ((0, import_node_fs5.existsSync)(dbPath)) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  bootstrapAbort.abort();
+  if (!(0, import_node_fs5.existsSync)(dbPath)) {
+    console.warn(`v2 resume: schema bootstrap timed out after ${bootstrapTimeoutMs}ms; bundles may fail to import`);
+  } else {
+    console.log(`v2 resume: schema bootstrapped in ${Date.now() - bootstrapStartedAt}ms`);
+  }
+  const importResults = await Promise.allSettled(
+    reviewBundles.bundles.map(async (b) => {
+      const importedId = await importBundle(b.bundle, {
+        ...process.env,
+        XDG_DATA_HOME: tempDataHome
+      });
+      return { name: b.name, sessionID: importedId };
+    })
+  );
+  const existingSessions = /* @__PURE__ */ new Map();
+  for (const r of importResults) {
+    if (r.status === "fulfilled") {
+      existingSessions.set(r.value.name, r.value.sessionID);
+      console.log(`v2 resume: imported bundle for "${r.value.name}" \u2192 ${r.value.sessionID}`);
+    } else {
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(`v2 resume: failed to import bundle: ${reason}`);
+    }
+  }
+  console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
+  return { existingSessions, tempDataHome };
+}
+
 // src/index.ts
 var ALLOWED_REASONING_EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
 function buildSdkConfig(model) {
@@ -6251,9 +6312,9 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const diffPath = (0, import_node_path5.join)(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path6.join)(runnerTemp, ".pr-diff.txt");
   try {
-    prDiff = (0, import_node_fs5.readFileSync)(diffPath, "utf-8");
+    prDiff = (0, import_node_fs6.readFileSync)(diffPath, "utf-8");
     if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
@@ -6307,70 +6368,28 @@ async function main() {
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
   const reviewBundles = prNumber ? await loadReviewBundles(prNumber) : null;
-  const existingSessions = /* @__PURE__ */ new Map();
-  let tempDataHome = null;
-  if (reviewBundles && reviewBundles.bundles.length > 0) {
-    tempDataHome = (0, import_node_path5.join)(runnerTemp, `oac-resume-${prNumber}-${Date.now()}`);
-    (0, import_node_fs5.mkdirSync)(tempDataHome, { recursive: true });
-    process.env.XDG_DATA_HOME = tempDataHome;
-    console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
-    const dbPath = (0, import_node_path5.join)(tempDataHome, "opencode", "opencode.db");
-    const bsProc = (0, import_node_child_process4.spawn)("opencode", ["serve", "--port", "0"], {
-      env: { ...process.env, XDG_DATA_HOME: tempDataHome },
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    bsProc.on("error", (err) => {
-      console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
-    });
-    const bootstrapDeadline = Date.now() + 1e4;
-    while (Date.now() < bootstrapDeadline) {
-      if ((0, import_node_fs5.existsSync)(dbPath)) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    bsProc.kill("SIGTERM");
-    if (!(0, import_node_fs5.existsSync)(dbPath)) {
-      console.warn(`v2 resume: schema bootstrap timed out after 10s; bundles may fail to import`);
-    } else {
-      console.log(`v2 resume: schema bootstrapped in ${Math.round(Date.now() - (bootstrapDeadline - 1e4))}ms`);
-    }
-    const importResults = await Promise.allSettled(
-      reviewBundles.bundles.map(async (b) => {
-        const importedId = await importBundle(b.bundle, {
-          ...process.env,
-          XDG_DATA_HOME: tempDataHome
-        });
-        return { name: b.name, sessionID: importedId };
-      })
-    );
-    for (const r of importResults) {
-      if (r.status === "fulfilled") {
-        existingSessions.set(r.value.name, r.value.sessionID);
-        console.log(`v2 resume: imported bundle for "${r.value.name}" \u2192 ${r.value.sessionID}`);
-      } else {
-        const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        console.warn(`v2 resume: failed to import bundle: ${reason}`);
-      }
-    }
-    console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
-  }
+  const { existingSessions, tempDataHome } = await restoreSessionBundles(reviewBundles, {
+    baseTempDir: runnerTemp,
+    prLabel: prNumber ? String(prNumber) : "ad-hoc"
+  });
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
   const litellmApiKey = env("LITELLM_API_KEY");
   if (providerID === "litellm" && litellmApiKey) {
-    const xdgData = process.env.XDG_DATA_HOME || (0, import_node_path5.join)((0, import_node_os4.homedir)(), ".local", "share");
-    const authDir = (0, import_node_path5.join)(xdgData, "opencode");
-    (0, import_node_fs5.mkdirSync)(authDir, { recursive: true });
-    const authPath = (0, import_node_path5.join)(authDir, "auth.json");
+    const xdgData = process.env.XDG_DATA_HOME || (0, import_node_path6.join)((0, import_node_os4.homedir)(), ".local", "share");
+    const authDir = (0, import_node_path6.join)(xdgData, "opencode");
+    (0, import_node_fs6.mkdirSync)(authDir, { recursive: true });
+    const authPath = (0, import_node_path6.join)(authDir, "auth.json");
     let auth = {};
-    if ((0, import_node_fs5.existsSync)(authPath)) {
+    if ((0, import_node_fs6.existsSync)(authPath)) {
       try {
-        auth = JSON.parse((0, import_node_fs5.readFileSync)(authPath, "utf-8"));
+        auth = JSON.parse((0, import_node_fs6.readFileSync)(authPath, "utf-8"));
       } catch {
         auth = {};
       }
     }
     auth.litellm = { type: "api", key: litellmApiKey };
-    (0, import_node_fs5.writeFileSync)(authPath, JSON.stringify(auth));
+    (0, import_node_fs6.writeFileSync)(authPath, JSON.stringify(auth));
   }
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
   const { client: client2, server } = await createOpencode({
@@ -6437,18 +6456,24 @@ async function main() {
     if (prNumber) {
       const exportEnv = { ...process.env };
       if (tempDataHome) exportEnv.XDG_DATA_HOME = tempDataHome;
-      const newBundles = [];
       const exportTargets = [
         ...reviews.filter((r) => r.success && r.sessionID).map((r) => ({ name: r.reviewer, sessionID: r.sessionID })),
         { name: "coordinator", sessionID: coordinatorResult?.sessionID }
-      ];
-      for (const t of exportTargets) {
-        if (!t.sessionID) continue;
-        try {
+      ].filter((t) => Boolean(t.sessionID));
+      const exportResults = await Promise.allSettled(
+        exportTargets.map(async (t) => {
           const bundle = await exportSession(t.sessionID, exportEnv);
-          newBundles.push({ name: t.name, sessionID: t.sessionID, bundle, savedAt: (/* @__PURE__ */ new Date()).toISOString() });
-        } catch (err) {
-          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${err instanceof Error ? err.message : err}`);
+          return { name: t.name, sessionID: t.sessionID, bundle, savedAt: (/* @__PURE__ */ new Date()).toISOString() };
+        })
+      );
+      const newBundles = [];
+      for (let i = 0; i < exportResults.length; i++) {
+        const r = exportResults[i];
+        const t = exportTargets[i];
+        if (r.status === "fulfilled") {
+          newBundles.push(r.value);
+        } else {
+          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${r.reason instanceof Error ? r.reason.message : r.reason}`);
         }
       }
       if (newBundles.length > 0) {
@@ -6472,7 +6497,7 @@ async function main() {
   } finally {
     await cleanupAllSessions(client2);
     server.close();
-    if (tempDataHome && (0, import_node_fs5.existsSync)(tempDataHome) && !env("MULTI_REVIEW_KEEP_TEMP_DB")) {
+    if (tempDataHome && (0, import_node_fs6.existsSync)(tempDataHome) && env("MULTI_REVIEW_KEEP_TEMP_DB") !== "1") {
       try {
         await (0, import_promises2.rm)(tempDataHome, { recursive: true, force: true });
       } catch {
