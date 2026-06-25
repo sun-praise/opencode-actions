@@ -37,6 +37,8 @@ By default every run starts each reviewer from a blank session, so re-pushing to
 
 Resume is transparent: if no bundle exists for a PR (first run, cache miss, or import failure) the reviewer simply starts a new session as before.
 
+> Requires opencode ≥ 1.17 (the `opencode export` / `opencode import` CLI). Older versions skip resume silently.
+
 ## Custom reviewer personas
 
 You can add your own reviewer personas by placing `.yaml` or `.yml` files in the target repository's `.github/reviewers/` directory. Each file must contain `name` and `prompt` fields:
