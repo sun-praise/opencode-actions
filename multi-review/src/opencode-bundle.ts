@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,13 +56,46 @@ function runOpencode(args: string[], env: NodeJS.ProcessEnv = process.env): Prom
  *
  * `env` is forwarded as-is — caller is responsible for setting
  * `XDG_DATA_HOME` etc. so the right DB is targeted.
+ *
+ * NB: stdout is redirected to a temp FILE, not captured through a Node
+ * pipe. `opencode export` of a long session is multi-MB, and when its
+ * stdout is a pipe the CLI exits 0 after writing only ~the pipe-buffer
+ * worth of data (a buffered-writer + os.Exit flush bug on the opencode
+ * side), truncating the JSON. Redirecting to a regular file (the same
+ * code path as `opencode export > file`) reliably yields the full
+ * output. See docs/journal/2026-06-25-session-resume-design.md.
  */
 export async function exportSession(
   sessionID: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
-  const raw = await runOpencode(["export", sessionID], env);
-  return JSON.parse(raw);
+  const tmpDir = mkdtempSync(join(tmpdir(), "oac-export-"));
+  const file = join(tmpDir, "export.json");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // fd is the child's stdout — a regular file, not a pipe.
+      const fd = openSync(file, "w");
+      let err = "";
+      const proc = spawn("opencode", ["export", sessionID], {
+        env,
+        stdio: ["ignore", fd, "pipe"],
+      });
+      proc.stderr.on("data", (c) => (err += c.toString("utf8")));
+      const done = (fn: () => void) => {
+        try { closeSync(fd); } catch { /* already closed */ }
+        fn();
+      };
+      proc.on("error", (e) => done(() => reject(e)));
+      proc.on("exit", (code) => {
+        if (code === 0) done(() => resolve());
+        else done(() => reject(new Error(`opencode export ${sessionID} exited ${code}: ${err.trim().slice(0, 2000)}`)));
+      });
+    });
+    const raw = readFileSync(file, "utf8");
+    return JSON.parse(raw);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 /**

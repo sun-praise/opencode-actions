@@ -6189,8 +6189,35 @@ function runOpencode(args, env2 = process.env) {
   });
 }
 async function exportSession(sessionID, env2 = process.env) {
-  const raw = await runOpencode(["export", sessionID], env2);
-  return JSON.parse(raw);
+  const tmpDir = (0, import_node_fs4.mkdtempSync)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "oac-export-"));
+  const file = (0, import_node_path4.join)(tmpDir, "export.json");
+  try {
+    await new Promise((resolve2, reject) => {
+      const fd = (0, import_node_fs4.openSync)(file, "w");
+      let err = "";
+      const proc = (0, import_node_child_process3.spawn)("opencode", ["export", sessionID], {
+        env: env2,
+        stdio: ["ignore", fd, "pipe"]
+      });
+      proc.stderr.on("data", (c) => err += c.toString("utf8"));
+      const done = (fn) => {
+        try {
+          (0, import_node_fs4.closeSync)(fd);
+        } catch {
+        }
+        fn();
+      };
+      proc.on("error", (e) => done(() => reject(e)));
+      proc.on("exit", (code) => {
+        if (code === 0) done(() => resolve2());
+        else done(() => reject(new Error(`opencode export ${sessionID} exited ${code}: ${err.trim().slice(0, 2e3)}`)));
+      });
+    });
+    const raw = (0, import_node_fs4.readFileSync)(file, "utf8");
+    return JSON.parse(raw);
+  } finally {
+    (0, import_node_fs4.rmSync)(tmpDir, { recursive: true, force: true });
+  }
 }
 async function importBundle(bundle, env2 = process.env) {
   const tmpDir = (0, import_node_fs4.mkdtempSync)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "oac-bundle-"));
