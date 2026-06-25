@@ -6181,7 +6181,10 @@ function runOpencode(args, env2 = process.env) {
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve2(out);
-      else reject(new Error(`opencode ${args.join(" ")} exited ${code}: ${err.trim()}`));
+      const dump2 = (s) => s.trim().slice(0, 2e3);
+      reject(new Error(`opencode ${args.join(" ")} exited ${code}
+[stderr] ${dump2(err)}
+[stdout] ${dump2(out)}`));
     });
   });
 }
@@ -6416,8 +6419,13 @@ async function main() {
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       previousContextText,
       existingSessions,
-      // v2 cache export runs after this — must keep sessions alive.
-      skipSessionCleanup: !!tempDataHome
+      // v2 export (step 7b) runs after the review and needs every session
+      // still alive in the DB so `opencode export <id>` can read it. So we
+      // skip the per-reviewer delete whenever we're going to export (i.e.
+      // when prNumber is known); the outer finally's cleanupAllSessions
+      // deletes them all after export. NB: this MUST NOT be gated on
+      // tempDataHome — the FIRST run (no tempDataHome) also exports.
+      skipSessionCleanup: Boolean(prNumber)
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -6434,7 +6442,8 @@ async function main() {
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
         existingSessions,
-        skipSessionCleanup: !!tempDataHome
+        // Keep coordinator session alive for v2 export (see runParallelReviewers).
+        skipSessionCleanup: Boolean(prNumber)
       });
       parsedSeverity = parseSeverity(coordinatorResult.content);
       const reviewerDetails = buildReviewerDetails(reviews);
