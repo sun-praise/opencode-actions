@@ -6171,6 +6171,8 @@ var import_node_child_process3 = require("child_process");
 var import_node_fs4 = require("fs");
 var import_node_os3 = require("os");
 var import_node_path4 = require("path");
+var MAX_ERROR_DUMP = 1e3;
+var EXPORT_TIMEOUT_MS = 6e4;
 function runOpencode(args, env2 = process.env) {
   return new Promise((resolve2, reject) => {
     const proc = (0, import_node_child_process3.spawn)("opencode", args, { env: env2, stdio: ["ignore", "pipe", "pipe"] });
@@ -6181,13 +6183,54 @@ function runOpencode(args, env2 = process.env) {
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve2(out);
-      else reject(new Error(`opencode ${args.join(" ")} exited ${code}: ${err.trim()}`));
+      const dump2 = (s) => s.trim().slice(0, MAX_ERROR_DUMP);
+      reject(new Error(`opencode ${args.join(" ")} exited ${code}
+[stderr] ${dump2(err)}
+[stdout] ${dump2(out)}`));
     });
   });
 }
 async function exportSession(sessionID, env2 = process.env) {
-  const raw = await runOpencode(["export", sessionID], env2);
-  return JSON.parse(raw);
+  const tmpDir = (0, import_node_fs4.mkdtempSync)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "oac-export-"));
+  const file = (0, import_node_path4.join)(tmpDir, "export.json");
+  try {
+    await new Promise((resolve2, reject) => {
+      const fd = (0, import_node_fs4.openSync)(file, "w", 384);
+      let err = "";
+      const proc = (0, import_node_child_process3.spawn)("opencode", ["export", sessionID], {
+        env: env2,
+        stdio: ["ignore", fd, "pipe"]
+      });
+      proc.stderr?.on("data", (c) => err += c.toString("utf8"));
+      let settled = false;
+      const finish = (fn) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          (0, import_node_fs4.closeSync)(fd);
+        } catch {
+        }
+        fn();
+      };
+      const timer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+        }
+        finish(() => reject(new Error(`opencode export ${sessionID} timed out after ${EXPORT_TIMEOUT_MS}ms`)));
+      }, EXPORT_TIMEOUT_MS);
+      proc.on("error", (e) => finish(() => reject(e)));
+      proc.on("exit", (code) => {
+        if (code === 0) finish(() => resolve2());
+        else finish(() => reject(new Error(`opencode export ${sessionID} exited ${code}: ${err.trim().slice(0, MAX_ERROR_DUMP)}`)));
+      });
+    });
+    const raw = (0, import_node_fs4.readFileSync)(file, "utf8");
+    return JSON.parse(raw);
+  } finally {
+    (0, import_node_fs4.rmSync)(tmpDir, { recursive: true, force: true });
+  }
 }
 async function importBundle(bundle, env2 = process.env) {
   const tmpDir = (0, import_node_fs4.mkdtempSync)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "oac-bundle-"));
@@ -6410,14 +6453,14 @@ async function main() {
   try {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
+    const willExportSessions = Boolean(prNumber);
     const reviews = await runParallelReviewers(client2, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       previousContextText,
       existingSessions,
-      // v2 cache export runs after this — must keep sessions alive.
-      skipSessionCleanup: !!tempDataHome
+      skipSessionCleanup: willExportSessions
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -6434,7 +6477,8 @@ async function main() {
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
         existingSessions,
-        skipSessionCleanup: !!tempDataHome
+        // Keep coordinator session alive for v2 export (see willExportSessions).
+        skipSessionCleanup: willExportSessions
       });
       parsedSeverity = parseSeverity(coordinatorResult.content);
       const reviewerDetails = buildReviewerDetails(reviews);

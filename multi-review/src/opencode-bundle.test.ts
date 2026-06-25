@@ -94,6 +94,42 @@ describe("opencode-bundle", { concurrency: false }, () => {
         fake.restore();
       }
     });
+
+    it("captures the FULL output for a large bundle (file-fd, not pipe) — regression for the truncation bug", async () => {
+      // exportSession redirects the CLI's stdout to a temp file because
+      // `opencode export` of a long session is multi-100KB and, when its
+      // stdout was a Node pipe, the CLI exited 0 after writing only
+      // ~pipe-buffer worth of data — truncating the JSON. This feeds a
+      // ~400KB payload (well past the 64KB pipe buffer) and asserts it
+      // round-trips intact. If someone reverts stdout to a pipe, the
+      // capture truncates and JSON.parse (or the length check) fails.
+      const bigText = "x".repeat(400_000);
+      const payload = JSON.stringify({
+        info: { id: "ses_big" },
+        messages: [{ role: "user", text: bigText }],
+      });
+      const fixtureDir = mkdtempSync(join(tmpdir(), "oac-export-fixture-"));
+      const fixture = join(fixtureDir, "big.json");
+      writeFileSync(fixture, payload);
+      const fake = installFakeOpencode({
+        body: `cat "${fixture}"`,
+      });
+      try {
+        const bundle = (await exportSession("ses_big")) as {
+          info: { id: string };
+          messages: { text: string }[];
+        };
+        assert.strictEqual(bundle.info.id, "ses_big");
+        assert.ok(
+          bundle.messages[0].text.length === 400_000,
+          `full large string must survive untruncated; got ${bundle.messages[0].text.length} chars`,
+        );
+        assert.strictEqual(bundle.messages[0].text, bigText);
+      } finally {
+        fake.restore();
+        rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("importBundle", () => {

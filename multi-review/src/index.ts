@@ -200,14 +200,22 @@ async function main(): Promise<number> {
     const globalTimeout = intEnv("MULTI_REVIEW_TIMEOUT_SECONDS", 900);
     const coordinatorTimeout = intEnv("MULTI_REVIEW_COORDINATOR_TIMEOUT_SECONDS", 300);
 
+    // v2 export (step 7b) runs after the review+coordinator and needs
+    // every session still alive in the DB so `opencode export <id>` can
+    // read it. So we keep sessions across the review step whenever we
+    // are going to export (= we know the PR number), and let the outer
+    // finally's cleanupAllSessions delete them all afterwards. This flag
+    // expresses that intent explicitly; it MUST NOT be gated on
+    // tempDataHome — the FIRST run (no tempDataHome) also exports.
+    const willExportSessions = Boolean(prNumber);
+
     const reviews = await runParallelReviewers(client, reviewers, diffForReview, {
       globalTimeoutMs: globalTimeout * 1000,
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       previousContextText,
       existingSessions,
-      // v2 cache export runs after this — must keep sessions alive.
-      skipSessionCleanup: !!tempDataHome,
+      skipSessionCleanup: willExportSessions,
     });
 
     const successCount = reviews.filter((r) => r.success).length;
@@ -228,7 +236,8 @@ async function main(): Promise<number> {
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
         existingSessions,
-        skipSessionCleanup: !!tempDataHome,
+        // Keep coordinator session alive for v2 export (see willExportSessions).
+        skipSessionCleanup: willExportSessions,
       });
       // Parse severity from coordinator output
       parsedSeverity = parseSeverity(coordinatorResult.content);
