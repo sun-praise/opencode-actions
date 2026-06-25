@@ -25,6 +25,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
+ * Max chars of stdout/stderr folded into a thrown error message. Kept
+ * modest because (a) a huge dump blows up logs and error objects, and
+ * (b) export stdout on failure is a partial bundle that may contain
+ * session content — we want the failure reason, not the transcript.
+ */
+const MAX_ERROR_DUMP = 1000;
+
+/**
+ * Hard cap on a single `opencode export` invocation. Export of a long
+ * session is fast (a few seconds for multi-MB), so 60s is generous; if
+ * the CLI wedges we'd rather fail the bundle save than hang the action.
+ */
+const EXPORT_TIMEOUT_MS = 60_000;
+
+/**
  * Run `opencode <args>` with the supplied env, capture stdout, throw on
  * non-zero exit. The wrapper exists because (a) we always want UTF-8 text,
  * (b) errors from the CLI are usually on stderr but the body shape on
@@ -42,9 +57,9 @@ function runOpencode(args: string[], env: NodeJS.ProcessEnv = process.env): Prom
       if (code === 0) resolve(out);
       // Include BOTH streams: opencode prints progress ("Exporting
       // session: ...") to stderr but the actual failure reason often
-      // lands on stdout. Truncate so a huge partial bundle doesn't
-      // blow up the log / a thrown error.
-      const dump = (s: string) => s.trim().slice(0, 2000);
+      // lands on stdout. Bounded by MAX_ERROR_DUMP so a partial bundle
+      // (which may contain session content) doesn't flood the log.
+      const dump = (s: string) => s.trim().slice(0, MAX_ERROR_DUMP);
       reject(new Error(`opencode ${args.join(" ")} exited ${code}\n[stderr] ${dump(err)}\n[stdout] ${dump(out)}`));
     });
   });
@@ -74,21 +89,34 @@ export async function exportSession(
   try {
     await new Promise<void>((resolve, reject) => {
       // fd is the child's stdout — a regular file, not a pipe.
-      const fd = openSync(file, "w");
+      // 0o600: the export is session content; keep it owner-only even
+      // though mkdtempSync already made the parent dir 0o700.
+      const fd = openSync(file, "w", 0o600);
       let err = "";
       const proc = spawn("opencode", ["export", sessionID], {
         env,
         stdio: ["ignore", fd, "pipe"],
       });
-      proc.stderr.on("data", (c) => (err += c.toString("utf8")));
-      const done = (fn: () => void) => {
+      proc.stderr?.on("data", (c) => (err += c.toString("utf8")));
+      // `error` and `exit` can BOTH fire (e.g. spawn error is followed
+      // by an exit with null code). Guard so we settle the Promise and
+      // close the fd exactly once — the second call is a no-op.
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         try { closeSync(fd); } catch { /* already closed */ }
         fn();
       };
-      proc.on("error", (e) => done(() => reject(e)));
+      const timer = setTimeout(() => {
+        try { proc.kill("SIGKILL"); } catch { /* already gone */ }
+        finish(() => reject(new Error(`opencode export ${sessionID} timed out after ${EXPORT_TIMEOUT_MS}ms`)));
+      }, EXPORT_TIMEOUT_MS);
+      proc.on("error", (e) => finish(() => reject(e)));
       proc.on("exit", (code) => {
-        if (code === 0) done(() => resolve());
-        else done(() => reject(new Error(`opencode export ${sessionID} exited ${code}: ${err.trim().slice(0, 2000)}`)));
+        if (code === 0) finish(() => resolve());
+        else finish(() => reject(new Error(`opencode export ${sessionID} exited ${code}: ${err.trim().slice(0, MAX_ERROR_DUMP)}`)));
       });
     });
     const raw = readFileSync(file, "utf8");
