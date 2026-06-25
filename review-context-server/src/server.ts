@@ -10,6 +10,8 @@ interface ContextParams {
   owner: string;
   repo: string;
   pr: string;
+  /** "v1" (default, ReviewContext{version:1, sessions}) or "v2" (ReviewContextV2{bundles}). */
+  variant: "v1" | "v2";
 }
 
 function sendJson(res: ServerResponse, status: number, body?: unknown): void {
@@ -17,14 +19,21 @@ function sendJson(res: ServerResponse, status: number, body?: unknown): void {
   res.end(body !== undefined ? JSON.stringify(body) : undefined);
 }
 
-function getContextPath(owner: string, repo: string, pr: string): string {
-  return join(DATA_DIR, owner, repo, `${pr}.json`);
+function getContextPath(owner: string, repo: string, pr: string, variant: "v1" | "v2"): string {
+  // v1 is the historical layout (pr.json). v2 uses a .v2.json suffix so
+  // v1 and v2 payloads can coexist for the same PR (used during the
+  // rollout window — once all clients are on v2 the suffix can go away).
+  const suffix = variant === "v2" ? ".v2.json" : ".json";
+  return join(DATA_DIR, owner, repo, `${pr}${suffix}`);
 }
 
 function parseContextPath(url: string): ContextParams | null {
-  const match = url.match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)$/);
-  if (!match) return null;
-  return { owner: match[1], repo: match[2], pr: match[3] };
+  // Accept both /context/o/r/p (v1) and /context/o/r/p/v2 (v2).
+  const v1 = url.match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  if (v1) return { owner: v1[1], repo: v1[2], pr: v1[3], variant: "v1" };
+  const v2 = url.match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)\/v2$/);
+  if (v2) return { owner: v2[1], repo: v2[2], pr: v2[3], variant: "v2" };
+  return null;
 }
 
 function isAuthorized(req: IncomingMessage): boolean {
@@ -61,8 +70,8 @@ const server = createServer(async (req, res) => {
     return sendJson(res, 404, { error: "Not found" });
   }
 
-  const { owner, repo, pr } = params;
-  const path = getContextPath(owner, repo, pr);
+  const { owner, repo, pr, variant } = params;
+  const path = getContextPath(owner, repo, pr, variant);
 
   try {
     if (method === "GET") {
