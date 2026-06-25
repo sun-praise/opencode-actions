@@ -40,7 +40,12 @@ function runOpencode(args: string[], env: NodeJS.ProcessEnv = process.env): Prom
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve(out);
-      else reject(new Error(`opencode ${args.join(" ")} exited ${code}: ${err.trim()}`));
+      // Include BOTH streams: opencode prints progress ("Exporting
+      // session: ...") to stderr but the actual failure reason often
+      // lands on stdout. Truncate so a huge partial bundle doesn't
+      // blow up the log / a thrown error.
+      const dump = (s: string) => s.trim().slice(0, 2000);
+      reject(new Error(`opencode ${args.join(" ")} exited ${code}\n[stderr] ${dump(err)}\n[stdout] ${dump(out)}`));
     });
   });
 }
