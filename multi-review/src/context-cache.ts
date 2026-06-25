@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ReviewContext, ReviewSession } from "./types.js";
+import type { ReviewContext, ReviewSession, ReviewContextV2, SessionBundle } from "./types.js";
 
 const CACHE_VERSION = 1;
 const CONTEXT_DIR_NAME = join("opencode-actions", "review-context");
@@ -60,6 +60,29 @@ function validateLoadedContext(parsed: unknown, expectedPrNumber: string): Revie
     return null;
   }
   return parsed as ReviewContext;
+}
+
+const CACHE_VERSION_V2 = 2;
+
+function validateLoadedContextV2(parsed: unknown, expectedPrNumber: string): ReviewContextV2 | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const ctx = parsed as Partial<ReviewContextV2>;
+  const repo = getRepo();
+  if (
+    ctx.version !== CACHE_VERSION_V2 ||
+    ctx.repo !== repo ||
+    ctx.prNumber !== expectedPrNumber ||
+    !Array.isArray(ctx.bundles)
+  ) {
+    return null;
+  }
+  // Per-bundle sanity: each bundle must have name + sessionID + bundle blob
+  for (const b of ctx.bundles) {
+    if (!b || typeof b !== "object") return null;
+    if (typeof b.name !== "string" || typeof b.sessionID !== "string") return null;
+    if (b.bundle === undefined || b.bundle === null) return null;
+  }
+  return parsed as ReviewContextV2;
 }
 
 /**
@@ -228,6 +251,149 @@ export async function saveReviewContext(
     await httpPutContext(url, getContextCacheToken(), key, context);
   } else {
     await fsPutContext(key, context);
+  }
+}
+
+// ── v2: SessionBundle persistence (cross-runner opencode session resume) ──
+//
+// Each bundle is the raw output of `opencode export <sessionID>` — that CLI
+// command captures the full session row + messages + parts into a single
+// JSON object. A new runner can call `opencode import <file>` to inject the
+// rows into its own opencode.db, then issue `client.session.prompt(bundle.sessionID, newDiff)`
+// to continue the conversation. The LLM SDK reads prior context from the DB
+// instead of receiving it as raw prompt text — true session continuation.
+
+function getFilesystemPathV2(key: ReturnType<typeof getContextKey>): string {
+  const repoKey = `${key.owner}-${key.repo}`;
+  return join(getContextCacheDir(), `${repoKey}-pr-${key.pr}.v2.json`);
+}
+
+async function fsGetBundles(key: ReturnType<typeof getContextKey>): Promise<ReviewContextV2 | null> {
+  const path = getFilesystemPathV2(key);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = await readFile(path, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    return validateLoadedContextV2(parsed, key.pr);
+  } catch (err) {
+    console.warn(`Failed to load review bundles (${path}): ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
+async function fsPutBundles(key: ReturnType<typeof getContextKey>, ctx: ReviewContextV2): Promise<void> {
+  const path = getFilesystemPathV2(key);
+  try {
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(path, JSON.stringify(ctx, null, 2), { mode: FILE_MODE });
+    console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
+  } catch (err) {
+    console.warn(`Failed to save review bundles (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+async function httpGetBundles(url: string, token: string | undefined, key: ReturnType<typeof getContextKey>): Promise<ReviewContextV2 | null> {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}/v2`;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, { headers });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
+      return null;
+    }
+    const parsed = (await res.json()) as unknown;
+    return validateLoadedContextV2(parsed, key.pr);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP GET (v2) failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
+async function httpPutBundles(
+  url: string,
+  token: string | undefined,
+  key: ReturnType<typeof getContextKey>,
+  ctx: ReviewContextV2,
+): Promise<void> {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}/v2`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(ctx),
+    });
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
+      return;
+    }
+    console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP PUT (v2) failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/**
+ * Load previously saved session bundles (v2) for a PR. Returns null when
+ * nothing is cached or the cached payload fails validation. Callers should
+ * treat this as advisory: a missing or invalid cache means "fresh review",
+ * not an error.
+ */
+export async function loadReviewBundles(prNumber: string): Promise<ReviewContextV2 | null> {
+  const key = getContextKey(prNumber);
+  if (!key) return null;
+
+  const url = getContextCacheUrl();
+  if (url) {
+    const ctx = await httpGetBundles(url, getContextCacheToken(), key);
+    if (ctx) {
+      console.log(`Loaded v2 review bundles for PR #${prNumber}: ${ctx.bundles.length} bundles`);
+      return ctx;
+    }
+    return null;
+  }
+
+  return fsGetBundles(key);
+}
+
+/**
+ * Save session bundles (v2) for a PR. Replaces any existing v2 payload —
+ * v2 stores the post-run state of each persona's session, so a re-review
+ * is meant to overwrite (not append) to keep the savedAt fresh and the
+ * payload size bounded.
+ */
+export async function saveReviewBundles(
+  prNumber: string,
+  newBundles: SessionBundle[],
+): Promise<void> {
+  const key = getContextKey(prNumber);
+  if (!key) {
+    console.warn("Skipping v2 bundle save: unable to determine repo or PR number");
+    return;
+  }
+  if (!newBundles.length) return;
+  const repo = getRepo();
+  if (!repo) {
+    console.warn("Skipping v2 bundle save: GITHUB_REPOSITORY is unset or invalid");
+    return;
+  }
+
+  const context: ReviewContextV2 = {
+    version: CACHE_VERSION_V2,
+    repo,
+    prNumber,
+    savedAt: new Date().toISOString(),
+    bundles: newBundles,
+  };
+
+  const url = getContextCacheUrl();
+  if (url) {
+    await httpPutBundles(url, getContextCacheToken(), key, context);
+  } else {
+    await fsPutBundles(key, context);
   }
 }
 

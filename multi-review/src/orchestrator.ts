@@ -89,14 +89,19 @@ export async function runParallelReviewers(
     let sessionId: string | undefined;
     try {
       const remaining = () => Math.max(30_000, deadline - Date.now());
-      console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
-
-      const sessionResult = await withTimeout(
-        client.session.create({ throwOnError: true }),
-        remaining(),
-        reviewer.name,
-      );
-      sessionId = sessionResult.data.id;
+      const resumedFrom = opts.existingSessions?.get(reviewer.name);
+      if (resumedFrom) {
+        console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
+        sessionId = resumedFrom;
+      } else {
+        console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
+        const sessionResult = await withTimeout(
+          client.session.create({ throwOnError: true }),
+          remaining(),
+          reviewer.name,
+        );
+        sessionId = sessionResult.data.id;
+      }
       activeSessions.add(sessionId);
 
       const promptResult = await withTimeout(
@@ -159,12 +164,18 @@ export async function runCoordinator(
 
   let sessionId: string | undefined;
   try {
-    const sessionResult = await withTimeout(
-      client.session.create({ throwOnError: true }),
-      opts.coordinatorTimeoutMs,
-      "coordinator",
-    );
-    sessionId = sessionResult.data.id;
+    const resumedFrom = opts.existingSessions?.get("coordinator");
+    if (resumedFrom) {
+      console.log(`[coordinator] Resuming existing session ${resumedFrom}...`);
+      sessionId = resumedFrom;
+    } else {
+      const sessionResult = await withTimeout(
+        client.session.create({ throwOnError: true }),
+        opts.coordinatorTimeoutMs,
+        "coordinator",
+      );
+      sessionId = sessionResult.data.id;
+    }
     activeSessions.add(sessionId);
 
     console.log("[coordinator] Starting synthesis...");
@@ -196,7 +207,7 @@ export async function runCoordinator(
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
 
-    return { content, cost, tokens, messages };
+    return { content, cost, tokens, messages, sessionID: sessionId };
   } finally {
     if (sessionId) {
       activeSessions.delete(sessionId);

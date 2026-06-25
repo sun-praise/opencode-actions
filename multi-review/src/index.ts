@@ -1,5 +1,5 @@
 import { createOpencode } from "@opencode-ai/sdk";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
@@ -9,8 +9,9 @@ import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, pars
 import { filterDiff } from "./diff-filter.js";
 import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
-import { loadReviewContext, saveReviewContext, formatPreviousContext } from "./context-cache.js";
-import type { ParsedReview, CoordinatorResult, ReviewSession } from "./types.js";
+import { loadReviewContext, saveReviewContext, formatPreviousContext, loadReviewBundles, saveReviewBundles } from "./context-cache.js";
+import { exportSession, importBundle } from "./opencode-bundle.js";
+import type { ParsedReview, CoordinatorResult, ReviewSession, SessionBundle } from "./types.js";
 
 const ALLOWED_REASONING_EFFORTS = new Set(["low", "medium", "high", "max"]);
 
@@ -139,14 +140,65 @@ async function main(): Promise<number> {
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
 
-  // 4. Start opencode server via SDK
+  // 4. v2 cache: try to load session bundles for true cross-runner resume.
+  //    When bundles exist, switch to a temp XDG_DATA_HOME so we can
+  //    import them into a fresh DB without polluting the runner's main
+  //    ~/.local/share/opencode. The map returned to the orchestrator
+  //    tells each reviewer which sessionID to continue (if any).
+  const reviewBundles = prNumber ? await loadReviewBundles(prNumber) : null;
+  const existingSessions = new Map<string, string>();
+  let tempDataHome: string | null = null;
+  if (reviewBundles && reviewBundles.bundles.length > 0) {
+    tempDataHome = join(runnerTemp, `oac-resume-${prNumber}-${Date.now()}`);
+    mkdirSync(tempDataHome, { recursive: true });
+    process.env.XDG_DATA_HOME = tempDataHome;
+    console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
+    // Bootstrap the DB schema by running `opencode serve` briefly. The
+    // `opencode import` CLI requires the schema to exist before it can
+    // write session rows. We let it run for at most 3s, then kill it;
+    // the schema migration completes on first start.
+    const { spawn } = await import("node:child_process");
+    const bsProc = spawn("opencode", ["serve", "--port", "0"], {
+      env: { ...process.env, XDG_DATA_HOME: tempDataHome },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        bsProc.kill("SIGTERM");
+        resolve();
+      }, 3000);
+      bsProc.on("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    // Now the schema exists. Import each bundle.
+    for (const b of reviewBundles.bundles) {
+      try {
+        const importedId = await importBundle(b.bundle, {
+          ...process.env,
+          XDG_DATA_HOME: tempDataHome!,
+        });
+        existingSessions.set(b.name, importedId);
+        console.log(`v2 resume: imported bundle for "${b.name}" → ${importedId}`);
+      } catch (err) {
+        console.warn(`v2 resume: failed to import bundle for "${b.name}": ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
+  }
+
+  // 5. Start opencode server via SDK
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
   // Inject litellm API key into opencode's auth.json so the custom provider
   // can authenticate with the proxy.  Safe to call even when not using litellm.
+  // When XDG_DATA_HOME is redirected (v2 resume path), auth must live in
+  // the redirected location — opencode reads from XDG_DATA_HOME, not $HOME.
   const litellmApiKey = env("LITELLM_API_KEY");
   if (providerID === "litellm" && litellmApiKey) {
-    const authDir = join(homedir(), ".local", "share", "opencode");
+    const xdgData = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+    const authDir = join(xdgData, "opencode");
     mkdirSync(authDir, { recursive: true });
     const authPath = join(authDir, "auth.json");
     let auth: Record<string, unknown> = {};
@@ -188,6 +240,7 @@ async function main(): Promise<number> {
       coordinatorTimeoutMs: coordinatorTimeout * 1000,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       previousContextText,
+      existingSessions,
     });
 
     const successCount = reviews.filter((r) => r.success).length;
@@ -207,6 +260,7 @@ async function main(): Promise<number> {
         globalTimeoutMs: globalTimeout * 1000,
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
+        existingSessions,
       });
       // Parse severity from coordinator output
       parsedSeverity = parseSeverity(coordinatorResult.content);
@@ -229,6 +283,33 @@ async function main(): Promise<number> {
         newSessions.push({ name: "coordinator", messages: coordinatorResult.messages });
       }
       await saveReviewContext(prNumber, newSessions);
+    }
+
+    // 7b. v2: export each session's current state and save as bundles.
+    //     Run AFTER the review/coordinator finished so the opencode DB
+    //     has the latest user+assistant messages for every session.
+    if (prNumber) {
+      const exportEnv = { ...process.env };
+      if (tempDataHome) exportEnv.XDG_DATA_HOME = tempDataHome;
+      const newBundles: SessionBundle[] = [];
+      const exportTargets: Array<{ name: string; sessionID: string | undefined }> = [
+        ...reviews
+          .filter((r) => r.success && r.sessionID)
+          .map((r) => ({ name: r.reviewer, sessionID: r.sessionID! })),
+        { name: "coordinator", sessionID: coordinatorResult?.sessionID },
+      ];
+      for (const t of exportTargets) {
+        if (!t.sessionID) continue;
+        try {
+          const bundle = await exportSession(t.sessionID, exportEnv);
+          newBundles.push({ name: t.name, sessionID: t.sessionID, bundle, savedAt: new Date().toISOString() });
+        } catch (err) {
+          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      if (newBundles.length > 0) {
+        await saveReviewBundles(prNumber, newBundles);
+      }
     }
 
     // 8. Post comment
@@ -254,6 +335,12 @@ async function main(): Promise<number> {
   } finally {
     await cleanupAllSessions(client);
     server.close();
+    // Clean up the v2 temp XDG_DATA_HOME if we created one. The actual
+    // bundles are now in the cache server, so the local DB is no longer
+    // needed. Keep it if debugging is enabled (preserved for postmortem).
+    if (tempDataHome && existsSync(tempDataHome) && !env("MULTI_REVIEW_KEEP_TEMP_DB")) {
+      try { rmSync(tempDataHome, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
   }
 }
 

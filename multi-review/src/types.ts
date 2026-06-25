@@ -21,6 +21,33 @@ export interface ReviewContext {
   sessions: ReviewSession[];
 }
 
+/**
+ * v2 cache entry: a serialized opencode session captured by
+ * `opencode export <sessionID>`. Holds the JSON bundle (session row +
+ * messages + parts) so a fresh runner can `opencode import` it and call
+ * `client.session.prompt(existingSessionID, newDiff)` for true session
+ * continuation — not text-blob re-feeding.
+ *
+ * `name` ties the bundle back to a multi-review persona so the same
+ * reviewer always resumes its own session across PR re-reviews.
+ */
+export interface SessionBundle {
+  name: string;
+  sessionID: string;
+  /** Raw JSON from `opencode export`. May be a string (compact) or an object. */
+  bundle: unknown;
+  /** ISO timestamp when the bundle was captured. */
+  savedAt: string;
+}
+
+export interface ReviewContextV2 {
+  version: 2;
+  repo: string;
+  prNumber: string;
+  savedAt: string;
+  bundles: SessionBundle[];
+}
+
 export interface ReviewResult {
   reviewer: string;
   content: string;
@@ -35,6 +62,8 @@ export interface ReviewResult {
   };
   /** Full conversation history for session-level context reuse. */
   messages?: Message[];
+  /** opencode sessionID used for this review. Set on both success and failure paths. */
+  sessionID?: string;
 }
 
 export interface CoordinatorResult {
@@ -48,6 +77,8 @@ export interface CoordinatorResult {
   };
   /** Full conversation history for session-level context reuse. */
   messages?: Message[];
+  /** opencode sessionID used for this synthesis. */
+  sessionID?: string;
 }
 
 export interface OrchestratorOptions {
@@ -56,6 +87,16 @@ export interface OrchestratorOptions {
   coordinatorPrompt: string;
   /** Pre-formatted previous review context text for the same PR, if any. */
   previousContextText?: string;
+  /**
+   * Per-reviewer existing sessionID (from v2 cache). When set for a
+   * reviewer, the orchestrator issues `client.session.prompt` on that
+   * session instead of creating a new one — true session continuation
+   * across runners.
+   *
+   * Map keys are reviewer.name (e.g. "quality", "coordinator").
+   * Reviewers missing from the map fall back to the create+prompt path.
+   */
+  existingSessions?: Map<string, string>;
 }
 
 // ── Severity parsing ─────────────────────────────────────────────────
