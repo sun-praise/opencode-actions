@@ -39,6 +39,8 @@ Resume is transparent: if no bundle exists for a PR (first run, cache miss, or i
 
 > Requires opencode ≥ 1.17 (the `opencode export` / `opencode import` CLI). Older versions skip resume silently.
 
+Resume stores the post-run session state per PR; the storage is rewritten (not appended) each run, so payload size stays bounded regardless of how many times a PR is re-pushed.
+
 ## Custom reviewer personas
 
 You can add your own reviewer personas by placing `.yaml` or `.yml` files in the target repository's `.github/reviewers/` directory. Each file must contain `name` and `prompt` fields:
