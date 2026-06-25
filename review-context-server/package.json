@@ -7,11 +7,13 @@
   "scripts": {
     "start": "node dist/server.js",
     "build": "tsc",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test src/server.test.ts"
   },
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.7.0"
   },
   "engines": {

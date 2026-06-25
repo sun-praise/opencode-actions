@@ -11,8 +11,10 @@ import {
   saveReviewContext,
   formatPreviousContext,
   trimSessions,
+  loadReviewBundles,
+  saveReviewBundles,
 } from "./context-cache.js";
-import type { ReviewContext, ReviewSession } from "./types.js";
+import type { ReviewContext, ReviewSession, SessionBundle } from "./types.js";
 
 const ORIGINAL_XDG = process.env.XDG_CACHE_HOME;
 const ORIGINAL_REPO = process.env.GITHUB_REPOSITORY;
@@ -206,6 +208,75 @@ describe("context-cache filesystem backend", { concurrency: false }, () => {
     };
     const formatted = formatPreviousContext(context);
     assert.ok(formatted.includes("PR #6"));
+  });
+
+  it("loadReviewBundles returns null when nothing cached", async () => {
+    const ctx = await loadReviewBundles("1234");
+    assert.strictEqual(ctx, null);
+  });
+
+  it("saveReviewBundles and loadReviewBundles roundtrip", async () => {
+    const bundles: SessionBundle[] = [
+      {
+        name: "quality",
+        sessionID: "ses_aaa",
+        bundle: { info: { id: "ses_aaa" }, messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "review" }] }] },
+        savedAt: "2026-06-25T00:00:00.000Z",
+      },
+      {
+        name: "coordinator",
+        sessionID: "ses_bbb",
+        bundle: { info: { id: "ses_bbb" }, messages: [] },
+        savedAt: "2026-06-25T00:00:00.000Z",
+      },
+    ];
+    await saveReviewBundles("500", bundles);
+    const loaded = await loadReviewBundles("500");
+    assert.ok(loaded);
+    assert.strictEqual(loaded!.version, 2);
+    assert.strictEqual(loaded!.prNumber, "500");
+    assert.strictEqual(loaded!.bundles.length, 2);
+    assert.strictEqual(loaded!.bundles[0].name, "quality");
+    assert.strictEqual(loaded!.bundles[0].sessionID, "ses_aaa");
+    assert.deepStrictEqual((loaded!.bundles[0].bundle as any).messages.length, 1);
+  });
+
+  it("saveReviewBundles replaces existing v2 payload (not append)", async () => {
+    const first: SessionBundle[] = [
+      { name: "a", sessionID: "ses_1", bundle: { info: { id: "ses_1" } }, savedAt: "2026-01-01" },
+    ];
+    const second: SessionBundle[] = [
+      { name: "b", sessionID: "ses_2", bundle: { info: { id: "ses_2" } }, savedAt: "2026-01-02" },
+    ];
+    await saveReviewBundles("501", first);
+    await saveReviewBundles("501", second);
+    const loaded = await loadReviewBundles("501");
+    assert.ok(loaded);
+    assert.strictEqual(loaded!.bundles.length, 1);
+    assert.strictEqual(loaded!.bundles[0].name, "b");
+  });
+
+  it("loadReviewBundles returns null for malformed v2 file", async () => {
+    const dir = getContextCacheDir();
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "owner-repo-pr-1234.v2.json"), "garbage");
+    const loaded = await loadReviewBundles("1234");
+    assert.strictEqual(loaded, null);
+  });
+
+  it("loadReviewBundles rejects bundle without sessionID", async () => {
+    const dir = getContextCacheDir();
+    mkdirSync(dir, { recursive: true });
+    const bad = {
+      version: 2,
+      repo: "owner/repo",
+      prNumber: "1235",
+      savedAt: "2026-01-01",
+      bundles: [{ name: "x", bundle: {} }], // missing sessionID
+    };
+    writeFileSync(join(dir, "owner-repo-pr-1235.v2.json"), JSON.stringify(bad));
+    const loaded = await loadReviewBundles("1235");
+    assert.strictEqual(loaded, null);
   });
 });
 

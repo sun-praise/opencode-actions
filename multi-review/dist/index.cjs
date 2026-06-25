@@ -506,7 +506,7 @@ var require_cross_spawn = __commonJS({
     var cp = require("child_process");
     var parse = require_parse();
     var enoent = require_enoent();
-    function spawn(command, args, options) {
+    function spawn3(command, args, options) {
       const parsed = parse(command, args, options);
       const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
       enoent.hookChildProcess(spawned, parsed);
@@ -518,8 +518,8 @@ var require_cross_spawn = __commonJS({
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
       return result;
     }
-    module2.exports = spawn;
-    module2.exports.spawn = spawn;
+    module2.exports = spawn3;
+    module2.exports.spawn = spawn3;
     module2.exports.sync = spawnSync2;
     module2.exports._parse = parse;
     module2.exports._enoent = enoent;
@@ -2280,9 +2280,10 @@ async function createOpencode(options) {
 }
 
 // src/index.ts
-var import_node_fs4 = require("fs");
-var import_node_os3 = require("os");
-var import_node_path4 = require("path");
+var import_node_fs6 = require("fs");
+var import_promises2 = require("fs/promises");
+var import_node_os4 = require("os");
+var import_node_path6 = require("path");
 
 // src/reviewers.ts
 var import_node_fs = require("fs");
@@ -4840,13 +4841,19 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
     let sessionId;
     try {
       const remaining = () => Math.max(3e4, deadline - Date.now());
-      console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
-      const sessionResult = await withTimeout(
-        client2.session.create({ throwOnError: true }),
-        remaining(),
-        reviewer.name
-      );
-      sessionId = sessionResult.data.id;
+      const resumedFrom = opts.existingSessions?.get(reviewer.name);
+      if (resumedFrom) {
+        console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
+        sessionId = resumedFrom;
+      } else {
+        console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
+        const sessionResult = await withTimeout(
+          client2.session.create({ throwOnError: true }),
+          remaining(),
+          reviewer.name
+        );
+        sessionId = sessionResult.data.id;
+      }
       activeSessions.add(sessionId);
       const promptResult = await withTimeout(
         client2.session.prompt({
@@ -4874,13 +4881,13 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
       } else {
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
-      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
-      return { reviewer: reviewer.name, content: "", success: false, error: msg };
+      return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: sessionId };
     } finally {
-      if (sessionId) {
+      if (sessionId && !opts.skipSessionCleanup) {
         activeSessions.delete(sessionId);
         try {
           await client2.session.delete({ path: { id: sessionId } });
@@ -4898,12 +4905,18 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
   const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
   let sessionId;
   try {
-    const sessionResult = await withTimeout(
-      client2.session.create({ throwOnError: true }),
-      opts.coordinatorTimeoutMs,
-      "coordinator"
-    );
-    sessionId = sessionResult.data.id;
+    const resumedFrom = opts.existingSessions?.get("coordinator");
+    if (resumedFrom) {
+      console.log(`[coordinator] Resuming existing session ${resumedFrom}...`);
+      sessionId = resumedFrom;
+    } else {
+      const sessionResult = await withTimeout(
+        client2.session.create({ throwOnError: true }),
+        opts.coordinatorTimeoutMs,
+        "coordinator"
+      );
+      sessionId = sessionResult.data.id;
+    }
     activeSessions.add(sessionId);
     console.log("[coordinator] Starting synthesis...");
     const promptResult = await withTimeout(
@@ -4930,9 +4943,9 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
     } else {
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
-    return { content, cost, tokens, messages };
+    return { content, cost, tokens, messages, sessionID: sessionId };
   } finally {
-    if (sessionId) {
+    if (sessionId && !opts.skipSessionCleanup) {
       activeSessions.delete(sessionId);
       try {
         await client2.session.delete({ path: { id: sessionId } });
@@ -5842,6 +5855,10 @@ var CACHE_VERSION = 1;
 var CONTEXT_DIR_NAME = (0, import_node_path3.join)("opencode-actions", "review-context");
 var MAX_ROUNDS_PER_SESSION_NAME = 3;
 var FILE_MODE = 384;
+var HTTP_TIMEOUT_MS = 5e3;
+function isValidPrNumber(pr) {
+  return typeof pr === "string" && /^[1-9]\d{0,9}$/.test(pr);
+}
 function isSafePathComponent(value) {
   if (!value) return false;
   if (value.includes("..") || value.includes("\0") || value.startsWith("/")) return false;
@@ -5859,12 +5876,14 @@ function getContextKey(prNumber) {
   if (!repo || !prNumber) {
     return null;
   }
-  const [owner, repoName] = repo.split("/");
-  const safePr = prNumber.replace(/\D/g, "");
-  if (!safePr || !isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
+  if (!isValidPrNumber(prNumber)) {
     return null;
   }
-  return { owner, repo: repoName, pr: safePr };
+  const [owner, repoName] = repo.split("/");
+  if (!isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
+    return null;
+  }
+  return { owner, repo: repoName, pr: prNumber };
 }
 function getContextCacheUrl() {
   const url = process.env.MULTI_REVIEW_CONTEXT_CACHE_URL || "";
@@ -5880,6 +5899,21 @@ function validateLoadedContext(parsed, expectedPrNumber) {
   const repo = getRepo2();
   if (ctx.version !== CACHE_VERSION || ctx.repo !== repo || ctx.prNumber !== expectedPrNumber || !Array.isArray(ctx.sessions)) {
     return null;
+  }
+  return parsed;
+}
+var CACHE_VERSION_V2 = 2;
+function validateLoadedContextV2(parsed, expectedPrNumber) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const ctx = parsed;
+  const repo = getRepo2();
+  if (ctx.version !== CACHE_VERSION_V2 || ctx.repo !== repo || ctx.prNumber !== expectedPrNumber || !Array.isArray(ctx.bundles)) {
+    return null;
+  }
+  for (const b of ctx.bundles) {
+    if (!b || typeof b !== "object") return null;
+    if (typeof b.name !== "string" || typeof b.sessionID !== "string") return null;
+    if (b.bundle == null) return null;
   }
   return parsed;
 }
@@ -5901,7 +5935,7 @@ async function httpGetContext(url, token, key) {
   const headers = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   try {
-    const res = await fetch(fullUrl, { headers });
+    const res = await fetch(fullUrl, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     if (res.status === 404) return null;
     if (!res.ok) {
       console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
@@ -5922,7 +5956,8 @@ async function httpPutContext(url, token, key, context) {
     const res = await fetch(fullUrl, {
       method: "PUT",
       headers,
-      body: JSON.stringify(context)
+      body: JSON.stringify(context),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS)
     });
     if (!res.ok) {
       console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
@@ -6009,6 +6044,110 @@ async function saveReviewContext(prNumber, newSessions) {
     await fsPutContext(key, context);
   }
 }
+function getFilesystemPathV2(key) {
+  const repoKey = `${key.owner}-${key.repo}`;
+  return (0, import_node_path3.join)(getContextCacheDir(), `${repoKey}-pr-${key.pr}.v2.json`);
+}
+async function fsGetBundles(key) {
+  const path = getFilesystemPathV2(key);
+  if (!(0, import_node_fs3.existsSync)(path)) return null;
+  try {
+    const raw = await (0, import_promises.readFile)(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    return validateLoadedContextV2(parsed, key.pr);
+  } catch (err) {
+    console.warn(`Failed to load review bundles (${path}): ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+async function fsPutBundles(key, ctx) {
+  const path = getFilesystemPathV2(key);
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path3.dirname)(path), { recursive: true, mode: 448 });
+    await (0, import_promises.writeFile)(path, JSON.stringify(ctx), { mode: FILE_MODE });
+    console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
+  } catch (err) {
+    console.warn(`Failed to save review bundles (${path}): ${err instanceof Error ? err.message : err}`);
+  }
+}
+async function httpGetBundles(url, token, key) {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}/v2`;
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
+      return null;
+    }
+    const parsed = await res.json();
+    return validateLoadedContextV2(parsed, key.pr);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP GET (v2) failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+async function httpPutBundles(url, token, key, ctx) {
+  const fullUrl = `${url}/context/${key.owner}/${key.repo}/${key.pr}/v2`;
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(fullUrl, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(ctx),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS)
+    });
+    if (!res.ok) {
+      console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
+      return;
+    }
+    console.log(`Saved v2 review bundles for PR #${key.pr}: ${ctx.bundles.length} bundles`);
+  } catch (err) {
+    console.warn(`[context-cache] HTTP PUT (v2) failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+async function loadReviewBundles(prNumber) {
+  const key = getContextKey(prNumber);
+  if (!key) return null;
+  const url = getContextCacheUrl();
+  if (url) {
+    const ctx = await httpGetBundles(url, getContextCacheToken(), key);
+    if (ctx) {
+      console.log(`Loaded v2 review bundles for PR #${prNumber}: ${ctx.bundles.length} bundles`);
+      return ctx;
+    }
+    return null;
+  }
+  return fsGetBundles(key);
+}
+async function saveReviewBundles(prNumber, newBundles) {
+  const key = getContextKey(prNumber);
+  if (!key) {
+    console.warn("Skipping v2 bundle save: unable to determine repo or PR number");
+    return;
+  }
+  if (!newBundles.length) return;
+  const repo = getRepo2();
+  if (!repo) {
+    console.warn("Skipping v2 bundle save: GITHUB_REPOSITORY is unset or invalid");
+    return;
+  }
+  const context = {
+    version: CACHE_VERSION_V2,
+    repo,
+    prNumber,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    bundles: newBundles
+  };
+  const url = getContextCacheUrl();
+  if (url) {
+    await httpPutBundles(url, getContextCacheToken(), key, context);
+  } else {
+    await fsPutBundles(key, context);
+  }
+}
 function formatPreviousContext(context) {
   const lines = [];
   lines.push(`=== Previous review context for PR #${context.prNumber} ===`);
@@ -6025,6 +6164,107 @@ function formatPreviousContext(context) {
     }
   }
   return lines.join("\n");
+}
+
+// src/opencode-bundle.ts
+var import_node_child_process3 = require("child_process");
+var import_node_fs4 = require("fs");
+var import_node_os3 = require("os");
+var import_node_path4 = require("path");
+function runOpencode(args, env2 = process.env) {
+  return new Promise((resolve2, reject) => {
+    const proc = (0, import_node_child_process3.spawn)("opencode", args, { env: env2, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (c) => out += c.toString("utf8"));
+    proc.stderr.on("data", (c) => err += c.toString("utf8"));
+    proc.on("error", reject);
+    proc.on("exit", (code) => {
+      if (code === 0) resolve2(out);
+      else reject(new Error(`opencode ${args.join(" ")} exited ${code}: ${err.trim()}`));
+    });
+  });
+}
+async function exportSession(sessionID, env2 = process.env) {
+  const raw = await runOpencode(["export", sessionID], env2);
+  return JSON.parse(raw);
+}
+async function importBundle(bundle, env2 = process.env) {
+  const tmpDir = (0, import_node_fs4.mkdtempSync)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "oac-bundle-"));
+  const file = (0, import_node_path4.join)(tmpDir, "bundle.json");
+  try {
+    (0, import_node_fs4.writeFileSync)(file, JSON.stringify(bundle));
+    const out = await runOpencode(["import", file], env2);
+    const m = out.match(/Imported session:\s*(\S+)/);
+    if (!m) {
+      throw new Error(`opencode import did not return session id: ${out.trim()}`);
+    }
+    return m[1];
+  } finally {
+    (0, import_node_fs4.rmSync)(tmpDir, { recursive: true, force: true });
+  }
+}
+
+// src/session-resume.ts
+var import_node_fs5 = require("fs");
+var import_node_child_process4 = require("child_process");
+var import_node_crypto = require("crypto");
+var import_node_path5 = require("path");
+async function restoreSessionBundles(reviewBundles, options) {
+  const empty = { existingSessions: /* @__PURE__ */ new Map(), tempDataHome: null };
+  if (!reviewBundles || reviewBundles.bundles.length === 0) return empty;
+  const tempDataHome = (0, import_node_path5.join)(options.baseTempDir, `oac-resume-${options.prLabel}-${(0, import_node_crypto.randomUUID)()}`);
+  (0, import_node_fs5.mkdirSync)(tempDataHome, { recursive: true });
+  process.env.XDG_DATA_HOME = tempDataHome;
+  console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
+  const dbPath = (0, import_node_path5.join)(tempDataHome, "opencode", "opencode.db");
+  const bin = options.opencodeBin ?? "opencode";
+  const bsProc = (0, import_node_child_process4.spawn)(bin, ["serve", "--port", "0"], {
+    env: { ...process.env, XDG_DATA_HOME: tempDataHome },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  bsProc.on("error", (err) => {
+    console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
+  });
+  const bootstrapAbort = new AbortController();
+  const killBootstrap = () => {
+    if (!bsProc.killed) bsProc.kill("SIGTERM");
+  };
+  bootstrapAbort.signal.addEventListener("abort", killBootstrap);
+  const bootstrapTimeoutMs = options.bootstrapTimeoutMs ?? 1e4;
+  const bootstrapStartedAt = Date.now();
+  const bootstrapDeadline = bootstrapStartedAt + bootstrapTimeoutMs;
+  while (Date.now() < bootstrapDeadline) {
+    if ((0, import_node_fs5.existsSync)(dbPath)) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  bootstrapAbort.abort();
+  if (!(0, import_node_fs5.existsSync)(dbPath)) {
+    console.warn(`v2 resume: schema bootstrap timed out after ${bootstrapTimeoutMs}ms; bundles may fail to import`);
+  } else {
+    console.log(`v2 resume: schema bootstrapped in ${Date.now() - bootstrapStartedAt}ms`);
+  }
+  const importResults = await Promise.allSettled(
+    reviewBundles.bundles.map(async (b) => {
+      const importedId = await importBundle(b.bundle, {
+        ...process.env,
+        XDG_DATA_HOME: tempDataHome
+      });
+      return { name: b.name, sessionID: importedId };
+    })
+  );
+  const existingSessions = /* @__PURE__ */ new Map();
+  for (const r of importResults) {
+    if (r.status === "fulfilled") {
+      existingSessions.set(r.value.name, r.value.sessionID);
+      console.log(`v2 resume: imported bundle for "${r.value.name}" \u2192 ${r.value.sessionID}`);
+    } else {
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(`v2 resume: failed to import bundle: ${reason}`);
+    }
+  }
+  console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
+  return { existingSessions, tempDataHome };
 }
 
 // src/index.ts
@@ -6072,9 +6312,9 @@ async function main() {
   const actionPath = env("GITHUB_ACTION_PATH");
   const runnerTemp = env("RUNNER_TEMP") || "/tmp";
   let prDiff = "";
-  const diffPath = (0, import_node_path4.join)(runnerTemp, ".pr-diff.txt");
+  const diffPath = (0, import_node_path6.join)(runnerTemp, ".pr-diff.txt");
   try {
-    prDiff = (0, import_node_fs4.readFileSync)(diffPath, "utf-8");
+    prDiff = (0, import_node_fs6.readFileSync)(diffPath, "utf-8");
     if (prDiff.trim()) {
       console.log(`PR diff loaded from pre-fetched file: ${prDiff.length} chars`);
     }
@@ -6127,23 +6367,29 @@ async function main() {
   console.log(`Reviewers: ${reviewers.map((r) => r.name).join(", ")}`);
   const { providerID, modelID } = resolveModel();
   console.log(`Model: ${providerID}/${modelID}`);
+  const reviewBundles = prNumber ? await loadReviewBundles(prNumber) : null;
+  const { existingSessions, tempDataHome } = await restoreSessionBundles(reviewBundles, {
+    baseTempDir: runnerTemp,
+    prLabel: prNumber ? String(prNumber) : "ad-hoc"
+  });
   console.log("Starting opencode server...");
   const sdkConfig = buildSdkConfig(`${providerID}/${modelID}`);
   const litellmApiKey = env("LITELLM_API_KEY");
   if (providerID === "litellm" && litellmApiKey) {
-    const authDir = (0, import_node_path4.join)((0, import_node_os3.homedir)(), ".local", "share", "opencode");
-    (0, import_node_fs4.mkdirSync)(authDir, { recursive: true });
-    const authPath = (0, import_node_path4.join)(authDir, "auth.json");
+    const xdgData = process.env.XDG_DATA_HOME || (0, import_node_path6.join)((0, import_node_os4.homedir)(), ".local", "share");
+    const authDir = (0, import_node_path6.join)(xdgData, "opencode");
+    (0, import_node_fs6.mkdirSync)(authDir, { recursive: true });
+    const authPath = (0, import_node_path6.join)(authDir, "auth.json");
     let auth = {};
-    if ((0, import_node_fs4.existsSync)(authPath)) {
+    if ((0, import_node_fs6.existsSync)(authPath)) {
       try {
-        auth = JSON.parse((0, import_node_fs4.readFileSync)(authPath, "utf-8"));
+        auth = JSON.parse((0, import_node_fs6.readFileSync)(authPath, "utf-8"));
       } catch {
         auth = {};
       }
     }
     auth.litellm = { type: "api", key: litellmApiKey };
-    (0, import_node_fs4.writeFileSync)(authPath, JSON.stringify(auth));
+    (0, import_node_fs6.writeFileSync)(authPath, JSON.stringify(auth));
   }
   const serverTimeoutMs = intEnv("MULTI_REVIEW_SERVER_TIMEOUT_MS", 3e4);
   const { client: client2, server } = await createOpencode({
@@ -6168,7 +6414,10 @@ async function main() {
       globalTimeoutMs: globalTimeout * 1e3,
       coordinatorTimeoutMs: coordinatorTimeout * 1e3,
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
-      previousContextText
+      previousContextText,
+      existingSessions,
+      // v2 cache export runs after this — must keep sessions alive.
+      skipSessionCleanup: !!tempDataHome
     });
     const successCount = reviews.filter((r) => r.success).length;
     console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
@@ -6183,7 +6432,9 @@ async function main() {
       coordinatorResult = await runCoordinator(client2, reviews, {
         globalTimeoutMs: globalTimeout * 1e3,
         coordinatorTimeoutMs: coordinatorTimeout * 1e3,
-        coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT")
+        coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
+        existingSessions,
+        skipSessionCleanup: !!tempDataHome
       });
       parsedSeverity = parseSeverity(coordinatorResult.content);
       const reviewerDetails = buildReviewerDetails(reviews);
@@ -6202,6 +6453,33 @@ async function main() {
       }
       await saveReviewContext(prNumber, newSessions);
     }
+    if (prNumber) {
+      const exportEnv = { ...process.env };
+      if (tempDataHome) exportEnv.XDG_DATA_HOME = tempDataHome;
+      const exportTargets = [
+        ...reviews.filter((r) => r.success && r.sessionID).map((r) => ({ name: r.reviewer, sessionID: r.sessionID })),
+        { name: "coordinator", sessionID: coordinatorResult?.sessionID }
+      ].filter((t) => Boolean(t.sessionID));
+      const exportResults = await Promise.allSettled(
+        exportTargets.map(async (t) => {
+          const bundle = await exportSession(t.sessionID, exportEnv);
+          return { name: t.name, sessionID: t.sessionID, bundle, savedAt: (/* @__PURE__ */ new Date()).toISOString() };
+        })
+      );
+      const newBundles = [];
+      for (let i = 0; i < exportResults.length; i++) {
+        const r = exportResults[i];
+        const t = exportTargets[i];
+        if (r.status === "fulfilled") {
+          newBundles.push(r.value);
+        } else {
+          console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${r.reason instanceof Error ? r.reason.message : r.reason}`);
+        }
+      }
+      if (newBundles.length > 0) {
+        await saveReviewBundles(prNumber, newBundles);
+      }
+    }
     postPRComment(comment);
     try {
       cleanupErrorComments();
@@ -6219,6 +6497,12 @@ async function main() {
   } finally {
     await cleanupAllSessions(client2);
     server.close();
+    if (tempDataHome && (0, import_node_fs6.existsSync)(tempDataHome) && env("MULTI_REVIEW_KEEP_TEMP_DB") !== "1") {
+      try {
+        await (0, import_promises2.rm)(tempDataHome, { recursive: true, force: true });
+      } catch {
+      }
+    }
   }
 }
 main().then((code) => process.exit(code)).catch((err) => {

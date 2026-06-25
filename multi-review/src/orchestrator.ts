@@ -89,14 +89,19 @@ export async function runParallelReviewers(
     let sessionId: string | undefined;
     try {
       const remaining = () => Math.max(30_000, deadline - Date.now());
-      console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
-
-      const sessionResult = await withTimeout(
-        client.session.create({ throwOnError: true }),
-        remaining(),
-        reviewer.name,
-      );
-      sessionId = sessionResult.data.id;
+      const resumedFrom = opts.existingSessions?.get(reviewer.name);
+      if (resumedFrom) {
+        console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
+        sessionId = resumedFrom;
+      } else {
+        console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
+        const sessionResult = await withTimeout(
+          client.session.create({ throwOnError: true }),
+          remaining(),
+          reviewer.name,
+        );
+        sessionId = sessionResult.data.id;
+      }
       activeSessions.add(sessionId);
 
       const promptResult = await withTimeout(
@@ -128,16 +133,20 @@ export async function runParallelReviewers(
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
 
-      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
-      return { reviewer: reviewer.name, content: "", success: false, error: msg };
+      return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: sessionId };
     } finally {
-      if (sessionId) {
+      if (sessionId && !opts.skipSessionCleanup) {
         activeSessions.delete(sessionId);
         try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
       }
+      // skipSessionCleanup: leave the sessionID in activeSessions so the
+      // caller can call cleanupAllSessions() after `opencode export` runs.
+      // The caller's responsibility to either export+cleanup or let it
+      // leak (acceptable for short-lived action runners).
     }
   });
 
@@ -159,12 +168,18 @@ export async function runCoordinator(
 
   let sessionId: string | undefined;
   try {
-    const sessionResult = await withTimeout(
-      client.session.create({ throwOnError: true }),
-      opts.coordinatorTimeoutMs,
-      "coordinator",
-    );
-    sessionId = sessionResult.data.id;
+    const resumedFrom = opts.existingSessions?.get("coordinator");
+    if (resumedFrom) {
+      console.log(`[coordinator] Resuming existing session ${resumedFrom}...`);
+      sessionId = resumedFrom;
+    } else {
+      const sessionResult = await withTimeout(
+        client.session.create({ throwOnError: true }),
+        opts.coordinatorTimeoutMs,
+        "coordinator",
+      );
+      sessionId = sessionResult.data.id;
+    }
     activeSessions.add(sessionId);
 
     console.log("[coordinator] Starting synthesis...");
@@ -196,12 +211,14 @@ export async function runCoordinator(
       console.log(`[coordinator] Synthesis complete (${content.length} chars, no cost data)`);
     }
 
-    return { content, cost, tokens, messages };
+    return { content, cost, tokens, messages, sessionID: sessionId };
   } finally {
-    if (sessionId) {
+    if (sessionId && !opts.skipSessionCleanup) {
       activeSessions.delete(sessionId);
       try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
     }
+    // skipSessionCleanup: leave the sessionID in activeSessions so the
+    // caller can call cleanupAllSessions() after `opencode export` runs.
   }
 }
 
