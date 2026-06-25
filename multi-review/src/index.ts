@@ -1,5 +1,7 @@
 import { createOpencode } from "@opencode-ai/sdk";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
@@ -153,36 +155,49 @@ async function main(): Promise<number> {
     mkdirSync(tempDataHome, { recursive: true });
     process.env.XDG_DATA_HOME = tempDataHome;
     console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
-    // Bootstrap the DB schema by running `opencode serve` briefly. The
-    // `opencode import` CLI requires the schema to exist before it can
-    // write session rows. We let it run for at most 3s, then kill it;
-    // the schema migration completes on first start.
-    const { spawn } = await import("node:child_process");
+    // Bootstrap the DB schema by running `opencode serve` and waiting for
+    // `opencode.db` to materialize on disk. The `opencode import` CLI
+    // requires the schema to exist before it can write session rows.
+    // We poll instead of using a fixed 3s timeout — on a cold runner the
+    // migration can take >1s, and on a warm cache it's instant. A safety
+    // cap of 10s protects against a wedged `opencode` binary.
+    const dbPath = join(tempDataHome, "opencode", "opencode.db");
     const bsProc = spawn("opencode", ["serve", "--port", "0"], {
       env: { ...process.env, XDG_DATA_HOME: tempDataHome },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        bsProc.kill("SIGTERM");
-        resolve();
-      }, 3000);
-      bsProc.on("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+    bsProc.on("error", (err) => {
+      console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
     });
-    // Now the schema exists. Import each bundle.
-    for (const b of reviewBundles.bundles) {
-      try {
+    const bootstrapDeadline = Date.now() + 10_000;
+    while (Date.now() < bootstrapDeadline) {
+      if (existsSync(dbPath)) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    bsProc.kill("SIGTERM");
+    if (!existsSync(dbPath)) {
+      console.warn(`v2 resume: schema bootstrap timed out after 10s; bundles may fail to import`);
+    } else {
+      console.log(`v2 resume: schema bootstrapped in ${Math.round((Date.now() - (bootstrapDeadline - 10_000)))}ms`);
+    }
+    // Import each bundle in parallel. Per-bundle failures are isolated —
+    // one bad bundle should not prevent the rest from restoring.
+    const importResults = await Promise.allSettled(
+      reviewBundles.bundles.map(async (b) => {
         const importedId = await importBundle(b.bundle, {
           ...process.env,
           XDG_DATA_HOME: tempDataHome!,
         });
-        existingSessions.set(b.name, importedId);
-        console.log(`v2 resume: imported bundle for "${b.name}" → ${importedId}`);
-      } catch (err) {
-        console.warn(`v2 resume: failed to import bundle for "${b.name}": ${err instanceof Error ? err.message : err}`);
+        return { name: b.name, sessionID: importedId };
+      }),
+    );
+    for (const r of importResults) {
+      if (r.status === "fulfilled") {
+        existingSessions.set(r.value.name, r.value.sessionID);
+        console.log(`v2 resume: imported bundle for "${r.value.name}" → ${r.value.sessionID}`);
+      } else {
+        const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        console.warn(`v2 resume: failed to import bundle: ${reason}`);
       }
     }
     console.log(`v2 resume: ${existingSessions.size}/${reviewBundles.bundles.length} bundles restored`);
@@ -241,6 +256,8 @@ async function main(): Promise<number> {
       coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
       previousContextText,
       existingSessions,
+      // v2 cache export runs after this — must keep sessions alive.
+      skipSessionCleanup: !!tempDataHome,
     });
 
     const successCount = reviews.filter((r) => r.success).length;
@@ -261,6 +278,7 @@ async function main(): Promise<number> {
         coordinatorTimeoutMs: coordinatorTimeout * 1000,
         coordinatorPrompt: env("MULTI_REVIEW_COORDINATOR_PROMPT"),
         existingSessions,
+        skipSessionCleanup: !!tempDataHome,
       });
       // Parse severity from coordinator output
       parsedSeverity = parseSeverity(coordinatorResult.content);
@@ -301,7 +319,7 @@ async function main(): Promise<number> {
       for (const t of exportTargets) {
         if (!t.sessionID) continue;
         try {
-          const bundle = await exportSession(t.sessionID, exportEnv);
+          const bundle = (await exportSession(t.sessionID, exportEnv)) as Record<string, unknown>;
           newBundles.push({ name: t.name, sessionID: t.sessionID, bundle, savedAt: new Date().toISOString() });
         } catch (err) {
           console.warn(`v2 save: failed to export session ${t.sessionID} (${t.name}): ${err instanceof Error ? err.message : err}`);
@@ -338,8 +356,14 @@ async function main(): Promise<number> {
     // Clean up the v2 temp XDG_DATA_HOME if we created one. The actual
     // bundles are now in the cache server, so the local DB is no longer
     // needed. Keep it if debugging is enabled (preserved for postmortem).
+    //
+    // SECURITY: setting MULTI_REVIEW_KEEP_TEMP_DB=1 leaves the local
+    // opencode.db on disk after the run. That DB contains the full
+    // session history including user-supplied PR diffs and any
+    // tool-output the opencode server captured. Only enable this on
+    // disposable CI runners you control.
     if (tempDataHome && existsSync(tempDataHome) && !env("MULTI_REVIEW_KEEP_TEMP_DB")) {
-      try { rmSync(tempDataHome, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { await rm(tempDataHome, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }
 }

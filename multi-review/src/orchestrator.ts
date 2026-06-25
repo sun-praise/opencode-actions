@@ -133,16 +133,20 @@ export async function runParallelReviewers(
         console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
       }
 
-      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages };
+      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[${reviewer.name}] Failed: ${msg}`);
-      return { reviewer: reviewer.name, content: "", success: false, error: msg };
+      return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: sessionId };
     } finally {
-      if (sessionId) {
+      if (sessionId && !opts.skipSessionCleanup) {
         activeSessions.delete(sessionId);
         try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
       }
+      // skipSessionCleanup: leave the sessionID in activeSessions so the
+      // caller can call cleanupAllSessions() after `opencode export` runs.
+      // The caller's responsibility to either export+cleanup or let it
+      // leak (acceptable for short-lived action runners).
     }
   });
 
@@ -209,10 +213,12 @@ export async function runCoordinator(
 
     return { content, cost, tokens, messages, sessionID: sessionId };
   } finally {
-    if (sessionId) {
+    if (sessionId && !opts.skipSessionCleanup) {
       activeSessions.delete(sessionId);
       try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
     }
+    // skipSessionCleanup: leave the sessionID in activeSessions so the
+    // caller can call cleanupAllSessions() after `opencode export` runs.
   }
 }
 

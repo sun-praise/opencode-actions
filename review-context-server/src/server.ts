@@ -2,9 +2,18 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const PORT = parseInt(process.env.PORT || "8080", 10);
-const DATA_DIR = process.env.DATA_DIR || "./data";
-const AUTH_TOKEN = process.env.AUTH_TOKEN || "";
+/**
+ * Cap on PUT body size. v2 bundles can be a few MB (full opencode session
+ * rows). 16 MiB gives plenty of headroom while still rejecting malicious
+ * clients that try to fill the disk.
+ */
+const MAX_BODY_BYTES = 16 * 1024 * 1024;
+
+// Read runtime config lazily so tests can swap env between suites without
+// re-importing the module.
+function getPort(): number { return parseInt(process.env.PORT || "8080", 10); }
+function getDataDir(): string { return process.env.DATA_DIR || "./data"; }
+function getAuthToken(): string { return process.env.AUTH_TOKEN || ""; }
 
 interface ContextParams {
   owner: string;
@@ -24,32 +33,58 @@ function getContextPath(owner: string, repo: string, pr: string, variant: "v1" |
   // v1 and v2 payloads can coexist for the same PR (used during the
   // rollout window — once all clients are on v2 the suffix can go away).
   const suffix = variant === "v2" ? ".v2.json" : ".json";
-  return join(DATA_DIR, owner, repo, `${pr}${suffix}`);
+  return join(getDataDir(), owner, repo, `${pr}${suffix}`);
 }
 
+// Single regex with an optional /v2 suffix group. Matches both layouts.
+const CONTEXT_PATH_RE = /^\/context\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(v2))?$/;
+
 function parseContextPath(url: string): ContextParams | null {
-  // Accept both /context/o/r/p (v1) and /context/o/r/p/v2 (v2).
-  const v1 = url.match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)$/);
-  if (v1) return { owner: v1[1], repo: v1[2], pr: v1[3], variant: "v1" };
-  const v2 = url.match(/^\/context\/([^/]+)\/([^/]+)\/([^/]+)\/v2$/);
-  if (v2) return { owner: v2[1], repo: v2[2], pr: v2[3], variant: "v2" };
-  return null;
+  const m = url.match(CONTEXT_PATH_RE);
+  if (!m) return null;
+  return {
+    owner: m[1],
+    repo: m[2],
+    pr: m[3],
+    variant: m[4] === "v2" ? "v2" : "v1",
+  };
 }
 
 function isAuthorized(req: IncomingMessage): boolean {
-  if (!AUTH_TOKEN) return true;
+  const token = getAuthToken();
+  if (!token) return true;
   const auth = req.headers.authorization || "";
-  return auth === `Bearer ${AUTH_TOKEN}`;
+  return auth === `Bearer ${token}`;
 }
 
+/**
+ * Read the request body up to MAX_BODY_BYTES. Rejects larger payloads
+ * with a 413. We track byte length explicitly because setEncoding("utf-8")
+ * gives us characters, and a 1-character multi-byte UTF-8 sequence
+ * would under-count.
+ */
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.setEncoding("utf-8");
-    req.on("data", (chunk: string) => {
-      body += chunk;
+    let bytes = 0;
+    let oversize = false;
+    req.on("data", (chunk: Buffer | string) => {
+      const buf = typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk;
+      bytes += buf.length;
+      if (bytes > MAX_BODY_BYTES) {
+        oversize = true;
+        // Stop reading — drain the rest of the request without storing.
+        return;
+      }
+      body += buf.toString("utf-8");
     });
-    req.on("end", () => resolve(body));
+    req.on("end", () => {
+      if (oversize) {
+        reject(Object.assign(new Error("Body too large"), { statusCode: 413 }));
+      } else {
+        resolve(body);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -58,7 +93,7 @@ const server = createServer(async (req, res) => {
   const { method, url } = req;
 
   if (url === "/health") {
-    return sendJson(res, 200, { status: "ok", dataDir: DATA_DIR });
+    return sendJson(res, 200, { status: "ok", dataDir: getDataDir() });
   }
 
   if (!isAuthorized(req)) {
@@ -101,14 +136,37 @@ const server = createServer(async (req, res) => {
     }
 
     return sendJson(res, 405, { error: "Method not allowed" });
-  } catch (err) {
+  } catch (err: any) {
+    if (err && typeof err.statusCode === "number") {
+      return sendJson(res, err.statusCode, { error: err.message });
+    }
     console.error(`[${new Date().toISOString()}] Request failed: ${method} ${url}`, err);
     sendJson(res, 500, { error: "Internal server error" });
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Review context server listening on port ${PORT}`);
-  console.log(`Data directory: ${DATA_DIR}`);
-  console.log(`Authentication: ${AUTH_TOKEN ? "enabled" : "disabled"}`);
-});
+export function start(): typeof server {
+  const port = getPort();
+  server.listen(port, () => {
+    console.log(`Review context server listening on port ${port}`);
+    console.log(`Data directory: ${getDataDir()}`);
+    console.log(`Authentication: ${getAuthToken() ? "enabled" : "disabled"}`);
+  });
+  return server;
+}
+
+export const __test = { CONTEXT_PATH_RE, parseContextPath, getContextPath, MAX_BODY_BYTES };
+
+// Auto-start when invoked as the entry point. Skipped under node:test so
+// tests can import the module without binding a port.
+import { fileURLToPath } from "node:url";
+const isEntry = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+})();
+if (isEntry) {
+  start();
+}

@@ -30,12 +30,17 @@ export interface ReviewContext {
  *
  * `name` ties the bundle back to a multi-review persona so the same
  * reviewer always resumes its own session across PR re-reviews.
+ *
+ * `bundle` is `Record<string, unknown>` rather than `unknown` so callers
+ * can safely index into the export shape (`bundle.info.id`, etc.). The
+ * exact fields are owned by the opencode CLI; we don't want to bake
+ * them into a TS interface (it would drift across versions).
  */
 export interface SessionBundle {
   name: string;
   sessionID: string;
-  /** Raw JSON from `opencode export`. May be a string (compact) or an object. */
-  bundle: unknown;
+  /** Parsed JSON from `opencode export`. Always an object on the wire. */
+  bundle: Record<string, unknown>;
   /** ISO timestamp when the bundle was captured. */
   savedAt: string;
 }
@@ -97,6 +102,15 @@ export interface OrchestratorOptions {
    * Reviewers missing from the map fall back to the create+prompt path.
    */
   existingSessions?: Map<string, string>;
+  /**
+   * When true, the orchestrator keeps the opencode session alive after the
+   * run so the caller can introspect / export it. The default (`false`)
+   * deletes the session in the `finally` block — but for the v2 cache
+   * path the caller needs the session row preserved until after
+   * `opencode export` runs, so it sets this to `true` and is responsible
+   * for any follow-up cleanup.
+   */
+  skipSessionCleanup?: boolean;
 }
 
 // ── Severity parsing ─────────────────────────────────────────────────

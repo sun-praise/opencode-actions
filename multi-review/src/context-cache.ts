@@ -9,6 +9,24 @@ const CONTEXT_DIR_NAME = join("opencode-actions", "review-context");
 const MAX_ROUNDS_PER_SESSION_NAME = 3;
 const FILE_MODE = 0o600;
 
+/**
+ * HTTP timeout for cache-server requests. The cache server is normally
+ * on the same VPC as the runner, so 5s is plenty for the small JSON
+ * payloads we exchange. Without a timeout, a wedged server would block
+ * the action indefinitely.
+ */
+const HTTP_TIMEOUT_MS = 5_000;
+
+/**
+ * Validate a PR number passed by the caller. Accepts only digit strings
+ * of bounded length — guards against cache-server URL injection
+ * (e.g. "../../../etc/passwd") and accidental 64-bit int overflows
+ * from env-var parsing bugs.
+ */
+function isValidPrNumber(pr: string): boolean {
+  return typeof pr === "string" && /^[1-9]\d{0,9}$/.test(pr);
+}
+
 function isSafePathComponent(value: string): boolean {
   if (!value) return false;
   // Reject traversal, null bytes, and absolute paths.
@@ -29,12 +47,14 @@ function getContextKey(prNumber: string): { owner: string; repo: string; pr: str
   if (!repo || !prNumber) {
     return null;
   }
-  const [owner, repoName] = repo.split("/");
-  const safePr = prNumber.replace(/\D/g, "");
-  if (!safePr || !isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
+  if (!isValidPrNumber(prNumber)) {
     return null;
   }
-  return { owner, repo: repoName, pr: safePr };
+  const [owner, repoName] = repo.split("/");
+  if (!isSafePathComponent(owner) || !isSafePathComponent(repoName)) {
+    return null;
+  }
+  return { owner, repo: repoName, pr: prNumber };
 }
 
 function getContextCacheUrl(): string | undefined {
@@ -113,7 +133,7 @@ async function httpGetContext(url: string, token: string | undefined, key: Retur
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   try {
-    const res = await fetch(fullUrl, { headers });
+    const res = await fetch(fullUrl, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     if (res.status === 404) return null;
     if (!res.ok) {
       console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
@@ -141,6 +161,7 @@ async function httpPutContext(
       method: "PUT",
       headers,
       body: JSON.stringify(context),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
@@ -297,7 +318,7 @@ async function httpGetBundles(url: string, token: string | undefined, key: Retur
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   try {
-    const res = await fetch(fullUrl, { headers });
+    const res = await fetch(fullUrl, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     if (res.status === 404) return null;
     if (!res.ok) {
       console.warn(`[context-cache] HTTP GET ${fullUrl} failed: ${res.status}`);
@@ -325,6 +346,7 @@ async function httpPutBundles(
       method: "PUT",
       headers,
       body: JSON.stringify(ctx),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.warn(`[context-cache] HTTP PUT ${fullUrl} failed: ${res.status}`);
