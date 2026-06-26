@@ -1,4 +1,4 @@
-import type { ParsedReview } from "./types.js";
+import type { ParsedReview, ReviewResult } from "./types.js";
 
 /**
  * Parse coordinator LLM output into structured severity groups.
@@ -110,13 +110,60 @@ function parseListItems(body: string): string[] {
 /**
  * Determine whether the severity gate should trigger a non-zero exit.
  * Pure function — no env access, no side effects.
+ *
+ * Fail-closed semantics for parse uncertainty (see issue #280):
+ * - `failOnSeverity === "none"` — user opted out of severity gating; never
+ *   trigger on parse state alone.
+ * - `parsed === undefined` — coordinator crashed before producing output.
+ *   We have no evidence either way; fail closed when the gate is armed.
+ * - `parsed.fallback === true` — coordinator produced text but it lacked
+ *   severity headings, so we cannot tell whether blocking/warning issues
+ *   exist. Fail closed when the gate is armed (no parse → no certification).
+ * - Otherwise apply the configured severity threshold.
  */
 export function shouldFailOnSeverity(
   parsed: ParsedReview | undefined,
   failOnSeverity: string,
 ): boolean {
-  if (!parsed || parsed.fallback) return false;
+  if (failOnSeverity === "none") return false;
+  if (!parsed) return true;
+  if (parsed.fallback) return true;
   if (failOnSeverity === "blocking" && parsed.blocking.length > 0) return true;
   if (failOnSeverity === "warning" && (parsed.blocking.length > 0 || parsed.warning.length > 0)) return true;
   return false;
+}
+
+/**
+ * Names of reviewers whose output cannot be trusted as evidence.
+ *
+ * A reviewer is "missing evidence" when EITHER:
+ * - `success === false` (the session.prompt threw — auth failure, timeout,
+ *   model error, etc.), OR
+ * - `success === true` but `content.trim() === ""` (session returned but
+ *   produced no assistant text — silent empty completion).
+ *
+ * Pure function — no env access, no side effects.
+ */
+export function findMissingReviewers(reviews: ReviewResult[]): string[] {
+  const missing: string[] = [];
+  for (const r of reviews) {
+    if (!r.success || r.content.trim() === "") missing.push(r.reviewer);
+  }
+  return missing;
+}
+
+/**
+ * Determine whether missing-reviewer evidence should fail the action.
+ *
+ * Missing reviewer evidence is an infrastructure failure (not a severity
+ * opinion), so it fails closed REGARDLESS of the `failOnSeverity` setting —
+ * "reviewer didn't run" cannot be interpreted as "reviewer said pass".
+ *
+ * The empty-list case is the only one that lets the action exit 0, which
+ * matches the previous happy-path behavior.
+ *
+ * Pure function — no env access, no side effects.
+ */
+export function shouldFailOnMissingReviewers(missingReviewers: string[]): boolean {
+  return missingReviewers.length > 0;
 }

@@ -8,7 +8,7 @@ import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReview
 import { formatCostTable } from "./cost-formatter.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 import { filterDiff } from "./diff-filter.js";
-import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
+import { parseSeverity, shouldFailOnSeverity, findMissingReviewers, shouldFailOnMissingReviewers } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
 import { loadReviewContext, saveReviewContext, formatPreviousContext, loadReviewBundles, saveReviewBundles } from "./context-cache.js";
 import { exportSession } from "./opencode-bundle.js";
@@ -218,10 +218,17 @@ async function main(): Promise<number> {
       skipSessionCleanup: willExportSessions,
     });
 
-    const successCount = reviews.filter((r) => r.success).length;
-    console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
+    const missingReviewers = findMissingReviewers(reviews);
+    const successCount = reviews.length - missingReviewers.length;
+    console.log(
+      `Reviews: ${successCount}/${reviews.length} succeeded` +
+      (missingReviewers.length > 0 ? `; missing evidence: ${missingReviewers.join(", ")}` : ""),
+    );
 
-    if (successCount === 0) {
+    // All-failure is the existing hard gate. Partial failure is handled
+    // below by `shouldFailOnMissingReviewers` after the coordinator runs
+    // (so the user still gets a useful synthesized comment).
+    if (missingReviewers.length === reviews.length) {
       console.error("All reviewers failed");
       return 1;
     }
@@ -301,15 +308,20 @@ async function main(): Promise<number> {
     // 8. Post comment
     postPRComment(comment);
 
-    // 9. Cleanup error comments from previous runs (best-effort, never blocks the main flow)
-    try {
-      cleanupErrorComments();
-    } catch (err) {
-      console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
-    }
-
-    // 10. Severity gate
+    // 10. Severity gate + missing-reviewer fail-closed gate.
+    //     Both gates run after the comment is posted so the user sees the
+    //     synthesized explanation; exit code is determined by the gates.
+    //     Issue #280: missing-reviewer evidence is an infrastructure
+    //     failure, not a severity opinion, so it fails closed regardless of
+    //     the `MULTI_REVIEW_FAIL_ON_SEVERITY` setting.
     const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
+    if (shouldFailOnMissingReviewers(missingReviewers)) {
+      console.error(
+        `Reviewer evidence missing for: ${missingReviewers.join(", ")} — failing closed. ` +
+        "Treat the absence as a blocking finding; rerun after fixing provider/auth or model availability.",
+      );
+      return 1;
+    }
     if (shouldFailOnSeverity(parsedSeverity, failOn)) {
       const b = parsedSeverity?.blocking.length ?? 0;
       const w = parsedSeverity?.warning.length ?? 0;

@@ -5,6 +5,7 @@ import {
   runCoordinator,
   cleanupAllSessions,
 } from "./orchestrator.js";
+import { findMissingReviewers } from "./severity-parser.js";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { Reviewer } from "./types.js";
 
@@ -351,5 +352,115 @@ describe("orchestrator: runCoordinator", { concurrency: false }, () => {
       existingSessions: new Map([["coordinator", "ses_coord"]]),
     });
     assert.strictEqual(result.content, "first part\nsecond part");
+  });
+});
+
+// runCoordinator swallows the full prompt into a session.prompt() call, so
+// these tests inspect the captured session.prompt args to verify that a
+// MISSING REVIEWERS notice is prepended when at least one reviewer's output
+// is unusable. Issue #280.
+describe("orchestrator: runCoordinator missing-reviewer notice", { concurrency: false }, () => {
+  const baseReviews = [
+    { reviewer: "quality", content: "ok", success: true, messages: [] },
+  ] as any;
+
+  function lastPromptText(calls: FakeCallRecord[]): string {
+    const prompts = calls.filter((c) => c.method === "session.prompt");
+    const last = prompts[prompts.length - 1];
+    const parts = last.args?.body?.parts ?? [];
+    return parts.map((p: any) => p.text ?? "").join("\n");
+  }
+
+  it("does not include the MISSING REVIEWERS notice when all reviewers succeeded", async () => {
+    const { client, calls } = createFakeClient();
+    await runCoordinator(client, baseReviews, {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+    });
+    const text = lastPromptText(calls);
+    // The default template mentions "MISSING REVIEWERS" both as a rule label
+    // and as a header reference, so the actual notice block is uniquely
+    // identified by a `- <reviewer>:` line immediately under the heading.
+    // Match a line starting with "- " followed by a known reviewer name and
+    // a colon — that pattern only appears inside the notice block.
+    assert.ok(!/^- (quality|security|performance):/m.test(text), "no notice listing reviewers");
+    assert.ok(text.includes("## quality"), "review text is still included");
+  });
+
+  it("prepends a MISSING REVIEWERS notice listing each failed reviewer", async () => {
+    const reviews = [
+      { reviewer: "quality", content: "ok", success: true, messages: [] },
+      { reviewer: "security", content: "", success: false, error: "401 unauthorized", messages: [] },
+    ] as any;
+    const { client, calls } = createFakeClient();
+    await runCoordinator(client, reviews, {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+    });
+    const text = lastPromptText(calls);
+    assert.ok(text.includes("MISSING REVIEWERS"), "notice header present");
+    assert.ok(text.includes("- security: 401 unauthorized"), "reviewer name + reason listed");
+    assert.ok(text.includes("## security"), "failed reviewer's placeholder still rendered");
+    assert.ok(text.includes("（失败: 401 unauthorized）"), "placeholder uses orchestrator's existing failure marker");
+  });
+
+  it("treats success=true with empty content as missing (silent empty completion)", async () => {
+    const reviews = [
+      { reviewer: "quality", content: "ok", success: true, messages: [] },
+      { reviewer: "security", content: "", success: true, messages: [] },
+    ] as any;
+    const { client, calls } = createFakeClient();
+    await runCoordinator(client, reviews, {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+    });
+    const text = lastPromptText(calls);
+    assert.ok(text.includes("MISSING REVIEWERS"), "notice surfaces empty-content successes");
+    assert.ok(text.includes("- security: session returned but produced no assistant text"));
+  });
+
+  it("includes the missing-reviewer rule (rule 7) in the default prompt template", async () => {
+    const reviews = [
+      { reviewer: "security", content: "", success: false, error: "down", messages: [] },
+    ] as any;
+    const { client, calls } = createFakeClient();
+    // Don't pass coordinatorPrompt — must use DEFAULT_COORDINATOR_PROMPT.
+    await runCoordinator(client, reviews, {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+    });
+    const text = lastPromptText(calls);
+    assert.ok(text.includes("MISSING REVIEWERS"));
+    // The default template must carry the rule that drives CANNOT MERGE.
+    assert.ok(text.includes("缺席 reviewer"), "rule 7 in zh");
+    assert.ok(text.includes("Missing reviewers"), "rule 7 in en");
+    assert.ok(text.includes("CANNOT MERGE"));
+  });
+
+  it("findMissingReviewers agrees with what the notice prepended", async () => {
+    // Sanity check that the same definition is shared across the two files —
+    // if one drifts the other silently regresses.
+    const reviews = [
+      { reviewer: "a", content: "ok", success: true, messages: [] },
+      { reviewer: "b", content: "", success: false, error: "x", messages: [] },
+      { reviewer: "c", content: "ok", success: true, messages: [] },
+      { reviewer: "d", content: "   ", success: true, messages: [] },
+    ] as any;
+    const { client, calls } = createFakeClient();
+    await runCoordinator(client, reviews, {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+    });
+    const text = lastPromptText(calls);
+    const missing = findMissingReviewers(reviews);
+    for (const name of missing) {
+      assert.ok(text.includes(`- ${name}:`), `notice mentions ${name}`);
+    }
+    assert.deepStrictEqual(missing, ["b", "d"]);
   });
 });

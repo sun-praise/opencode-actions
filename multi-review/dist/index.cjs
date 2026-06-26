@@ -4785,6 +4785,7 @@ Your task is to synthesize them into a single deduplicated report.
 4. \u4FDD\u7559\u9886\u57DF\u7279\u5B9A\u89C1\u89E3\uFF08\u5982\u5B89\u5168\u53D1\u73B0\u53EA\u6765\u81EA\u5B89\u5168 reviewer\uFF09/ Preserve domain-specific insights (e.g., security findings from security reviewer only)
 5. \u4F7F\u7528\u6700\u4E25\u91CD\u53D1\u73B0\u7684\u51B3\u7B56\u4F5C\u4E3A\u6700\u7EC8\u51B3\u7B56 / Use the most severe finding as the final decision
 6. \u53EA\u62A5\u544A\u5F53\u524D\u4EE3\u7801\u4E2D\u4ECD\u5B58\u5728\u7684\u95EE\u9898 / Only report issues that still exist in the current code
+7. **\u7F3A\u5E2D reviewer / Missing reviewers**\uFF1A\u82E5\u4E0B\u65B9"\u26A0\uFE0F MISSING REVIEWERS"\u5217\u8868\u975E\u7A7A\uFF0C\u7F3A\u5931 reviewer \u7684\u8BC1\u636E\u89C6\u4E3A**\u963B\u585E\u9879**\u3002\u4F60**\u5FC5\u987B**\u5728\u7B2C\u4E00\u884C\u8F93\u51FA CANNOT MERGE\uFF0C\u5E76\u5728"### \u{1F534} \u963B\u585E\u9879 / Blocking Issues"\u4E2D\u660E\u786E\u5217\u51FA\u6BCF\u4E2A\u7F3A\u5931 reviewer \u53CA\u5931\u8D25\u539F\u56E0\uFF08\u5982\u6709\uFF09\u3002\u7F3A\u5931\u8BC1\u636E**\u4E0D\u53EF**\u88AB\u89E3\u91CA\u4E3A"\u65E0\u95EE\u9898"\u3002/ If any reviewer is listed as missing below, treat the absence as a **blocking finding**. You **MUST** output CANNOT MERGE on the first line and list each missing reviewer (with its failure reason if available) under "### \u{1F534} \u963B\u585E\u9879 / Blocking Issues". Missing evidence **MUST NOT** be interpreted as "no issues".
 
 \u4EE5\u4E0B\u662F\u5404 reviewer \u7684\u5BA1\u67E5\u7ED3\u679C\uFF1A
 
@@ -4805,6 +4806,18 @@ Your task is to synthesize them into a single deduplicated report.
 IMPORTANT: Never use #N format (e.g. #1, #2) to number items in your output. GitHub auto-converts #N to issue/PR references. Use 1. 2. 3. or - list format instead. \u8BF7\u52FF\u4F7F\u7528 #N \u683C\u5F0F\u7F16\u53F7\uFF0CGitHub \u4F1A\u5C06\u5176\u8F6C\u4E3A issue/PR \u5F15\u7528\u3002`;
 function extractText(messages) {
   return messages.filter((m) => m.info.role === "assistant").flatMap((m) => m.parts.filter((p) => p.type === "text")).map((p) => p.text).join("\n");
+}
+function buildMissingReviewersNotice(reviews) {
+  const lines = [];
+  let anyMissing = false;
+  for (const r of reviews) {
+    if (r.success && r.content.trim() !== "") continue;
+    anyMissing = true;
+    const reason = r.success ? "session returned but produced no assistant text" : r.error ?? "unknown failure";
+    lines.push(`- ${r.reviewer}: ${reason}`);
+  }
+  if (!anyMissing) return "";
+  return "\u26A0\uFE0F MISSING REVIEWERS / \u7F3A\u5E2D reviewer\uFF08\u7F3A\u5931\u8BC1\u636E\u89C6\u4E3A\u963B\u585E\u9879 / treat absence as a blocking finding\uFF09\uFF1A\n" + lines.join("\n");
 }
 function buildReviewerPrompt(reviewerPrompt, prDiff, previousContextText) {
   const parts = [];
@@ -4901,8 +4914,9 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
 async function runCoordinator(client2, reviews, opts) {
   const reviewsText = reviews.map((r) => `## ${r.reviewer}
 ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n---\n\n");
+  const missingNotice = buildMissingReviewersNotice(reviews);
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
-  const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
+  const fullPrompt = missingNotice ? promptTemplate.split("{{REVIEWS}}").join(missingNotice + "\n\n" + reviewsText) : promptTemplate.split("{{REVIEWS}}").join(reviewsText);
   let sessionId;
   try {
     const resumedFrom = opts.existingSessions?.get("coordinator");
@@ -5149,7 +5163,6 @@ function curlWithAuth(url, headers, opts = {}) {
     maxBuffer: opts.maxBuffer ?? 5 * 1024 * 1024
   });
 }
-var MAX_PAGES = 20;
 var _tempDir = (0, import_node_fs2.mkdtempSync)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "opencode-review-"));
 (0, import_node_fs2.chmodSync)(_tempDir, 448);
 function writeAuthHeader(token, prefix) {
@@ -5157,27 +5170,6 @@ function writeAuthHeader(token, prefix) {
   (0, import_node_fs2.writeFileSync)(path, `Authorization: Bearer ${token}`);
   (0, import_node_fs2.chmodSync)(path, 384);
   return path;
-}
-function fetchAllGiteaComments(baseUrl, token) {
-  const allComments = [];
-  let page = 1;
-  const limit = 50;
-  while (page <= MAX_PAGES) {
-    const sep = baseUrl.includes("?") ? "&" : "?";
-    const url = `${baseUrl}${sep}page=${page}&limit=${limit}`;
-    const hdrs = { Accept: "application/json" };
-    if (token) hdrs["Authorization"] = `token ${token}`;
-    const raw = curlWithAuth(url, hdrs);
-    const batch = JSON.parse(raw.toString());
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    allComments.push(...batch);
-    if (batch.length < limit) break;
-    page++;
-  }
-  if (page > MAX_PAGES) {
-    console.warn(`Warning: fetchAllGiteaComments hit MAX_PAGES=${MAX_PAGES} limit, some comments may be missed`);
-  }
-  return allComments;
 }
 var HASH_NUM_RE = /(?:^|(?<=[\s(\[{<（"'`>:，、：]))(#)(\d{1,6})(?=[\s)\]}>）"'`,.!?;，。！？、：]|$)/gm;
 var FENCED_CODE_RE = /```[\s\S]*?```/g;
@@ -5410,167 +5402,6 @@ function fetchDiffGitea(prNumber) {
   if (token) headers["Authorization"] = `token ${token}`;
   return curlWithAuth(url, headers, { maxBuffer: 10 * 1024 * 1024 }).toString("utf-8");
 }
-function cleanupErrorComments() {
-  const enabled = process.env.MULTI_REVIEW_CLEANUP_ERROR_COMMENTS || "true";
-  if (enabled.toLowerCase() !== "true") return;
-  const prNumber = resolvePRNumber();
-  if (!prNumber) return;
-  const repo = getRepo();
-  const runId = process.env.GITHUB_RUN_ID || "";
-  if (!repo || !runId) return;
-  if (detectPlatform() === "github") {
-    cleanupErrorCommentsGithub(prNumber, repo, runId);
-  } else {
-    cleanupErrorCommentsGitea(prNumber, repo, runId);
-  }
-}
-var ERROR_RE = /(fatal:|remote:|error:\s*\d{3}|unable to access|Write access|permission denied)/i;
-function cleanupErrorCommentsGithub(prNumber, repo, runId) {
-  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
-  let comments;
-  if (hasGh()) {
-    try {
-      const raw = (0, import_node_child_process2.execFileSync)(
-        "gh",
-        ["api", "--paginate", "-H", "Accept: application/vnd.github+json", `/repos/${repo}/issues/${prNumber}/comments`],
-        { env: { ...process.env }, timeout: 3e4, stdio: "pipe", maxBuffer: 5 * 1024 * 1024 }
-      );
-      const parsed = JSON.parse(raw.toString());
-      if (!Array.isArray(parsed)) {
-        console.error("cleanup-error-comments: unexpected API response format (expected array)");
-        return;
-      }
-      comments = parsed;
-    } catch {
-      console.warn("cleanup-error-comments: gh CLI failed, falling back to REST API");
-      try {
-        comments = listCommentsGithubRest(prNumber, repo);
-      } catch (err) {
-        console.error(`cleanup-error-comments: failed to list comments via REST API: ${formatError(err)}`);
-        return;
-      }
-    }
-  } else {
-    try {
-      comments = listCommentsGithubRest(prNumber, repo);
-    } catch (err) {
-      console.error(`cleanup-error-comments: failed to list comments via REST API: ${formatError(err)}`);
-      return;
-    }
-  }
-  for (const comment of comments) {
-    if (!comment.body) continue;
-    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
-    try {
-      deleteCommentGithub(comment.id, repo);
-      console.log(`Deleted error comment ${comment.id}`);
-    } catch (e) {
-      console.debug(`Failed to delete error comment ${comment.id}: ${formatError(e)}`);
-    }
-  }
-}
-function listCommentsGithubRest(prNumber, repo) {
-  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
-  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-  const baseUrl = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/${prNumber}/comments`;
-  const allComments = [];
-  let page = 1;
-  const perPage = 100;
-  let headerFile;
-  const headerArgs = [];
-  if (token) {
-    headerFile = writeAuthHeader(token, "cleanup-list");
-    headerArgs.push("-H", `@${headerFile}`);
-  }
-  try {
-    while (page <= MAX_PAGES) {
-      const sep = baseUrl.includes("?") ? "&" : "?";
-      const url = `${baseUrl}${sep}page=${page}&per_page=${perPage}`;
-      const curlArgs = ["-sSf", "-H", "Accept: application/vnd.github+json", ...headerArgs, url];
-      const raw = (0, import_node_child_process2.execFileSync)("curl", curlArgs, {
-        timeout: 3e4,
-        stdio: "pipe",
-        maxBuffer: 5 * 1024 * 1024
-      });
-      const batch = JSON.parse(raw.toString());
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      allComments.push(...batch);
-      if (batch.length < perPage) break;
-      page++;
-    }
-    if (page > MAX_PAGES) {
-      console.warn(`Warning: listCommentsGithubRest hit MAX_PAGES=${MAX_PAGES} limit, some comments may be missed`);
-    }
-    return allComments;
-  } finally {
-    if (headerFile) {
-      try {
-        (0, import_node_fs2.unlinkSync)(headerFile);
-      } catch (e) {
-        console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
-      }
-    }
-  }
-}
-function deleteCommentGithub(commentId, repo) {
-  if (hasGh()) {
-    try {
-      (0, import_node_child_process2.execFileSync)("gh", ["api", "-X", "DELETE", `/repos/${repo}/issues/comments/${commentId}`], {
-        env: { ...process.env },
-        timeout: 1e4,
-        stdio: "pipe"
-      });
-      return;
-    } catch (e) {
-      console.debug(`gh delete comment ${commentId} failed, falling back to REST API: ${formatError(e)}`);
-    }
-  }
-  const token = process.env.GITHUB_TOKEN || process.env.MULTI_REVIEW_GITHUB_TOKEN || "";
-  if (!token) {
-    console.warn(`Cannot delete comment ${commentId} via REST API: no token available`);
-    return;
-  }
-  const githubApiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-  const url = `${githubApiUrl.replace(/\/+$/, "")}/repos/${repo}/issues/comments/${commentId}`;
-  const headerFile = writeAuthHeader(token, "cleanup-del");
-  const curlArgs = ["-sSf", "-X", "DELETE", "-H", "Accept: application/vnd.github+json", "-H", `@${headerFile}`, url];
-  try {
-    (0, import_node_child_process2.execFileSync)("curl", curlArgs, { timeout: 1e4, stdio: "pipe" });
-  } finally {
-    try {
-      (0, import_node_fs2.unlinkSync)(headerFile);
-    } catch (e) {
-      console.debug(`Failed to delete temp auth header: ${formatError(e)}`);
-    }
-  }
-}
-function cleanupErrorCommentsGitea(prNumber, repo, runId) {
-  const base = getGiteaApiBase();
-  const token = getGiteaToken();
-  if (!base) return;
-  const runLinkSnippet = `/${repo}/actions/runs/${runId}`;
-  const listUrl = `${base}/repos/${repo}/issues/${prNumber}/comments`;
-  let comments;
-  try {
-    comments = fetchAllGiteaComments(listUrl, token);
-  } catch (err) {
-    console.error(`cleanup-error-comments: failed to list Gitea comments: ${formatError(err)}`);
-    return;
-  }
-  for (const comment of comments) {
-    if (!comment.body) continue;
-    if (!comment.body.includes(runLinkSnippet) || !ERROR_RE.test(comment.body)) continue;
-    try {
-      const delUrl = `${base}/repos/${repo}/issues/comments/${comment.id}`;
-      const delHeaders = {};
-      if (token) delHeaders["Authorization"] = `token ${token}`;
-      curlWithAuth(delUrl, delHeaders, { method: "DELETE", timeout: 1e4 });
-      console.log(`Deleted error comment ${comment.id}`);
-    } catch (e) {
-      console.debug(`Failed to delete Gitea error comment ${comment.id}: ${formatError(e)}`);
-    }
-  }
-}
 var SENSITIVE_ENV_KEYS = /* @__PURE__ */ new Set([
   "GITHUB_TOKEN",
   "ZHIPU_API_KEY",
@@ -5801,10 +5632,22 @@ function parseListItems(body) {
   return items;
 }
 function shouldFailOnSeverity(parsed, failOnSeverity) {
-  if (!parsed || parsed.fallback) return false;
+  if (failOnSeverity === "none") return false;
+  if (!parsed) return true;
+  if (parsed.fallback) return true;
   if (failOnSeverity === "blocking" && parsed.blocking.length > 0) return true;
   if (failOnSeverity === "warning" && (parsed.blocking.length > 0 || parsed.warning.length > 0)) return true;
   return false;
+}
+function findMissingReviewers(reviews) {
+  const missing = [];
+  for (const r of reviews) {
+    if (!r.success || r.content.trim() === "") missing.push(r.reviewer);
+  }
+  return missing;
+}
+function shouldFailOnMissingReviewers(missingReviewers) {
+  return missingReviewers.length > 0;
 }
 
 // src/severity-renderer.ts
@@ -6462,9 +6305,12 @@ async function main() {
       existingSessions,
       skipSessionCleanup: willExportSessions
     });
-    const successCount = reviews.filter((r) => r.success).length;
-    console.log(`Reviews: ${successCount}/${reviews.length} succeeded`);
-    if (successCount === 0) {
+    const missingReviewers = findMissingReviewers(reviews);
+    const successCount = reviews.length - missingReviewers.length;
+    console.log(
+      `Reviews: ${successCount}/${reviews.length} succeeded` + (missingReviewers.length > 0 ? `; missing evidence: ${missingReviewers.join(", ")}` : "")
+    );
+    if (missingReviewers.length === reviews.length) {
       console.error("All reviewers failed");
       return 1;
     }
@@ -6525,12 +6371,13 @@ async function main() {
       }
     }
     postPRComment(comment);
-    try {
-      cleanupErrorComments();
-    } catch (err) {
-      console.warn(`cleanup-error-comments failed (non-fatal): ${err}`);
-    }
     const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
+    if (shouldFailOnMissingReviewers(missingReviewers)) {
+      console.error(
+        `Reviewer evidence missing for: ${missingReviewers.join(", ")} \u2014 failing closed. Treat the absence as a blocking finding; rerun after fixing provider/auth or model availability.`
+      );
+      return 1;
+    }
     if (shouldFailOnSeverity(parsedSeverity, failOn)) {
       const b = parsedSeverity?.blocking.length ?? 0;
       const w = parsedSeverity?.warning.length ?? 0;

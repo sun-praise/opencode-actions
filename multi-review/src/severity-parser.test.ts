@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
-import type { ParsedReview } from "./types.js";
+import { parseSeverity, shouldFailOnSeverity, findMissingReviewers, shouldFailOnMissingReviewers } from "./severity-parser.js";
+import type { ParsedReview, ReviewResult } from "./types.js";
 
 describe("parseSeverity", () => {
   // 1. Standard three-level format (Chinese headings with emoji)
@@ -224,13 +224,29 @@ function makeParsed(overrides: Partial<ParsedReview> = {}): ParsedReview {
 }
 
 describe("shouldFailOnSeverity", () => {
-  it("returns false when parsed is undefined", () => {
-    expect(shouldFailOnSeverity(undefined, "blocking")).toBe(false);
+  // Fail-closed: when the gate is armed and we have no parsed output
+  // (coordinator crashed) we cannot certify the merge — fail.
+  it("returns true when parsed is undefined and gate is armed", () => {
+    expect(shouldFailOnSeverity(undefined, "blocking")).toBe(true);
+    expect(shouldFailOnSeverity(undefined, "warning")).toBe(true);
   });
 
-  it("returns false when fallback is true", () => {
+  it("returns false when parsed is undefined and gate is opted out", () => {
+    expect(shouldFailOnSeverity(undefined, "none")).toBe(false);
+  });
+
+  // Fail-closed: when the gate is armed and the coordinator output could
+  // not be parsed into severity headings (fallback=true), we cannot tell
+  // whether blocking/warning issues exist — fail. Issue #280.
+  it("returns true when fallback is true and gate is armed", () => {
     const parsed = makeParsed({ fallback: true, blocking: ["SQL injection"] });
-    expect(shouldFailOnSeverity(parsed, "blocking")).toBe(false);
+    expect(shouldFailOnSeverity(parsed, "blocking")).toBe(true);
+    expect(shouldFailOnSeverity(parsed, "warning")).toBe(true);
+  });
+
+  it("returns false when fallback is true and gate is opted out", () => {
+    const parsed = makeParsed({ fallback: true, blocking: ["SQL injection"] });
+    expect(shouldFailOnSeverity(parsed, "none")).toBe(false);
   });
 
   it("returns false when failOnSeverity is 'none'", () => {
@@ -261,5 +277,72 @@ describe("shouldFailOnSeverity", () => {
   it("returns false for 'warning' when only suggestions exist", () => {
     const parsed = makeParsed({ suggestion: ["rename variable"] });
     expect(shouldFailOnSeverity(parsed, "warning")).toBe(false);
+  });
+});
+
+// ReviewResult factory for the missing-reviewer tests below. Keeping it
+// minimal — only the fields the helpers actually read.
+function makeReview(overrides: Partial<ReviewResult> = {}): ReviewResult {
+  return {
+    reviewer: "r",
+    content: "ok",
+    success: true,
+    ...overrides,
+  };
+}
+
+describe("findMissingReviewers", () => {
+  it("returns an empty list when every reviewer produced usable content", () => {
+    const reviews = [
+      makeReview({ reviewer: "quality", content: "looks good" }),
+      makeReview({ reviewer: "security", content: "no vulns" }),
+    ];
+    expect(findMissingReviewers(reviews)).toEqual([]);
+  });
+
+  it("flags reviewers whose success=false (litellm/auth/timeout failure)", () => {
+    const reviews = [
+      makeReview({ reviewer: "quality", content: "looks good" }),
+      makeReview({ reviewer: "security", success: false, content: "", error: "401" }),
+    ];
+    expect(findMissingReviewers(reviews)).toEqual(["security"]);
+  });
+
+  it("flags reviewers whose success=true but content is empty", () => {
+    // The session returned without throwing but produced no assistant text —
+    // the orchestrator must NOT silently treat this as a pass.
+    const reviews = [
+      makeReview({ reviewer: "quality", content: "ok" }),
+      makeReview({ reviewer: "security", content: "" }),
+      makeReview({ reviewer: "performance", content: "   \n  " }),
+    ];
+    expect(findMissingReviewers(reviews)).toEqual(["security", "performance"]);
+  });
+
+  it("preserves the input order of the missing names", () => {
+    const reviews = [
+      makeReview({ reviewer: "a", success: false }),
+      makeReview({ reviewer: "b", content: "ok" }),
+      makeReview({ reviewer: "c", success: false }),
+    ];
+    expect(findMissingReviewers(reviews)).toEqual(["a", "c"]);
+  });
+});
+
+describe("shouldFailOnMissingReviewers", () => {
+  it("returns false when the list is empty", () => {
+    expect(shouldFailOnMissingReviewers([])).toBe(false);
+  });
+
+  it("returns true when any reviewer is missing", () => {
+    expect(shouldFailOnMissingReviewers(["security"])).toBe(true);
+  });
+
+  // Infrastructure failures are NOT a severity opinion — they fail closed
+  // regardless of failOnSeverity. The function takes no severity argument
+  // precisely so this stays structural, not configurable.
+  it("is not gated by failOnSeverity (single source of truth is the list)", () => {
+    expect(shouldFailOnMissingReviewers(["x"])).toBe(true);
+    expect(shouldFailOnMissingReviewers(["x", "y"])).toBe(true);
   });
 });

@@ -16,6 +16,7 @@ Your task is to synthesize them into a single deduplicated report.
 4. 保留领域特定见解（如安全发现只来自安全 reviewer）/ Preserve domain-specific insights (e.g., security findings from security reviewer only)
 5. 使用最严重发现的决策作为最终决策 / Use the most severe finding as the final decision
 6. 只报告当前代码中仍存在的问题 / Only report issues that still exist in the current code
+7. **缺席 reviewer / Missing reviewers**：若下方"⚠️ MISSING REVIEWERS"列表非空，缺失 reviewer 的证据视为**阻塞项**。你**必须**在第一行输出 CANNOT MERGE，并在"### 🔴 阻塞项 / Blocking Issues"中明确列出每个缺失 reviewer 及失败原因（如有）。缺失证据**不可**被解释为"无问题"。/ If any reviewer is listed as missing below, treat the absence as a **blocking finding**. You **MUST** output CANNOT MERGE on the first line and list each missing reviewer (with its failure reason if available) under "### 🔴 阻塞项 / Blocking Issues". Missing evidence **MUST NOT** be interpreted as "no issues".
 
 以下是各 reviewer 的审查结果：
 
@@ -41,6 +42,33 @@ function extractText(messages: Array<{ info: { role: string }; parts: Array<{ ty
     .flatMap((m) => m.parts.filter((p): p is { type: "text"; text: string } => p.type === "text"))
     .map((p) => p.text)
     .join("\n");
+}
+
+/**
+ * Build a structured notice listing reviewers that produced no usable
+ * output. Inserted into the coordinator prompt so the LLM treats the
+ * absence as a blocking finding (rule 7 of DEFAULT_COORDINATOR_PROMPT).
+ * Returns an empty string when every reviewer produced usable output.
+ *
+ * "Missing" matches `findMissingReviewers` semantics in severity-parser.ts:
+ * success=false OR (success=true AND content is empty/whitespace).
+ */
+function buildMissingReviewersNotice(reviews: ReviewResult[]): string {
+  const lines: string[] = [];
+  let anyMissing = false;
+  for (const r of reviews) {
+    if (r.success && r.content.trim() !== "") continue;
+    anyMissing = true;
+    const reason = r.success
+      ? "session returned but produced no assistant text"
+      : r.error ?? "unknown failure";
+    lines.push(`- ${r.reviewer}: ${reason}`);
+  }
+  if (!anyMissing) return "";
+  return (
+    "⚠️ MISSING REVIEWERS / 缺席 reviewer（缺失证据视为阻塞项 / treat absence as a blocking finding）：\n" +
+    lines.join("\n")
+  );
 }
 
 function buildReviewerPrompt(
@@ -163,8 +191,16 @@ export async function runCoordinator(
     .map((r) => `## ${r.reviewer}\n${r.success ? r.content : `（失败: ${r.error}）`}`)
     .join("\n\n---\n\n");
 
+  // Surface missing reviewers as a hard, structured header the coordinator
+  // MUST act on (rule 7 in DEFAULT_COORDINATOR_PROMPT). Issue #280: a partial
+  // reviewer failure used to look like a clean pass because the coordinator
+  // was never told the missing reviewers were evidence gaps.
+  const missingNotice = buildMissingReviewersNotice(reviews);
+
   const promptTemplate = opts.coordinatorPrompt || DEFAULT_COORDINATOR_PROMPT;
-  const fullPrompt = promptTemplate.split("{{REVIEWS}}").join(reviewsText);
+  const fullPrompt = missingNotice
+    ? promptTemplate.split("{{REVIEWS}}").join(missingNotice + "\n\n" + reviewsText)
+    : promptTemplate.split("{{REVIEWS}}").join(reviewsText);
 
   let sessionId: string | undefined;
   try {
