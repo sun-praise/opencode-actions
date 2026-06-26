@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.2.1] - 2026-06-26
+
+### Fixed
+- **multi-review**: fail-closed on reviewer/coordinator failure (#280, #282). Two fail-open paths previously let multi-review emit CAN MERGE when evidence was missing:
+  - A reviewer whose `session.prompt` threw (litellm/provider outage, 401/403, timeout) was marked `success: false`, but only `successCount === 0` aborted. The coordinator was fed `（失败: ...）` text without being told that a missing reviewer must block the verdict, and routinely returned CAN MERGE.
+  - `shouldFailOnSeverity` treated `parsed === undefined` (coordinator crashed) and `parsed.fallback === true` (unparseable output) as "no issues found" → returned `false` → severity gate never fired.
+
+  Now fail-closed at three layers: `shouldFailOnSeverity` returns `true` when `parsed` is undefined or `fallback` is true and the gate is armed; the coordinator catch path synthesizes a CANNOT MERGE `ParsedReview` via `synthesizeCoordinatorFailureSeverity`; and any reviewer with `success: false` **or empty content** forces `decision = "CANNOT MERGE"` and injects the missing reviewer name(s) under Blocking Issues via `applyFailedReviewerOverride`. The coordinator prompt also gains rule 7 mirroring this. Verified via the v4.2.0 dogfood run, which reproduced the fail-open bug (all reviewers 0 tokens → "✅ 可合并"), and the @main dogfood on PR #284 which correctly emitted CANNOT MERGE with all reviewers reporting.
 
 ## [4.2.0] - 2026-06-26
 
