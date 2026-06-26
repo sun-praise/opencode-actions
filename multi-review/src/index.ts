@@ -4,11 +4,11 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadReviewers, resolveModel, env, intEnv } from "./reviewers.js";
-import { runParallelReviewers, runCoordinator, buildFallbackComment, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
+import { runParallelReviewers, runCoordinator, buildReviewerDetails, cleanupAllSessions } from "./orchestrator.js";
 import { formatCostTable } from "./cost-formatter.js";
 import { fetchPRDiff, resolvePRNumber, postPRComment, cleanupErrorComments, parseExtraEnv } from "./platform.js";
 import { filterDiff } from "./diff-filter.js";
-import { parseSeverity, shouldFailOnSeverity } from "./severity-parser.js";
+import { parseSeverity, shouldFailOnSeverity, synthesizeCoordinatorFailureSeverity, applyFailedReviewerOverride } from "./severity-parser.js";
 import { renderSeverityComment } from "./severity-renderer.js";
 import { loadReviewContext, saveReviewContext, formatPreviousContext, loadReviewBundles, saveReviewBundles } from "./context-cache.js";
 import { exportSession } from "./opencode-bundle.js";
@@ -228,7 +228,7 @@ async function main(): Promise<number> {
 
     // 6. Run coordinator
     let comment: string;
-    let parsedSeverity: ParsedReview | undefined;
+    let parsedSeverity: ParsedReview;
     let coordinatorResult: CoordinatorResult | undefined;
     try {
       coordinatorResult = await runCoordinator(client, reviews, {
@@ -239,17 +239,31 @@ async function main(): Promise<number> {
         // Keep coordinator session alive for v2 export (see willExportSessions).
         skipSessionCleanup: willExportSessions,
       });
-      // Parse severity from coordinator output
       parsedSeverity = parseSeverity(coordinatorResult.content);
-      const reviewerDetails = buildReviewerDetails(reviews);
-      const costTable = formatCostTable(reviews, coordinatorResult);
-      comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
-      console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
-      const costTable = formatCostTable(reviews);
-      comment = buildFallbackComment(reviews) + "\n" + costTable;
+      // Fail-closed (#280): synthesize CANNOT MERGE via pure helper so the
+      // severity gate fires and the PR comment carries an explicit verdict
+      // instead of a raw dump that looks like a pass.
+      coordinatorResult = undefined;
+      parsedSeverity = synthesizeCoordinatorFailureSeverity(err);
     }
+
+    // Fail-closed override (#280): a reviewer that produced no output is
+    // missing evidence, not a clean bill of health. Force CANNOT MERGE and
+    // surface the missing reviewer(s) under Blocking Issues, regardless of
+    // what the coordinator said. The orchestrator marks failed reviewers
+    // with success=false; this override is the hard guarantee that the
+    // final verdict can never be CAN MERGE when evidence is incomplete.
+    const failedReviewerNames = reviews.filter((r) => !r.success || r.content.trim() === "").map((r) => r.reviewer);
+    applyFailedReviewerOverride(parsedSeverity, failedReviewerNames);
+
+    const reviewerDetails = buildReviewerDetails(reviews);
+    const costTable = coordinatorResult
+      ? formatCostTable(reviews, coordinatorResult)
+      : formatCostTable(reviews);
+    comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
+    console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
 
     // 7. Persist review context for the same PR (best-effort)
     if (prNumber) {
@@ -311,8 +325,8 @@ async function main(): Promise<number> {
     // 10. Severity gate
     const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
     if (shouldFailOnSeverity(parsedSeverity, failOn)) {
-      const b = parsedSeverity?.blocking.length ?? 0;
-      const w = parsedSeverity?.warning.length ?? 0;
+      const b = parsedSeverity.blocking.length;
+      const w = parsedSeverity.warning.length;
       console.error(`Severity gate: ${b} blocking + ${w} warning issue(s) found — failing.`);
       return 1;
     }

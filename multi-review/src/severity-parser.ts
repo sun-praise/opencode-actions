@@ -115,8 +115,62 @@ export function shouldFailOnSeverity(
   parsed: ParsedReview | undefined,
   failOnSeverity: string,
 ): boolean {
-  if (!parsed || parsed.fallback) return false;
+  if (failOnSeverity === "none") return false;
+  // Fail-closed: coordinator failure (parsed undefined) or unparseable output
+  // (fallback) means we cannot trust a CAN MERGE verdict — treat as failure
+  // whenever the severity gate is armed. See issue #280.
+  if (!parsed || parsed.fallback) return true;
   if (failOnSeverity === "blocking" && parsed.blocking.length > 0) return true;
   if (failOnSeverity === "warning" && (parsed.blocking.length > 0 || parsed.warning.length > 0)) return true;
   return false;
+}
+
+/**
+ * Synthesize a CANNOT MERGE severity for the coordinator-failure path (#280).
+ *
+ * When `runCoordinator` throws, there is no parsed output to trust. Rather
+ * than leaving `parsedSeverity` undefined (which previously fell through to
+ * a raw-text fallback comment that looked like a pass), build an explicit
+ * CANNOT MERGE verdict so the severity gate fires and the posted comment
+ * carries an unambiguous decision line.
+ *
+ * Pure function — no env access, no side effects.
+ */
+export function synthesizeCoordinatorFailureSeverity(err: unknown): ParsedReview {
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    decision: "CANNOT MERGE",
+    summary: `Coordinator 失败，无法合成结论 / Coordinator failed: ${message}`,
+    blocking: ["Coordinator 自身失败，无法合成结论 / Coordinator itself failed, no synthesized verdict"],
+    warning: [],
+    suggestion: [],
+    fallback: false,
+    rawText: "",
+  };
+}
+
+/**
+ * Force CANNOT MERGE when any reviewer failed to produce output (#280).
+ *
+ * A reviewer that produced no content is missing evidence, not a clean bill
+ * of health. Regardless of what the coordinator (or the synthesized
+ * coordinator-failure severity) said, override the decision to CANNOT MERGE
+ * and surface the missing reviewer name(s) under Blocking Issues. This is
+ * the hard programmatic guarantee that the final verdict can never be CAN
+ * MERGE when evidence is incomplete.
+ *
+ * Mutates the input `parsed` in place — call sites do not use the return
+ * value. Pure otherwise — no env access, no side effects.
+ */
+export function applyFailedReviewerOverride(
+  parsed: ParsedReview,
+  failedReviewerNames: string[],
+): void {
+  if (failedReviewerNames.length === 0) return;
+  parsed.decision = "CANNOT MERGE";
+  parsed.fallback = false;
+  const note = `Reviewer 缺席（未能完成审查）/ Reviewer(s) failed to complete: ${failedReviewerNames.join(", ")}`;
+  if (!parsed.blocking.includes(note)) {
+    parsed.blocking.push(note);
+  }
 }

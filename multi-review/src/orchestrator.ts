@@ -16,6 +16,7 @@ Your task is to synthesize them into a single deduplicated report.
 4. 保留领域特定见解（如安全发现只来自安全 reviewer）/ Preserve domain-specific insights (e.g., security findings from security reviewer only)
 5. 使用最严重发现的决策作为最终决策 / Use the most severe finding as the final decision
 6. 只报告当前代码中仍存在的问题 / Only report issues that still exist in the current code
+7. 若任一 reviewer 内容标注为"（失败: ...）"或内容为空，该 reviewer 视为缺席——最终决策必须为"不可合并 / CANNOT MERGE"，并在阻塞项注明缺失的 reviewer 名称 / If any reviewer's content shows "（失败: ...）" (failed) or is empty, that reviewer counts as missing — the final decision MUST be "CANNOT MERGE" and the missing reviewer name(s) MUST be listed under Blocking Issues
 
 以下是各 reviewer 的审查结果：
 
@@ -220,14 +221,6 @@ export async function runCoordinator(
     // skipSessionCleanup: leave the sessionID in activeSessions so the
     // caller can call cleanupAllSessions() after `opencode export` runs.
   }
-}
-
-export function buildFallbackComment(reviews: ReviewResult[]): string {
-  const parts = reviews.map((r) => {
-    if (r.success) return `## ${r.reviewer}\n${r.content}`;
-    return `## ${r.reviewer}\n（审查失败: ${r.error}）`;
-  });
-  return "**Multi-Review (fallback — coordinator failed)**\n\n" + parts.join("\n\n---\n\n");
 }
 
 export function buildReviewerDetails(reviews: ReviewResult[]): string {
