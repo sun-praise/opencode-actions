@@ -280,6 +280,132 @@ describe("orchestrator: runParallelReviewers", { concurrency: false }, () => {
     await cleanupAllSessions(client);
     await cleanupAllSessions(client);
   });
+
+  it("retries transient fetch failures on a fresh session, then succeeds", async () => {
+    // session.prompt throws "fetch failed" on the first call only.
+    let promptCalls = 0;
+    const createdSessions: string[] = [];
+    const deletedSessions: string[] = [];
+    let counter = 0;
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_${++counter}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(args: any) {
+          promptCalls++;
+          if (promptCalls === 1) {
+            throw new Error("fetch failed");
+          }
+          return { data: { info: undefined } } as any;
+        },
+        async messages(args: any) {
+          const id = args.path?.id ?? "";
+          return {
+            data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: `ok ${id}` }] }],
+          } as any;
+        },
+        async delete(args: any) {
+          deletedSessions.push(args.path?.id);
+          return { data: undefined } as any;
+        },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      retryBackoffMs: 0, // skip the wait in tests
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, true);
+    assert.ok(results[0].content?.includes("ok "), `expected recovered content, got: ${results[0].content}`);
+    // Two sessions created (first failed, second succeeded).
+    assert.strictEqual(createdSessions.length, 2);
+    // The failed first session was torn down; the successful second one
+    // was cleaned up too (skipSessionCleanup default false).
+    assert.deepStrictEqual(deletedSessions.sort(), createdSessions.slice().sort());
+    // Result sessionID is the session that actually produced the review.
+    assert.strictEqual(results[0].sessionID, createdSessions[1]);
+  });
+
+  it("gives up after REVIEWER_MAX_ATTEMPTS persistent transient failures", async () => {
+    const createdSessions: string[] = [];
+    const deletedSessions: string[] = [];
+    let counter = 0;
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_${++counter}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(_args: any) { throw new Error("fetch failed"); },
+        async messages(_args: any) { return { data: [] } as any; },
+        async delete(args: any) {
+          deletedSessions.push(args.path?.id);
+          return { data: undefined } as any;
+        },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      retryBackoffMs: 0,
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, false);
+    assert.ok(results[0].error?.includes("fetch failed"));
+    // 3 attempts → 3 sessions created, all torn down.
+    assert.strictEqual(createdSessions.length, 3);
+    assert.deepStrictEqual(deletedSessions.sort(), createdSessions.slice().sort());
+  });
+
+  it("does not retry non-transient errors (e.g. model-side failure)", async () => {
+    const createdSessions: string[] = [];
+    let counter = 0;
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_${++counter}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(_args: any) { throw new Error("context length exceeded"); },
+        async messages(_args: any) { return { data: [] } as any; },
+        async delete(_args: any) { return { data: undefined } as any; },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      retryBackoffMs: 0,
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, false);
+    assert.ok(results[0].error?.includes("context length exceeded"));
+    // Non-transient → exactly one attempt, one session.
+    assert.strictEqual(createdSessions.length, 1);
+  });
 });
 
 describe("orchestrator: runCoordinator", { concurrency: false }, () => {
