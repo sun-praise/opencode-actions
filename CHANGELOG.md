@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [4.2.0] - 2026-06-26
+
+### Added
+- **multi-review**: true cross-runner opencode session resume via v2 cache bundles. Each persona's session is serialized with `opencode export`, restored on the next runner via `opencode import`, then resumed with `client.session.prompt(existingSessionID, newDiff)` so the LLM can hit prompt-cache / KV-cache paths that v1's flat text-blob replay couldn't (#274).
+- **review-context-server**: new `/context/o/r/p/v2` route stores `.v2.json` so v1 and v2 bundles coexist for the same PR during the rollout window. 16 MiB body cap (returns 413). Stricter `prNumber` validation and `AbortSignal.timeout(5_000)` on every HTTP call.
+- **multi-review**: `existingSessions` / `skipSessionCleanup` orchestrator options and per-run `XDG_DATA_HOME` isolation for the v2 export → import → resume pipeline.
+
+### Fixed
+- **multi-review**: v2 session-resume bugs found via dogfood e2e (#276):
+  - `skipSessionCleanup` was gated on `!!tempDataHome` (only set when resuming), so on a first run every reviewer/coordinator session was deleted in the orchestrator `finally` *before* step 7b could export it — no v2 bundles were saved and resume never kicked in. Now gated on `Boolean(prNumber)` via the explicit `willExportSessions` flag.
+  - `opencode export` truncated its stdout when it was a Node pipe (~180 KB emitted for a multi-MB session, exit 0), so every persona export failed with `Unterminated string in JSON`. Redirected stdout to a regular file via a temp fd (same code path as `opencode export > file`), plus a `settled` state lock, 60s `EXPORT_TIMEOUT_MS` with SIGKILL, and `0o600` temp-file permissions.
+  - `runOpencode` error messages now surface stdout (truncated to `MAX_ERROR_DUMP=1000`) alongside stderr — opencode prints the real failure reason to stdout, which was previously discarded.
+- **multi-review**: `orchestrator.ts` finally block no longer removes sessionIDs from the `activeSessions` set when `skipSessionCleanup: true`, which broke `cleanupAllSessions` for the v2 export path (#274).
+
 ## [4.1.0] - 2026-06-24
 
 ### Added
