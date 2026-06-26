@@ -25,6 +25,16 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 - Single `opencode serve` instance shared across sessions (one MCP cold start)
 - Skips forked pull requests by default (no secrets exposed)
 
+## Fail-closed verdicts
+
+When evidence is incomplete, the final verdict is forced to **CANNOT MERGE** rather than silently passing:
+
+- If any reviewer fails (provider error, timeout, empty output), its name is listed under Blocking Issues and the decision is overridden to CANNOT MERGE regardless of what the coordinator synthesised.
+- If the coordinator itself crashes, a synthetic CANNOT MERGE verdict is produced instead of falling through to a raw-text dump.
+- If the severity gate is armed (`fail-on-severity` ≠ `none`), an unparseable coordinator output (fallback mode) fails the run instead of being treated as "no issues found".
+
+This prevents a reviewer or provider outage from greenlighting a PR that was never actually reviewed.
+
 ## Custom reviewer personas
 
 You can add your own reviewer personas by placing `.yaml` or `.yml` files in the target repository's `.github/reviewers/` directory. Each file must contain `name` and `prompt` fields:
