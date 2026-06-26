@@ -25,22 +25,6 @@ Part of [`sun-praise/opencode-actions`](https://github.com/sun-praise/opencode-a
 - Single `opencode serve` instance shared across sessions (one MCP cold start)
 - Skips forked pull requests by default (no secrets exposed)
 
-## Session resume (cross-runner)
-
-By default every run starts each reviewer from a blank session, so re-pushing to the same PR re-reads the entire diff history. multi-review can instead **resume** each persona's previous opencode session so only the new diff is processed:
-
-- After a run, each reviewer's session is exported (`opencode export`) into a bundle and persisted for that PR.
-- On the next run for the same PR, the bundles are imported (`opencode import`) into a fresh, isolated opencode DB and the reviewers continue their existing sessions — true session continuation rather than re-feeding flattened history.
-- Storage backends (picked automatically):
-  - **HTTP cache server** when `context-cache-url` is set — a mutable, runner-shared store (see [`review-context-server`](../review-context-server)).
-  - **GitHub Actions cache** (default) — falls back to the immutable `actions/cache` with per-PR `restore-keys`, so no extra infra is required.
-
-Resume is transparent: if no bundle exists for a PR (first run, cache miss, or import failure) the reviewer simply starts a new session as before.
-
-> Requires opencode ≥ 1.17 (the `opencode export` / `opencode import` CLI). Older versions skip resume silently.
-
-Resume stores the post-run session state per PR; the storage is rewritten (not appended) each run, so payload size stays bounded regardless of how many times a PR is re-pushed.
-
 ## Custom reviewer personas
 
 You can add your own reviewer personas by placing `.yaml` or `.yml` files in the target repository's `.github/reviewers/` directory. Each file must contain `name` and `prompt` fields:
@@ -78,8 +62,6 @@ prompt: |
 | `extra-env` | empty | Extra environment variables (multi-line `KEY=VALUE` pairs) |
 | `extra-env-allow-sensitive` | `false` | Allow `extra-env` to override sensitive runtime variables (with warning) |
 | `cleanup-error-comments` | `true` | Auto-delete error comments after a failed run |
-| `context-cache-url` | empty | URL of a review-context cache server; when set, session bundles are persisted via HTTP instead of GitHub Actions cache |
-| `context-cache-token` | empty | Bearer token for the review-context cache server |
 
 Setup-related inputs from [`setup-opencode`](https://github.com/sun-praise/opencode-actions/tree/main/setup-opencode) (`install-url`, `install-dir`, `xdg-cache-home`, `cache`, `cache-key`, `install-attempts`, `allow-preinstalled`, `version`) are also accepted.
 
