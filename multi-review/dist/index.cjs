@@ -4785,6 +4785,7 @@ Your task is to synthesize them into a single deduplicated report.
 4. \u4FDD\u7559\u9886\u57DF\u7279\u5B9A\u89C1\u89E3\uFF08\u5982\u5B89\u5168\u53D1\u73B0\u53EA\u6765\u81EA\u5B89\u5168 reviewer\uFF09/ Preserve domain-specific insights (e.g., security findings from security reviewer only)
 5. \u4F7F\u7528\u6700\u4E25\u91CD\u53D1\u73B0\u7684\u51B3\u7B56\u4F5C\u4E3A\u6700\u7EC8\u51B3\u7B56 / Use the most severe finding as the final decision
 6. \u53EA\u62A5\u544A\u5F53\u524D\u4EE3\u7801\u4E2D\u4ECD\u5B58\u5728\u7684\u95EE\u9898 / Only report issues that still exist in the current code
+7. \u82E5\u4EFB\u4E00 reviewer \u5185\u5BB9\u6807\u6CE8\u4E3A"\uFF08\u5931\u8D25: ...\uFF09"\u6216\u5185\u5BB9\u4E3A\u7A7A\uFF0C\u8BE5 reviewer \u89C6\u4E3A\u7F3A\u5E2D\u2014\u2014\u6700\u7EC8\u51B3\u7B56\u5FC5\u987B\u4E3A"\u4E0D\u53EF\u5408\u5E76 / CANNOT MERGE"\uFF0C\u5E76\u5728\u963B\u585E\u9879\u6CE8\u660E\u7F3A\u5931\u7684 reviewer \u540D\u79F0 / If any reviewer's content shows "\uFF08\u5931\u8D25: ...\uFF09" (failed) or is empty, that reviewer counts as missing \u2014 the final decision MUST be "CANNOT MERGE" and the missing reviewer name(s) MUST be listed under Blocking Issues
 
 \u4EE5\u4E0B\u662F\u5404 reviewer \u7684\u5BA1\u67E5\u7ED3\u679C\uFF1A
 
@@ -4953,15 +4954,6 @@ ${r.success ? r.content : `\uFF08\u5931\u8D25: ${r.error}\uFF09`}`).join("\n\n--
       }
     }
   }
-}
-function buildFallbackComment(reviews) {
-  const parts = reviews.map((r) => {
-    if (r.success) return `## ${r.reviewer}
-${r.content}`;
-    return `## ${r.reviewer}
-\uFF08\u5BA1\u67E5\u5931\u8D25: ${r.error}\uFF09`;
-  });
-  return "**Multi-Review (fallback \u2014 coordinator failed)**\n\n" + parts.join("\n\n---\n\n");
 }
 function buildReviewerDetails(reviews) {
   const details = reviews.map((r) => {
@@ -5801,10 +5793,32 @@ function parseListItems(body) {
   return items;
 }
 function shouldFailOnSeverity(parsed, failOnSeverity) {
-  if (!parsed || parsed.fallback) return false;
+  if (failOnSeverity === "none") return false;
+  if (!parsed || parsed.fallback) return true;
   if (failOnSeverity === "blocking" && parsed.blocking.length > 0) return true;
   if (failOnSeverity === "warning" && (parsed.blocking.length > 0 || parsed.warning.length > 0)) return true;
   return false;
+}
+function synthesizeCoordinatorFailureSeverity(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    decision: "CANNOT MERGE",
+    summary: `Coordinator \u5931\u8D25\uFF0C\u65E0\u6CD5\u5408\u6210\u7ED3\u8BBA / Coordinator failed: ${message}`,
+    blocking: ["Coordinator \u81EA\u8EAB\u5931\u8D25\uFF0C\u65E0\u6CD5\u5408\u6210\u7ED3\u8BBA / Coordinator itself failed, no synthesized verdict"],
+    warning: [],
+    suggestion: [],
+    fallback: false,
+    rawText: ""
+  };
+}
+function applyFailedReviewerOverride(parsed, failedReviewerNames) {
+  if (failedReviewerNames.length === 0) return;
+  parsed.decision = "CANNOT MERGE";
+  parsed.fallback = false;
+  const note = `Reviewer \u7F3A\u5E2D\uFF08\u672A\u80FD\u5B8C\u6210\u5BA1\u67E5\uFF09/ Reviewer(s) failed to complete: ${failedReviewerNames.join(", ")}`;
+  if (!parsed.blocking.includes(note)) {
+    parsed.blocking.push(note);
+  }
 }
 
 // src/severity-renderer.ts
@@ -6481,15 +6495,17 @@ async function main() {
         skipSessionCleanup: willExportSessions
       });
       parsedSeverity = parseSeverity(coordinatorResult.content);
-      const reviewerDetails = buildReviewerDetails(reviews);
-      const costTable = formatCostTable(reviews, coordinatorResult);
-      comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
-      console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     } catch (err) {
       console.error(`Coordinator failed: ${err}`);
-      const costTable = formatCostTable(reviews);
-      comment = buildFallbackComment(reviews) + "\n" + costTable;
+      coordinatorResult = void 0;
+      parsedSeverity = synthesizeCoordinatorFailureSeverity(err);
     }
+    const failedReviewerNames = reviews.filter((r) => !r.success || r.content.trim() === "").map((r) => r.reviewer);
+    applyFailedReviewerOverride(parsedSeverity, failedReviewerNames);
+    const reviewerDetails = buildReviewerDetails(reviews);
+    const costTable = coordinatorResult ? formatCostTable(reviews, coordinatorResult) : formatCostTable(reviews);
+    comment = renderSeverityComment(parsedSeverity, costTable + "\n" + reviewerDetails);
+    console.log(`Severity: blocking=${parsedSeverity.blocking.length} warning=${parsedSeverity.warning.length} suggestion=${parsedSeverity.suggestion.length} fallback=${parsedSeverity.fallback}`);
     if (prNumber) {
       const newSessions = reviews.filter((r) => r.success && r.messages && r.messages.length > 0).map((r) => ({ name: r.reviewer, messages: r.messages }));
       if (coordinatorResult?.messages && coordinatorResult.messages.length > 0) {
@@ -6532,8 +6548,8 @@ async function main() {
     }
     const failOn = env("MULTI_REVIEW_FAIL_ON_SEVERITY") || "none";
     if (shouldFailOnSeverity(parsedSeverity, failOn)) {
-      const b = parsedSeverity?.blocking.length ?? 0;
-      const w = parsedSeverity?.warning.length ?? 0;
+      const b = parsedSeverity.blocking.length;
+      const w = parsedSeverity.warning.length;
       console.error(`Severity gate: ${b} blocking + ${w} warning issue(s) found \u2014 failing.`);
       return 1;
     }
