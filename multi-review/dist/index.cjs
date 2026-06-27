@@ -4843,10 +4843,10 @@ function sleep(ms) {
 }
 function isTransientReviewerError(err) {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/timed out after \d+ms/.test(msg)) {
+  if (/\btimed out after \d+ms\b/.test(msg)) {
     return false;
   }
-  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|terminated/i.test(msg);
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|stream terminated|connection terminated/i.test(msg);
 }
 async function runParallelReviewers(client2, reviewers, prDiff, opts) {
   const deadline = Date.now() + opts.globalTimeoutMs;
@@ -4864,7 +4864,14 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
           sessionId = resumedFrom;
         } else {
           if (attempt > 1) {
-            const backoff = backoffBase * 2 ** (attempt - 2);
+            const base = backoffBase * 2 ** (attempt - 2);
+            if (deadline - Date.now() < 3e4 + base) {
+              const giveUpMsg = lastError instanceof Error ? lastError.message : String(lastError);
+              console.error(`[${reviewer.name}] Failed: ${giveUpMsg} (deadline exhausted before retry ${attempt}/${REVIEWER_MAX_ATTEMPTS})`);
+              return { reviewer: reviewer.name, content: "", success: false, error: giveUpMsg, sessionID: lastSessionId };
+            }
+            const jitter = Math.floor(Math.random() * (backoffBase + 1));
+            const backoff = base + jitter;
             const prevMsg = lastError instanceof Error ? lastError.message : String(lastError);
             console.log(`[${reviewer.name}] Retry attempt ${attempt}/${REVIEWER_MAX_ATTEMPTS} after ${backoff}ms (previous: ${prevMsg})...`);
             await sleep(backoff);
@@ -4925,13 +4932,13 @@ async function runParallelReviewers(client2, reviewers, prDiff, opts) {
         if (attempt < REVIEWER_MAX_ATTEMPTS && isTransientReviewerError(err)) {
           continue;
         }
-        const msg2 = err instanceof Error ? err.message : String(err);
-        console.error(`[${reviewer.name}] Failed: ${msg2}`);
-        return { reviewer: reviewer.name, content: "", success: false, error: msg2, sessionID: lastSessionId };
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[${reviewer.name}] Failed: ${msg}`);
+        return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
       }
     }
-    const msg = lastError instanceof Error ? lastError.message : String(lastError);
-    return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
+    const fallbackMsg = lastError instanceof Error ? lastError.message : lastError != null ? String(lastError) : "reviewer failed without a captured error";
+    return { reviewer: reviewer.name, content: "", success: false, error: fallbackMsg, sessionID: lastSessionId };
   });
   return Promise.all(promises);
 }

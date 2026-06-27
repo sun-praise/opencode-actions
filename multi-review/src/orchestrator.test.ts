@@ -406,6 +406,146 @@ describe("orchestrator: runParallelReviewers", { concurrency: false }, () => {
     // Non-transient → exactly one attempt, one session.
     assert.strictEqual(createdSessions.length, 1);
   });
+
+  it("resumes existing session, then on a transient failure drops it and retries on a fresh session (v2 export path)", async () => {
+    // Mirrors index.ts: existingSessions + skipSessionCleanup=true (the
+    // willExportSessions path). First attempt resumes ses_resumed and
+    // hits `fetch failed`; catch must delete that resumed session, then
+    // retry must create a brand-new session that succeeds and survives
+    // (skipSessionCleanup keeps it for export).
+    const createdSessions: string[] = [];
+    const deletedSessions: string[] = [];
+    let counter = 0;
+    let promptCalls = 0;
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_new_${++counter}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(args: any) {
+          promptCalls++;
+          if (promptCalls === 1) {
+            throw new Error("fetch failed");
+          }
+          return { data: { info: undefined } } as any;
+        },
+        async messages(args: any) {
+          return {
+            data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: `ok ${args.path?.id}` }] }],
+          } as any;
+        },
+        async delete(args: any) {
+          deletedSessions.push(args.path?.id);
+          return { data: undefined } as any;
+        },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      existingSessions: new Map([["quality", "ses_resumed"]]),
+      skipSessionCleanup: true,
+      retryBackoffMs: 0,
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, true);
+    // The resumed session was torn down on the failed first attempt…
+    assert.ok(deletedSessions.includes("ses_resumed"), "resumed session must be deleted on transient failure");
+    // …and exactly one fresh session was created for the retry.
+    assert.strictEqual(createdSessions.length, 1);
+    // The surviving sessionID is the fresh one, not the resumed one.
+    assert.strictEqual(results[0].sessionID, createdSessions[0]);
+    assert.notStrictEqual(results[0].sessionID, "ses_resumed");
+    // skipSessionCleanup kept the successful fresh session alive.
+    assert.ok(!deletedSessions.includes(createdSessions[0]), "fresh session must survive (skipSessionCleanup)");
+  });
+
+  it("tears down the session on a non-transient failure even under skipSessionCleanup (contract change)", async () => {
+    // The pre-retry `finally` was gated on !skipSessionCleanup; now a
+    // failed attempt always deletes. A resumed reviewer that dies on a
+    // permanent error must not leak its (half-run) session.
+    const createdSessions: string[] = [];
+    const deletedSessions: string[] = [];
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_${createdSessions.length + 1}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(_args: any) { throw new Error("context length exceeded"); },
+        async messages(_args: any) { return { data: [] } as any; },
+        async delete(args: any) {
+          deletedSessions.push(args.path?.id);
+          return { data: undefined } as any;
+        },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      existingSessions: new Map([["quality", "ses_resumed"]]),
+      skipSessionCleanup: true,
+      retryBackoffMs: 0,
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, false);
+    assert.ok(results[0].error?.includes("context length exceeded"));
+    // Non-transient → exactly one attempt; resumed session was torn down.
+    assert.strictEqual(createdSessions.length, 0);
+    assert.ok(deletedSessions.includes("ses_resumed"), "resumed session must be torn down on non-transient failure");
+  });
+
+  it("does not retry the reviewer's own deadline timeout", async () => {
+    // isTransientReviewerError must exclude our withTimeout deadline
+    // message ("X timed out after Nms"). Retrying an expired global
+    // budget is pointless. This guards the regex against accidental
+    // edits that would make deadline timeouts retriable.
+    const createdSessions: string[] = [];
+    let counter = 0;
+    const client = {
+      session: {
+        async create(_args: any) {
+          const id = `ses_${++counter}`;
+          createdSessions.push(id);
+          return { data: { id } } as any;
+        },
+        async prompt(_args: any) { throw new Error("quality timed out after 60000ms"); },
+        async messages(_args: any) { return { data: [] } as any; },
+        async delete(_args: any) { return { data: undefined } as any; },
+        async get(_args: any) { return { data: {} } as any; },
+        async fork(_args: any) { return { data: { id: "ses_x" } } as any; },
+      },
+      event: { async list() { return { data: [] } as any; } },
+    } as unknown as OpencodeClient;
+
+    const results = await runParallelReviewers(client, [{ name: "quality", prompt: "p" }], "diff", {
+      globalTimeoutMs: 60_000,
+      coordinatorTimeoutMs: 30_000,
+      coordinatorPrompt: "",
+      retryBackoffMs: 0,
+    });
+
+    assert.strictEqual(results.length, 1);
+    assert.strictEqual(results[0].success, false);
+    assert.ok(results[0].error?.includes("timed out after 60000ms"));
+    // Deadline timeout is NOT transient → exactly one attempt.
+    assert.strictEqual(createdSessions.length, 1);
+  });
 });
 
 describe("orchestrator: runCoordinator", { concurrency: false }, () => {

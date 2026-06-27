@@ -111,10 +111,13 @@ function sleep(ms: number): Promise<void> {
  */
 function isTransientReviewerError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/timed out after \d+ms/.test(msg)) {
+  if (/\btimed out after \d+ms\b/.test(msg)) {
     return false;
   }
-  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|terminated/i.test(msg);
+  // `terminated` is intentionally scoped (not bare): a bare `terminated`
+  // would also match content-moderation terminations from the model,
+  // which are permanent, not a retryable network blip.
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|stream terminated|connection terminated/i.test(msg);
 }
 
 export async function runParallelReviewers(
@@ -142,7 +145,23 @@ export async function runParallelReviewers(
           sessionId = resumedFrom;
         } else {
           if (attempt > 1) {
-            const backoff = backoffBase * 2 ** (attempt - 2);
+            const base = backoffBase * 2 ** (attempt - 2);
+            // Deadline-aware: don't burn the global budget on a doomed
+            // retry. If what's left can't fit the backoff sleep plus a
+            // meaningful attempt (>= 30s, matching withTimeout's floor),
+            // give up rather than sleeping into an immediate re-expiry.
+            if (deadline - Date.now() < 30_000 + base) {
+              const giveUpMsg = lastError instanceof Error ? lastError.message : String(lastError);
+              console.error(`[${reviewer.name}] Failed: ${giveUpMsg} (deadline exhausted before retry ${attempt}/${REVIEWER_MAX_ATTEMPTS})`);
+              return { reviewer: reviewer.name, content: "", success: false, error: giveUpMsg, sessionID: lastSessionId };
+            }
+            // Jitter: the original failure mode was N reviewers dying in
+            // the SAME second (one upstream blip); without jitter they'd
+            // all retry in the same second too, re-imposing identical
+            // burst load on the upstream that may trip the same limit.
+            // Spread retries across [base, base + backoffBase].
+            const jitter = Math.floor(Math.random() * (backoffBase + 1));
+            const backoff = base + jitter;
             const prevMsg = lastError instanceof Error ? lastError.message : String(lastError);
             console.log(`[${reviewer.name}] Retry attempt ${attempt}/${REVIEWER_MAX_ATTEMPTS} after ${backoff}ms (previous: ${prevMsg})...`);
             await sleep(backoff);
@@ -215,9 +234,16 @@ export async function runParallelReviewers(
         return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
       }
     }
-    // Unreachable: the loop always returns on success or final failure.
-    const msg = lastError instanceof Error ? lastError.message : String(lastError);
-    return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
+    // Defensive: TS can't prove the for-loop always returns (the body
+    // returns on both success and terminal failure, but a `continue`
+    // path makes control-flow analysis give up). Logically unreachable
+    // — every iteration returns — but keep a well-typed fallback that
+    // never yields the literal string "undefined" if lastError somehow
+    // stayed unset.
+    const fallbackMsg = lastError instanceof Error
+      ? lastError.message
+      : (lastError != null ? String(lastError) : "reviewer failed without a captured error");
+    return { reviewer: reviewer.name, content: "", success: false, error: fallbackMsg, sessionID: lastSessionId };
   });
 
   return Promise.all(promises);
