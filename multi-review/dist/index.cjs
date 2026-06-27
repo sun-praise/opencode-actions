@@ -529,7 +529,7 @@ var require_cross_spawn = __commonJS({
 // node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
   let lastEventId;
-  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
+  const sleep2 = sseSleepFn ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
   const createStream = async function* () {
     let retryDelay = sseDefaultRetryDelay ?? 3e3;
     let attempt = 0;
@@ -624,7 +624,7 @@ var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseVa
           break;
         }
         const backoff = Math.min(retryDelay * 2 ** (attempt - 1), sseMaxRetryDelay ?? 3e4);
-        await sleep(backoff);
+        await sleep2(backoff);
       }
     }
   };
@@ -4836,66 +4836,109 @@ function withTimeout(promise, ms, label) {
     if (timer !== void 0) clearTimeout(timer);
   });
 }
+var REVIEWER_MAX_ATTEMPTS = 3;
+var DEFAULT_RETRY_BACKOFF_MS = 1e3;
+function sleep(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+function isTransientReviewerError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/\btimed out after \d+ms\b/.test(msg)) {
+    return false;
+  }
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|stream terminated|connection terminated/i.test(msg);
+}
 async function runParallelReviewers(client2, reviewers, prDiff, opts) {
   const deadline = Date.now() + opts.globalTimeoutMs;
+  const backoffBase = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
   const promises = reviewers.map(async (reviewer) => {
-    let sessionId;
-    try {
-      const remaining = () => Math.max(3e4, deadline - Date.now());
-      const resumedFrom = opts.existingSessions?.get(reviewer.name);
-      if (resumedFrom) {
-        console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
-        sessionId = resumedFrom;
-      } else {
-        console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
-        const sessionResult = await withTimeout(
-          client2.session.create({ throwOnError: true }),
+    const resumedFrom = opts.existingSessions?.get(reviewer.name);
+    let lastSessionId;
+    let lastError;
+    for (let attempt = 1; attempt <= REVIEWER_MAX_ATTEMPTS; attempt++) {
+      let sessionId;
+      try {
+        const remaining = () => Math.max(3e4, deadline - Date.now());
+        if (attempt === 1 && resumedFrom) {
+          console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
+          sessionId = resumedFrom;
+        } else {
+          if (attempt > 1) {
+            const base = backoffBase * 2 ** (attempt - 2);
+            if (deadline - Date.now() < 3e4 + base) {
+              const giveUpMsg = lastError instanceof Error ? lastError.message : String(lastError);
+              console.error(`[${reviewer.name}] Failed: ${giveUpMsg} (deadline exhausted before retry ${attempt}/${REVIEWER_MAX_ATTEMPTS})`);
+              return { reviewer: reviewer.name, content: "", success: false, error: giveUpMsg, sessionID: lastSessionId };
+            }
+            const jitter = Math.floor(Math.random() * (backoffBase + 1));
+            const backoff = base + jitter;
+            const prevMsg = lastError instanceof Error ? lastError.message : String(lastError);
+            console.log(`[${reviewer.name}] Retry attempt ${attempt}/${REVIEWER_MAX_ATTEMPTS} after ${backoff}ms (previous: ${prevMsg})...`);
+            await sleep(backoff);
+          }
+          console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
+          const sessionResult = await withTimeout(
+            client2.session.create({ throwOnError: true }),
+            remaining(),
+            reviewer.name
+          );
+          sessionId = sessionResult.data.id;
+        }
+        activeSessions.add(sessionId);
+        lastSessionId = sessionId;
+        const promptResult = await withTimeout(
+          client2.session.prompt({
+            path: { id: sessionId },
+            body: {
+              parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }]
+            },
+            throwOnError: true
+          }),
           remaining(),
           reviewer.name
         );
-        sessionId = sessionResult.data.id;
-      }
-      activeSessions.add(sessionId);
-      const promptResult = await withTimeout(
-        client2.session.prompt({
-          path: { id: sessionId },
-          body: {
-            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }]
-          },
-          throwOnError: true
-        }),
-        remaining(),
-        reviewer.name
-      );
-      const messagesResult = await withTimeout(
-        client2.session.messages({ path: { id: sessionId }, throwOnError: true }),
-        remaining(),
-        reviewer.name
-      );
-      const messages = messagesResult.data;
-      const content = extractText(messages);
-      const info = promptResult.data?.info;
-      const cost = info?.cost;
-      const tokens = info?.tokens;
-      if (cost !== void 0) {
-        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
-      } else {
-        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
-      }
-      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[${reviewer.name}] Failed: ${msg}`);
-      return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: sessionId };
-    } finally {
-      if (sessionId && !opts.skipSessionCleanup) {
-        activeSessions.delete(sessionId);
-        try {
-          await client2.session.delete({ path: { id: sessionId } });
-        } catch {
+        const messagesResult = await withTimeout(
+          client2.session.messages({ path: { id: sessionId }, throwOnError: true }),
+          remaining(),
+          reviewer.name
+        );
+        const messages = messagesResult.data;
+        const content = extractText(messages);
+        const info = promptResult.data?.info;
+        const cost = info?.cost;
+        const tokens = info?.tokens;
+        if (cost !== void 0) {
+          console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+        } else {
+          console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
         }
+        if (!opts.skipSessionCleanup) {
+          activeSessions.delete(sessionId);
+          try {
+            await client2.session.delete({ path: { id: sessionId } });
+          } catch {
+          }
+        }
+        return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
+      } catch (err) {
+        lastError = err;
+        if (sessionId) {
+          activeSessions.delete(sessionId);
+          try {
+            await client2.session.delete({ path: { id: sessionId } });
+          } catch {
+          }
+        }
+        if (attempt < REVIEWER_MAX_ATTEMPTS && isTransientReviewerError(err)) {
+          continue;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[${reviewer.name}] Failed: ${msg}`);
+        return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
       }
     }
+    const fallbackMsg = lastError instanceof Error ? lastError.message : lastError != null ? String(lastError) : "reviewer failed without a captured error";
+    return { reviewer: reviewer.name, content: "", success: false, error: fallbackMsg, sessionID: lastSessionId };
   });
   return Promise.all(promises);
 }

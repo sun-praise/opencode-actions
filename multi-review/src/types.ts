@@ -111,6 +111,13 @@ export interface OrchestratorOptions {
    * for any follow-up cleanup.
    */
   skipSessionCleanup?: boolean;
+  /**
+   * Base backoff (ms) for retrying a reviewer on a transient network
+   * error (e.g. undici `fetch failed`). Actual delay is exponential:
+   * base * 2^(attempt-2). Defaults to 1000ms; tests pass 0 to skip the
+   * wait. Only transient errors are retried (see orchestrator.ts).
+   */
+  retryBackoffMs?: number;
 }
 
 // ── Severity parsing ─────────────────────────────────────────────────

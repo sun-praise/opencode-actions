@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **multi-review**: retry transient reviewer failures instead of killing the review on the first blip. Long-running reviewers (reasoning-effort=max) on self-hosted runners were wiped out by undici `fetch failed` when an upstream stream (opencode server → litellm → model) went quiet past ~300s — observed as 4/6 reviewers dying in the same second. The orchestrator now retries transient network errors (`fetch failed`, ECONNRESET, ETIMEDOUT, UND_ERR_*, …) up to 3 times with exponential backoff, creating a fresh session each attempt to avoid partial-history pollution. Backoff is deadline-aware (gives up instead of sleeping into an immediate re-expiry when the global budget is nearly spent) and jittered (`[base, base+backoffBase]`) so that N reviewers that died together don't all retry together and re-trip the same upstream limit. Our own reviewer deadline timeout is excluded (retrying an expired budget is pointless). Non-transient errors (e.g. `context length exceeded`) are still failed immediately. **Contract change**: a failed attempt now always tears down its session, even under `skipSessionCleanup` (half-run sessions are garbage, not exportable) — only successful sessions are preserved for the v2 export path.
+
 ## [4.2.1] - 2026-06-26
 
 ### Fixed

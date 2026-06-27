@@ -78,6 +78,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
 }
 
+/**
+ * Max attempts per reviewer. A transient network blip (see
+ * isTransientReviewerError) triggers up to this many fresh-session retries
+ * before the reviewer is marked failed.
+ */
+const REVIEWER_MAX_ATTEMPTS = 3;
+
+/**
+ * Default base (ms) for exponential backoff between retry attempts
+ * (backoff = base * 2^(attempt-2): 1s, 2s, ...). Overridable via
+ * OrchestratorOptions.retryBackoffMs so tests can pass 0 for speed.
+ */
+const DEFAULT_RETRY_BACKOFF_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Classify an error as transient (worth retrying) vs permanent.
+ *
+ * The opencode SDK surfaces network-level resets as undici's generic
+ * `fetch failed` (ECONNRESET / ETIMEDOUT / UND_ERR_* underneath). On
+ * long-running reviewers (reasoning-effort=max) we observed these wipe
+ * out 4/6 reviewers at the ~300s mark when an upstream stream goes
+ * quiet — a single blip must not kill a whole review.
+ *
+ * Our OWN deadline (withTimeout's "<label> timed out after Nms") is
+ * excluded: it means the global reviewer budget is spent, so retrying
+ * would just immediately re-expire.
+ */
+function isTransientReviewerError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/\btimed out after \d+ms\b/.test(msg)) {
+    return false;
+  }
+  // `terminated` is intentionally scoped (not bare): a bare `terminated`
+  // would also match content-moderation terminations from the model,
+  // which are permanent, not a retryable network blip.
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|UND_ERR|socket hang up|other side closed|request timeout|stream timeout|stream terminated|connection terminated/i.test(msg);
+}
+
 export async function runParallelReviewers(
   client: OpencodeClient,
   reviewers: Reviewer[],
@@ -86,69 +128,122 @@ export async function runParallelReviewers(
 ): Promise<ReviewResult[]> {
   const deadline = Date.now() + opts.globalTimeoutMs;
 
+  const backoffBase = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+
   const promises = reviewers.map(async (reviewer) => {
-    let sessionId: string | undefined;
-    try {
-      const remaining = () => Math.max(30_000, deadline - Date.now());
-      const resumedFrom = opts.existingSessions?.get(reviewer.name);
-      if (resumedFrom) {
-        console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
-        sessionId = resumedFrom;
-      } else {
-        console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
-        const sessionResult = await withTimeout(
-          client.session.create({ throwOnError: true }),
+    const resumedFrom = opts.existingSessions?.get(reviewer.name);
+    let lastSessionId: string | undefined;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= REVIEWER_MAX_ATTEMPTS; attempt++) {
+      let sessionId: string | undefined;
+      try {
+        const remaining = () => Math.max(30_000, deadline - Date.now());
+
+        if (attempt === 1 && resumedFrom) {
+          console.log(`[${reviewer.name}] Resuming existing session ${resumedFrom} (timeout: ${remaining()}ms)...`);
+          sessionId = resumedFrom;
+        } else {
+          if (attempt > 1) {
+            const base = backoffBase * 2 ** (attempt - 2);
+            // Deadline-aware: don't burn the global budget on a doomed
+            // retry. If what's left can't fit the backoff sleep plus a
+            // meaningful attempt (>= 30s, matching withTimeout's floor),
+            // give up rather than sleeping into an immediate re-expiry.
+            if (deadline - Date.now() < 30_000 + base) {
+              const giveUpMsg = lastError instanceof Error ? lastError.message : String(lastError);
+              console.error(`[${reviewer.name}] Failed: ${giveUpMsg} (deadline exhausted before retry ${attempt}/${REVIEWER_MAX_ATTEMPTS})`);
+              return { reviewer: reviewer.name, content: "", success: false, error: giveUpMsg, sessionID: lastSessionId };
+            }
+            // Jitter: the original failure mode was N reviewers dying in
+            // the SAME second (one upstream blip); without jitter they'd
+            // all retry in the same second too, re-imposing identical
+            // burst load on the upstream that may trip the same limit.
+            // Spread retries across [base, base + backoffBase].
+            const jitter = Math.floor(Math.random() * (backoffBase + 1));
+            const backoff = base + jitter;
+            const prevMsg = lastError instanceof Error ? lastError.message : String(lastError);
+            console.log(`[${reviewer.name}] Retry attempt ${attempt}/${REVIEWER_MAX_ATTEMPTS} after ${backoff}ms (previous: ${prevMsg})...`);
+            await sleep(backoff);
+          }
+          console.log(`[${reviewer.name}] Starting review (timeout: ${remaining()}ms)...`);
+          const sessionResult = await withTimeout(
+            client.session.create({ throwOnError: true }),
+            remaining(),
+            reviewer.name,
+          );
+          sessionId = sessionResult.data.id;
+        }
+        activeSessions.add(sessionId);
+        lastSessionId = sessionId;
+
+        const promptResult = await withTimeout(
+          client.session.prompt({
+            path: { id: sessionId },
+            body: {
+              parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }],
+            },
+            throwOnError: true,
+          }),
           remaining(),
           reviewer.name,
         );
-        sessionId = sessionResult.data.id;
+
+        const messagesResult = await withTimeout(
+          client.session.messages({ path: { id: sessionId }, throwOnError: true }),
+          remaining(),
+          reviewer.name,
+        );
+        const messages = messagesResult.data;
+        const content = extractText(messages);
+        const info = promptResult.data?.info;
+        const cost = info?.cost;
+        const tokens = info?.tokens;
+
+        if (cost !== undefined) {
+          console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
+        } else {
+          console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
+        }
+
+        // Success: respect skipSessionCleanup for the live session. The
+        // session is intentionally kept in activeSessions when
+        // skipSessionCleanup is set so the caller can export / later
+        // clean it up via cleanupAllSessions().
+        if (!opts.skipSessionCleanup) {
+          activeSessions.delete(sessionId);
+          try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
+        }
+        return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
+      } catch (err) {
+        lastError = err;
+        // Failed attempt: tear down THIS session unconditionally — even
+        // under skipSessionCleanup we only keep SUCCESSFUL sessions for
+        // export; a half-run session is garbage.
+        if (sessionId) {
+          activeSessions.delete(sessionId);
+          try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
+        }
+
+        if (attempt < REVIEWER_MAX_ATTEMPTS && isTransientReviewerError(err)) {
+          continue; // retry with a fresh session
+        }
+
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[${reviewer.name}] Failed: ${msg}`);
+        return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: lastSessionId };
       }
-      activeSessions.add(sessionId);
-
-      const promptResult = await withTimeout(
-        client.session.prompt({
-          path: { id: sessionId },
-          body: {
-            parts: [{ type: "text", text: buildReviewerPrompt(reviewer.prompt, prDiff, opts.previousContextText) }],
-          },
-          throwOnError: true,
-        }),
-        remaining(),
-        reviewer.name,
-      );
-
-      const messagesResult = await withTimeout(
-        client.session.messages({ path: { id: sessionId }, throwOnError: true }),
-        remaining(),
-        reviewer.name,
-      );
-      const messages = messagesResult.data;
-      const content = extractText(messages);
-      const info = promptResult.data?.info;
-      const cost = info?.cost;
-      const tokens = info?.tokens;
-
-      if (cost !== undefined) {
-        console.log(`[${reviewer.name}] Review complete (${content.length} chars, cost=$${cost.toFixed(4)})`);
-      } else {
-        console.log(`[${reviewer.name}] Review complete (${content.length} chars, no cost data)`);
-      }
-
-      return { reviewer: reviewer.name, content, success: true, cost, tokens, messages, sessionID: sessionId };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[${reviewer.name}] Failed: ${msg}`);
-      return { reviewer: reviewer.name, content: "", success: false, error: msg, sessionID: sessionId };
-    } finally {
-      if (sessionId && !opts.skipSessionCleanup) {
-        activeSessions.delete(sessionId);
-        try { await client.session.delete({ path: { id: sessionId } }); } catch { /* ignore */ }
-      }
-      // skipSessionCleanup: leave the sessionID in activeSessions so the
-      // caller can call cleanupAllSessions() after `opencode export` runs.
-      // The caller's responsibility to either export+cleanup or let it
-      // leak (acceptable for short-lived action runners).
     }
+    // Defensive: TS can't prove the for-loop always returns (the body
+    // returns on both success and terminal failure, but a `continue`
+    // path makes control-flow analysis give up). Logically unreachable
+    // — every iteration returns — but keep a well-typed fallback that
+    // never yields the literal string "undefined" if lastError somehow
+    // stayed unset.
+    const fallbackMsg = lastError instanceof Error
+      ? lastError.message
+      : (lastError != null ? String(lastError) : "reviewer failed without a captured error");
+    return { reviewer: reviewer.name, content: "", success: false, error: fallbackMsg, sessionID: lastSessionId };
   });
 
   return Promise.all(promises);
