@@ -6310,6 +6310,15 @@ var import_node_fs5 = require("fs");
 var import_node_child_process4 = require("child_process");
 var import_node_crypto = require("crypto");
 var import_node_path5 = require("path");
+function withResolvers() {
+  let resolve2;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve2 = res;
+    reject = rej;
+  });
+  return { promise, resolve: resolve2, reject };
+}
 async function restoreSessionBundles(reviewBundles, options) {
   const empty = { existingSessions: /* @__PURE__ */ new Map(), tempDataHome: null };
   if (!reviewBundles || reviewBundles.bundles.length === 0) return empty;
@@ -6323,8 +6332,32 @@ async function restoreSessionBundles(reviewBundles, options) {
     env: { ...process.env, XDG_DATA_HOME: tempDataHome },
     stdio: ["ignore", "pipe", "pipe"]
   });
-  bsProc.on("error", (err) => {
-    console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
+  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } = withResolvers();
+  const MAX_SERVE_OUTPUT = 4096;
+  let serveOutput = "";
+  const appendServe = (text) => {
+    serveOutput += text;
+    if (serveOutput.length > MAX_SERVE_OUTPUT) {
+      serveOutput = serveOutput.slice(serveOutput.length - MAX_SERVE_OUTPUT);
+    }
+  };
+  const onServeData = (chunk) => {
+    appendServe(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+    if (/listening on https?:\/\//i.test(serveOutput)) {
+      readyResolve();
+    }
+  };
+  bsProc.stdout?.on("data", onServeData);
+  bsProc.stderr?.on("data", onServeData);
+  bsProc.stdout?.on("error", readyReject);
+  bsProc.stderr?.on("error", readyReject);
+  bsProc.on("error", (err) => readyReject(err));
+  bsProc.on("exit", (code) => {
+    if (code !== null) {
+      readyReject(new Error(
+        `opencode serve exited ${code} before schema was ready${serveOutput ? `: ${serveOutput.trim().slice(0, 500)}` : ""}`
+      ));
+    }
   });
   const bootstrapAbort = new AbortController();
   const killBootstrap = () => {
@@ -6333,33 +6366,32 @@ async function restoreSessionBundles(reviewBundles, options) {
   bootstrapAbort.signal.addEventListener("abort", killBootstrap);
   const bootstrapTimeoutMs = options.bootstrapTimeoutMs ?? 1e4;
   const bootstrapStartedAt = Date.now();
-  const bootstrapDeadline = bootstrapStartedAt + bootstrapTimeoutMs;
-  while (Date.now() < bootstrapDeadline) {
-    if ((0, import_node_fs5.existsSync)(dbPath)) break;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  bootstrapAbort.abort();
-  if (!(0, import_node_fs5.existsSync)(dbPath)) {
-    console.warn(`v2 resume: schema bootstrap timed out after ${bootstrapTimeoutMs}ms; bundles may fail to import`);
-  } else {
+  const timer = setTimeout(
+    () => readyReject(new Error(`schema bootstrap timed out after ${bootstrapTimeoutMs}ms`)),
+    bootstrapTimeoutMs
+  );
+  try {
+    await readyPromise;
     console.log(`v2 resume: schema bootstrapped in ${Date.now() - bootstrapStartedAt}ms`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const haveDb = (0, import_node_fs5.existsSync)(dbPath) ? "db file exists" : "no db file";
+    console.warn(`v2 resume: ${reason} (${haveDb}); bundles may fail to import`);
+  } finally {
+    clearTimeout(timer);
+    bootstrapAbort.abort();
   }
-  const importResults = await Promise.allSettled(
-    reviewBundles.bundles.map(async (b) => {
+  const existingSessions = /* @__PURE__ */ new Map();
+  for (const b of reviewBundles.bundles) {
+    try {
       const importedId = await importBundle(b.bundle, {
         ...process.env,
         XDG_DATA_HOME: tempDataHome
       });
-      return { name: b.name, sessionID: importedId };
-    })
-  );
-  const existingSessions = /* @__PURE__ */ new Map();
-  for (const r of importResults) {
-    if (r.status === "fulfilled") {
-      existingSessions.set(r.value.name, r.value.sessionID);
-      console.log(`v2 resume: imported bundle for "${r.value.name}" \u2192 ${r.value.sessionID}`);
-    } else {
-      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      existingSessions.set(b.name, importedId);
+      console.log(`v2 resume: imported bundle for "${b.name}" \u2192 ${importedId}`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       console.warn(`v2 resume: failed to import bundle: ${reason}`);
     }
   }
