@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 _Nothing yet._
 
+## [4.2.3] - 2026-06-28
+
+### Fixed
+- **multi-review**: fix v2 session-resume restoring only a fraction of bundles on PRs with many reviewers (#289). On PRs with 7 reviewers, only 2/7 bundles imported successfully — the rest produced empty reviewer output, the coordinator reported "failed to complete", and multi-review forced CANNOT MERGE. Two compounding bugs in `session-resume.ts`:
+  - Bootstrap mistook the `opencode.db` *file* appearing for schema readiness. SQLite creates the file before migrations commit, so `opencode serve` was killed mid-migration, leaving a half-migrated schema.
+  - Concurrent `opencode import` calls (one per bundle, via `Promise.allSettled`) raced the non-idempotent migration DDL (`ALTER TABLE ADD`, `CREATE INDEX`, `INSERT INTO migration`) against the same SQLite DB; 5/7 died with "already exists".
+  - Fix: wait for `opencode serve`'s authoritative `listening on http://` line (printed after all migrations commit) instead of polling the db file, and import bundles serially to eliminate the DDL race. Per-bundle failures remain isolated.
+  - Also: `Promise.withResolvers` replaced with a Node 20-compatible helper (the action's `engines.node` is `>=20`); serve stdout/stderr now bound `error` handlers and capture is capped at the last 4KB.
+
 ## [4.2.2] - 2026-06-27
 
 ### Fixed
