@@ -35,11 +35,13 @@ export interface ResumeOptions {
  *
  *   1. Allocate a temp XDG_DATA_HOME so we don't pollute the runner's
  *      main `~/.local/share/opencode`.
- *   2. Bootstrap the DB schema by running `opencode serve` and polling
- *      for the materialized `opencode.db` file.
- *   3. Import each bundle in parallel — one bad bundle shouldn't
- *      prevent the rest from being restored.
- *   4. Return the resolved name→sessionID map for the orchestrator.
+ *   2. Bootstrap the DB schema by running `opencode serve` and waiting
+ *      for its `listening on http://` ready line (emitted AFTER all
+ *      migrations commit). Polling for `opencode.db` alone is unsafe —
+ *      SQLite creates the file before migrations finish.
+ *   3. Import each bundle SERIALLY. Parallel imports race the
+ *      non-idempotent migration DDL against the same SQLite DB; one
+ *      bad bundle still doesn't block the rest (per-bundle try/catch).
  *
  * On any failure, returns an empty map and null tempDataHome — the
  * caller should fall back to the "no resume, fresh start" path.
@@ -64,26 +66,55 @@ export async function restoreSessionBundles(
   process.env.XDG_DATA_HOME = tempDataHome;
   console.log(`v2 resume: using temp XDG_DATA_HOME=${tempDataHome}`);
 
-  // Bootstrap the DB schema by running `opencode serve` and waiting for
-  // `opencode.db` to materialize on disk. The `opencode import` CLI
-  // requires the schema to exist before it can write session rows.
-  // We poll instead of using a fixed 3s timeout — on a cold runner the
-  // migration can take >1s, and on a warm cache it's instant. A safety
-  // cap protects against a wedged `opencode` binary.
+  // Bootstrap the DB schema. `opencode import` requires a FULLY-migrated
+  // schema before it can write session rows. The authoritative "schema
+  // ready" signal is the `opencode server listening on http://...` line
+  // that `opencode serve` prints AFTER all migrations commit. Polling
+  // for the `opencode.db` file alone is insufficient — SQLite creates
+  // the file before migrations finish, so a file-exists check can leave
+  // us with a half-migrated schema. When the `opencode import` calls
+  // then race the non-idempotent migration DDL (`ALTER TABLE … ADD`,
+  // `CREATE INDEX`, `INSERT INTO migration`), most fail with
+  // "index/column/migration row already exists" — observed in the wild
+  // as `v2 resume: 2/7 bundles restored` and empty reviewer output.
   const dbPath = join(tempDataHome, "opencode", "opencode.db");
   const bin = options.opencodeBin ?? "opencode";
   const bsProc = spawn(bin, ["serve", "--port", "0"], {
     env: { ...process.env, XDG_DATA_HOME: tempDataHome },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  bsProc.on("error", (err) => {
-    console.warn(`v2 resume: opencode serve spawn failed: ${err.message}`);
+
+  // Single promise resolved by the listening line, rejected on spawn
+  // error, premature exit, or timeout. Promise.withResolvers keeps one
+  // resolver wired across multiple event handlers without callback
+  // nesting; later resolve/reject calls on the settled promise are
+  // no-ops, so every handler can call them unconditionally.
+  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } =
+    Promise.withResolvers<void>();
+  let serveOutput = "";
+  const onServeData = (chunk: Buffer | string): void => {
+    serveOutput += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    if (/listening on https?:\/\//i.test(serveOutput)) {
+      readyResolve();
+    }
+  };
+  bsProc.stdout?.on("data", onServeData);
+  bsProc.stderr?.on("data", onServeData);
+  bsProc.on("error", (err) => readyReject(err));
+  bsProc.on("exit", (code) => {
+    if (code !== null) {
+      readyReject(new Error(
+        `opencode serve exited ${code} before schema was ready${
+          serveOutput ? `: ${serveOutput.trim().slice(0, 500)}` : ""
+        }`,
+      ));
+    }
   });
-  // AbortController to guarantee `opencode serve` is killed even if
-  // the function exits before reaching the SIGTERM below (e.g. the
-  // outer flow throws during bundle import). Without this, a leaked
-  // `opencode serve` could pin the temp XDG_DATA_HOME and block the
-  // cleanup in the finally block.
+
+  // AbortController guarantees `opencode serve` is killed even if we
+  // exit early (timeout, or a thrown import later on). Without it a
+  // leaked serve could pin the temp XDG_DATA_HOME and block the
+  // finally cleanup in the caller.
   const bootstrapAbort = new AbortController();
   const killBootstrap = () => {
     if (!bsProc.killed) bsProc.kill("SIGTERM");
@@ -92,36 +123,42 @@ export async function restoreSessionBundles(
 
   const bootstrapTimeoutMs = options.bootstrapTimeoutMs ?? 10_000;
   const bootstrapStartedAt = Date.now();
-  const bootstrapDeadline = bootstrapStartedAt + bootstrapTimeoutMs;
-  while (Date.now() < bootstrapDeadline) {
-    if (existsSync(dbPath)) break;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  bootstrapAbort.abort();
-  if (!existsSync(dbPath)) {
-    console.warn(`v2 resume: schema bootstrap timed out after ${bootstrapTimeoutMs}ms; bundles may fail to import`);
-  } else {
+  const timer = setTimeout(
+    () => readyReject(new Error(`schema bootstrap timed out after ${bootstrapTimeoutMs}ms`)),
+    bootstrapTimeoutMs,
+  );
+
+  try {
+    await readyPromise;
     console.log(`v2 resume: schema bootstrapped in ${Date.now() - bootstrapStartedAt}ms`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const haveDb = existsSync(dbPath) ? "db file exists" : "no db file";
+    // Best-effort fallback for opencode versions that don't emit the
+    // listening line: if the db file at least exists, try the imports
+    // anyway — per-bundle failures are isolated below.
+    console.warn(`v2 resume: ${reason} (${haveDb}); bundles may fail to import`);
+  } finally {
+    clearTimeout(timer);
+    bootstrapAbort.abort();
   }
 
-  // Import each bundle in parallel. Per-bundle failures are isolated —
-  // one bad bundle should not prevent the rest from restoring.
-  const importResults = await Promise.allSettled(
-    reviewBundles.bundles.map(async (b) => {
+  // Import bundles SERIALLY. Even with a fully-migrated schema above,
+  // parallel `opencode import` against the same SQLite DB can race on
+  // WAL write locks and re-trigger migration DDL if any import detects
+  // a stale schema version. Serializing costs a few seconds but makes
+  // the restore deterministic. Per-bundle failures are still isolated.
+  const existingSessions = new Map<string, string>();
+  for (const b of reviewBundles.bundles) {
+    try {
       const importedId = await importBundle(b.bundle, {
         ...process.env,
         XDG_DATA_HOME: tempDataHome,
       });
-      return { name: b.name, sessionID: importedId };
-    }),
-  );
-  const existingSessions = new Map<string, string>();
-  for (const r of importResults) {
-    if (r.status === "fulfilled") {
-      existingSessions.set(r.value.name, r.value.sessionID);
-      console.log(`v2 resume: imported bundle for "${r.value.name}" → ${r.value.sessionID}`);
-    } else {
-      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      existingSessions.set(b.name, importedId);
+      console.log(`v2 resume: imported bundle for "${b.name}" → ${importedId}`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       console.warn(`v2 resume: failed to import bundle: ${reason}`);
     }
   }
