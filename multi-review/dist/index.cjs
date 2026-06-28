@@ -6267,6 +6267,15 @@ var import_node_fs5 = require("fs");
 var import_node_child_process4 = require("child_process");
 var import_node_crypto = require("crypto");
 var import_node_path5 = require("path");
+function withResolvers() {
+  let resolve2;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve2 = res;
+    reject = rej;
+  });
+  return { promise, resolve: resolve2, reject };
+}
 async function restoreSessionBundles(reviewBundles, options) {
   const empty = { existingSessions: /* @__PURE__ */ new Map(), tempDataHome: null };
   if (!reviewBundles || reviewBundles.bundles.length === 0) return empty;
@@ -6280,16 +6289,25 @@ async function restoreSessionBundles(reviewBundles, options) {
     env: { ...process.env, XDG_DATA_HOME: tempDataHome },
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } = Promise.withResolvers();
+  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } = withResolvers();
+  const MAX_SERVE_OUTPUT = 4096;
   let serveOutput = "";
+  const appendServe = (text) => {
+    serveOutput += text;
+    if (serveOutput.length > MAX_SERVE_OUTPUT) {
+      serveOutput = serveOutput.slice(serveOutput.length - MAX_SERVE_OUTPUT);
+    }
+  };
   const onServeData = (chunk) => {
-    serveOutput += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    appendServe(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
     if (/listening on https?:\/\//i.test(serveOutput)) {
       readyResolve();
     }
   };
   bsProc.stdout?.on("data", onServeData);
   bsProc.stderr?.on("data", onServeData);
+  bsProc.stdout?.on("error", readyReject);
+  bsProc.stderr?.on("error", readyReject);
   bsProc.on("error", (err) => readyReject(err));
   bsProc.on("exit", (code) => {
     if (code !== null) {

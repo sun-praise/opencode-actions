@@ -54,6 +54,10 @@ const waitFile = (p, capMs) => {
   }
 };
 if (cmd === "serve") {
+  // OAC_TEST_SERVE_EXIT: simulate 'opencode serve' crashing before the
+  // listening line (covers the bsProc "exit" reject path).
+  const exitCode = process.env.OAC_TEST_SERVE_EXIT;
+  if (exitCode) { process.stderr.write("serve crashed\\n"); process.exit(Number(exitCode)); }
   const xdg = process.env.XDG_DATA_HOME;
   if (xdg) {
     fs.mkdirSync(path.join(xdg, "opencode"), { recursive: true });
@@ -65,8 +69,9 @@ if (cmd === "serve") {
   setTimeout(() => {
     process.stdout.write("opencode server listening on http://127.0.0.1:0\\n");
   }, delay);
-  // Stay alive like a real server until SIGTERM.
-  setInterval(() => {}, 1 << 30);
+  // Stay alive like a real server until SIGTERM. unref() so the keepalive
+  // timer never pins the test process exit.
+  setInterval(() => {}, 1 << 30).unref();
 } else if (cmd === "import") {
   const file = process.argv[3];
   // Key the marker/gate by the session id parsed from the bundle JSON
@@ -75,6 +80,10 @@ if (cmd === "serve") {
   // would make all concurrent imports share one marker.
   let id = "unknown";
   try { id = JSON.parse(fs.readFileSync(file, "utf8")).info.id || id; } catch (e) {}
+  // OAC_TEST_IMPORT_FAIL_IDS: comma-sep session ids whose import should
+  // exit non-zero (covers the per-bundle try/catch isolation path).
+  const failIds = (process.env.OAC_TEST_IMPORT_FAIL_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (failIds.includes(id)) { process.stderr.write("import failed for " + id + "\\n"); process.exit(1); }
   const key = id.replace(/[^A-Za-z0-9_.-]/g, "_");
   const markerDir = process.env.OAC_TEST_MARKER_DIR;
   const gateDir = process.env.OAC_TEST_IMPORT_GATE_DIR;
@@ -239,7 +248,7 @@ describe("session-resume", { concurrency: false }, () => {
     const warns: string[] = [];
     const origWarn = console.warn;
     console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(" ")); };
-    let ctx: Awaited<ReturnType<typeof restoreSessionBundles>> | undefined;
+    let ctx: ResumeContext | undefined;
     try {
       process.env.OAC_TEST_SERVE_DELAY_MS = "500";
       // No IMPORT_GATE_DIR → imports run instantly via the fallback
@@ -254,6 +263,10 @@ describe("session-resume", { concurrency: false }, () => {
         `expected bootstrap timeout warning (proves we waited for the listening line, not the db file); got: ${warns.join(" | ")}`,
       );
       assert.ok(ctx.tempDataHome, "tempDataHome must still be returned for caller cleanup");
+      // The fallback path must still have imported the single bundle —
+      // without this assertion the test would pass even if imports were
+      // skipped entirely after the timeout.
+      assert.strictEqual(ctx.existingSessions.size, 1, "fallback import must succeed after bootstrap timeout");
     } finally {
       console.warn = origWarn;
       fake.restore();
@@ -262,9 +275,93 @@ describe("session-resume", { concurrency: false }, () => {
     }
   });
 
-  it("returns early with empty map when there are no bundles", async () => {
-    const ctx = await restoreSessionBundles(null, { baseTempDir: tmpdir(), prLabel: "empty" });
-    assert.strictEqual(ctx.existingSessions.size, 0);
-    assert.strictEqual(ctx.tempDataHome, null);
+  it("returns early with empty map for null / undefined / empty bundles", async () => {
+    const inputs: Array<ReviewContextV2 | null | undefined> = [
+      null,
+      undefined,
+      { version: 2, repo: "o/r", prNumber: "1", savedAt: "now", bundles: [] },
+    ];
+    for (const input of inputs) {
+      const ctx = await restoreSessionBundles(input, { baseTempDir: tmpdir(), prLabel: "empty" });
+      assert.strictEqual(ctx.existingSessions.size, 0);
+      assert.strictEqual(ctx.tempDataHome, null);
+    }
+  });
+
+  it("survives `opencode serve` spawn failure (missing binary) without throwing", async () => {
+    // Covers the bsProc "error" reject path: a non-existent opencodeBin
+    // makes spawn emit 'error'. restoreSessionBundles must NOT throw —
+    // it logs a warning and falls through to (failing) imports, which
+    // are themselves isolated. The result is an empty map but a real
+    // tempDataHome for the caller to clean up.
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(" ")); };
+    let ctx: ResumeContext | undefined;
+    try {
+      ctx = await restoreSessionBundles(makeBundles(["quality"]), {
+        baseTempDir: tmpdir(),
+        prLabel: "test-spawn-fail",
+        opencodeBin: "/nonexistent/opencode-binary-that-does-not-exist",
+        bootstrapTimeoutMs: 1000,
+      });
+      assert.ok(ctx.tempDataHome, "tempDataHome must still be returned for caller cleanup");
+      assert.strictEqual(ctx.existingSessions.size, 0, "no bundle should import when serve can't start");
+      assert.ok(warns.length > 0, "spawn failure must produce a warning");
+    } finally {
+      console.warn = origWarn;
+      if (ctx?.tempDataHome) rmSync(ctx.tempDataHome, { recursive: true, force: true });
+    }
+  });
+
+  it("survives `opencode serve` crashing before the listening line", async () => {
+    // Covers the bsProc "exit" (non-null code) reject path. The fake
+    // serve exits 1 immediately. restoreSessionBundles must warn and
+    // fall through; imports are attempted via the fallback path.
+    const fake = installFakeOpencode();
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(" ")); };
+    let ctx: ResumeContext | undefined;
+    try {
+      process.env.OAC_TEST_SERVE_EXIT = "1";
+      ctx = await restoreSessionBundles(makeBundles(["quality"]), {
+        baseTempDir: tmpdir(),
+        prLabel: "test-serve-crash",
+        bootstrapTimeoutMs: 1000,
+      });
+      assert.ok(ctx.tempDataHome, "tempDataHome must still be returned for caller cleanup");
+      assert.ok(
+        warns.some((w) => /serve exited 1 before schema was ready/.test(w)),
+        `expected serve-crash warning; got: ${warns.join(" | ")}`,
+      );
+    } finally {
+      console.warn = origWarn;
+      fake.restore();
+      delete process.env.OAC_TEST_SERVE_EXIT;
+      if (ctx?.tempDataHome) rmSync(ctx.tempDataHome, { recursive: true, force: true });
+    }
+  });
+
+  it("isolates per-bundle import failures: one bad bundle doesn't block the rest", async () => {
+    // Covers the per-bundle try/catch in the serial loop. 'security'
+    // is configured to exit 1; the other three must still import.
+    const fake = installFakeOpencode();
+    let ctx: ResumeContext | undefined;
+    try {
+      process.env.OAC_TEST_IMPORT_FAIL_IDS = "ses_src_security";
+      ctx = await restoreSessionBundles(
+        makeBundles(["quality", "security", "performance"]),
+        { baseTempDir: tmpdir(), prLabel: "test-partial-fail" },
+      );
+      assert.strictEqual(ctx.existingSessions.size, 2, "2 of 3 bundles should import despite one failure");
+      assert.ok(ctx.existingSessions.has("quality"));
+      assert.ok(ctx.existingSessions.has("performance"));
+      assert.ok(!ctx.existingSessions.has("security"), "the failing bundle must not appear in the map");
+    } finally {
+      fake.restore();
+      delete process.env.OAC_TEST_IMPORT_FAIL_IDS;
+      if (ctx?.tempDataHome) rmSync(ctx.tempDataHome, { recursive: true, force: true });
+    }
   });
 });

@@ -6,6 +6,20 @@ import { importBundle } from "./opencode-bundle.js";
 import type { ReviewContextV2 } from "./types.js";
 
 /**
+ * Node 20-compatible resolver. `Promise.withResolvers` only lands in
+ * Node 22+, but this action runs on consumer runners that may still be
+ * on Node 20 (`engines.node: ">=20"`). Manual form keeps the same
+ * "one resolver wired across many handlers, later settle calls are
+ * no-ops" guarantee without a runtime version gate.
+ */
+function withResolvers<T>(): { promise: Promise<T>; resolve: (v: T | PromiseLike<T>) => void; reject: (e: unknown) => void } {
+  let resolve!: (v: T | PromiseLike<T>) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+/**
  * Result of attempting to restore previous v2 session bundles into a
  * fresh opencode DB on a (possibly different) runner.
  *
@@ -85,21 +99,33 @@ export async function restoreSessionBundles(
   });
 
   // Single promise resolved by the listening line, rejected on spawn
-  // error, premature exit, or timeout. Promise.withResolvers keeps one
-  // resolver wired across multiple event handlers without callback
-  // nesting; later resolve/reject calls on the settled promise are
-  // no-ops, so every handler can call them unconditionally.
-  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } =
-    Promise.withResolvers<void>();
+  // error, premature exit, stream error, or timeout. One resolver is
+  // wired across every handler; later settle calls on an already-settled
+  // promise are no-ops, so handlers can call them unconditionally.
+  const { promise: readyPromise, resolve: readyResolve, reject: readyReject } = withResolvers<void>();
+  // Cap captured serve output: listening-line detection only needs the
+  // tail, and an unbounded buffer could grow to MB if serve logs
+  // verbosely before printing the ready line. Keep the last 4KB.
+  const MAX_SERVE_OUTPUT = 4096;
   let serveOutput = "";
+  const appendServe = (text: string): void => {
+    serveOutput += text;
+    if (serveOutput.length > MAX_SERVE_OUTPUT) {
+      serveOutput = serveOutput.slice(serveOutput.length - MAX_SERVE_OUTPUT);
+    }
+  };
   const onServeData = (chunk: Buffer | string): void => {
-    serveOutput += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    appendServe(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
     if (/listening on https?:\/\//i.test(serveOutput)) {
       readyResolve();
     }
   };
   bsProc.stdout?.on("data", onServeData);
   bsProc.stderr?.on("data", onServeData);
+  // Stream errors must reject too, otherwise a broken pipe would leave
+  // us awaiting a promise that never settles.
+  bsProc.stdout?.on("error", readyReject);
+  bsProc.stderr?.on("error", readyReject);
   bsProc.on("error", (err) => readyReject(err));
   bsProc.on("exit", (code) => {
     if (code !== null) {
